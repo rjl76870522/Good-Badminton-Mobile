@@ -1,6 +1,8 @@
 import cv2
 import numpy as np
 
+from .reference import BadmintonCourtReference
+
 
 def _line_angle(x1, y1, x2, y2):
     angle = np.degrees(np.arctan2(y2 - y1, x2 - x1))
@@ -109,6 +111,30 @@ def _side_segment_support(line, p_top, p_bottom, image_height):
     quad_min, quad_max = sorted((float(p_top[1]), float(p_bottom[1])))
     overshoot = max(0.0, seg_min - quad_min) + max(0.0, quad_max - seg_max)
     return max(0.0, 1.0 - overshoot / max(1.0, image_height * 0.16))
+def _reference_segment_support(line, line_support, image_shape):
+    if line_support is None:
+        return 0.0
+
+    height, width = image_shape[:2]
+    x1, y1, x2, y2 = line["points"]
+    length = float(np.hypot(x2 - x1, y2 - y1))
+    if length < 1.0:
+        return 0.0
+
+    sample_count = max(18, int(length / 4.0))
+    xs = np.linspace(float(x1), float(x2), sample_count)
+    ys = np.linspace(float(y1), float(y2), sample_count)
+    valid = (xs >= 0) & (xs < width) & (ys >= 0) & (ys < height)
+    if np.mean(valid) < 0.35:
+        return 0.0
+
+    xs = np.clip(np.rint(xs[valid]).astype(np.int32), 0, width - 1)
+    ys = np.clip(np.rint(ys[valid]).astype(np.int32), 0, height - 1)
+    distances = line_support["distance_map"][ys, xs]
+    tolerance = line_support["tolerance"]
+    line_scores = 1.0 - np.clip(distances / tolerance, 0.0, 1.0)
+    coverage = np.mean(distances <= tolerance)
+    return float(0.65 * np.mean(line_scores) + 0.35 * coverage)
 
 
 def _promote_far_baseline(lines, horizontal_lines, image_shape):
@@ -191,6 +217,30 @@ def build_court_line_mask(image):
     merged = cv2.morphologyEx(merged, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)), iterations=1)
     return merged
 
+def build_reference_line_mask(image):
+    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+    h, s, v = cv2.split(hsv)
+
+    green_mask = (((h >= 35) & (h <= 95) & (s >= 30) & (v >= 45)).astype(np.uint8)) * 255
+    green_mask = cv2.morphologyEx(green_mask, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8), iterations=1)
+    green_mask = cv2.morphologyEx(green_mask, cv2.MORPH_CLOSE, np.ones((25, 25), np.uint8), iterations=2)
+
+    count, labels, stats, _centroids = cv2.connectedComponentsWithStats(green_mask)
+    if count > 1:
+        image_area = image.shape[0] * image.shape[1]
+        candidates = [idx for idx in range(1, count) if stats[idx, cv2.CC_STAT_AREA] > image_area * 0.08]
+        if candidates:
+            court_idx = max(candidates, key=lambda idx: stats[idx, cv2.CC_STAT_AREA])
+            green_mask = ((labels == court_idx).astype(np.uint8)) * 255
+
+    court_roi = cv2.dilate(green_mask, cv2.getStructuringElement(cv2.MORPH_RECT, (13, 13)), iterations=1)
+    white_mask = (((s <= 90) & (v >= 145)).astype(np.uint8)) * 255
+    yellow_mask = (((h >= 12) & (h <= 42) & (s >= 45) & (v >= 120)).astype(np.uint8)) * 255
+    line_mask = cv2.bitwise_and(cv2.bitwise_or(white_mask, yellow_mask), court_roi)
+    line_mask = cv2.morphologyEx(line_mask, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_RECT, (5, 3)), iterations=1)
+    line_mask = cv2.morphologyEx(line_mask, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)), iterations=1)
+    return line_mask
+
 
 def detect_court_line_segments(image):
     height, width = image.shape[:2]
@@ -240,7 +290,7 @@ def detect_court_line_segments(image):
     return _dedupe_lines(horizontal, "horizontal", 14), _dedupe_lines(side, "side", 18), mask
 
 
-def _score_court_quad(corners, image_shape, lines, line_mask, horizontal_lines):
+def _score_court_quad(corners, image_shape, lines, line_mask, horizontal_lines, court_reference=None, line_support=None):
     height, width = image_shape[:2]
     top_left, top_right, bottom_right, bottom_left = corners
     points = np.array(corners, dtype=np.float32)
@@ -315,14 +365,64 @@ def _score_court_quad(corners, image_shape, lines, line_mask, horizontal_lines):
         + _side_segment_support(right_line, top_right, bottom_right, height)
     ) / 2.0
     support_score = (horizontal_support * 0.55 + side_support * 0.45) * 24
-    alignment_score = _badminton_line_alignment_score(corners, line_mask) * 10
-    pattern_score = _badminton_horizontal_pattern_score(corners, horizontal_lines, image_shape) * 110
-    return area_score + height_score + perspective_score + center_x_score + center_y_score + bottom_score + edge_score + line_score + support_score + alignment_score + pattern_score
+    top_span = sorted((float(top_line["points"][0]), float(top_line["points"][2])))
+    bottom_span = sorted((float(bottom_line["points"][0]), float(bottom_line["points"][2])))
+    top_endpoint_alignment = 1.0 - min(
+        (abs(float(top_left[0]) - top_span[0]) + abs(float(top_right[0]) - top_span[1])) / max(width * 0.34, 1.0),
+        1.0,
+    )
+    bottom_endpoint_alignment = 1.0 - min(
+        (abs(float(bottom_left[0]) - bottom_span[0]) + abs(float(bottom_right[0]) - bottom_span[1])) / max(width * 0.34, 1.0),
+        1.0,
+    )
+    endpoint_alignment_value = (top_endpoint_alignment + bottom_endpoint_alignment) / 2.0
+    endpoint_alignment_score = endpoint_alignment_value * 44
+    left_reference_support = _reference_segment_support(left_line, line_support, image_shape)
+    right_reference_support = _reference_segment_support(right_line, line_support, image_shape)
+    clean_side_support_value = min(left_reference_support, right_reference_support)
+    clean_side_support_score = min(1.0, clean_side_support_value / 0.75) * 42
 
+    alignment_value = _badminton_line_alignment_score(corners, line_mask)
+    pattern_value = _badminton_horizontal_pattern_score(corners, horizontal_lines, image_shape)
+    reference_value = 0.0
+    reference_details = {}
+    if court_reference is not None:
+        reference_value, reference_details = court_reference.score_line_support(corners, line_support, image_shape)
+
+    alignment_score = alignment_value * 10
+    pattern_score = pattern_value * 110
+    reference_score = reference_value * 18
+    total_score = (
+        area_score
+        + height_score
+        + perspective_score
+        + center_x_score
+        + center_y_score
+        + bottom_score
+        + edge_score
+        + line_score
+        + support_score
+        + endpoint_alignment_score
+        + clean_side_support_score
+        + alignment_score
+        + pattern_score
+        + reference_score
+    )
+    details = {
+        "alignment_score": round(float(alignment_value), 4),
+        "horizontal_pattern_score": round(float(pattern_value), 4),
+        "endpoint_alignment_score": round(float(endpoint_alignment_value), 4),
+        "clean_side_support_score": round(float(clean_side_support_value), 4),
+        **reference_details,
+    }
+    return total_score, details
 
 def auto_detect_court_corners(image):
     horizontal_lines, side_lines, mask = detect_court_line_segments(image)
-    debug = {"horizontal": horizontal_lines, "side": side_lines, "score": None}
+    court_reference = BadmintonCourtReference()
+    reference_mask = build_reference_line_mask(image)
+    line_support = court_reference.prepare_line_support(reference_mask, image.shape)
+    debug = {"horizontal": horizontal_lines, "side": side_lines, "score": None, "details": None}
     if len(horizontal_lines) < 2 or len(side_lines) < 2:
         return None, mask, debug
 
@@ -349,11 +449,25 @@ def auto_detect_court_corners(image):
                     if any(point is None for point in intersections):
                         continue
 
-                    score = _score_court_quad(intersections, image.shape, (top_line, bottom_line, left_line, right_line), mask, horizontal_lines)
-                    if score is None:
+                    scored = _score_court_quad(
+                        intersections,
+                        image.shape,
+                        (top_line, bottom_line, left_line, right_line),
+                        mask,
+                        horizontal_lines,
+                        court_reference,
+                        line_support,
+                    )
+                    if scored is None:
                         continue
+                    score, details = scored
                     if best is None or score > best["score"]:
-                        best = {"corners": intersections, "score": score, "lines": (top_line, bottom_line, left_line, right_line)}
+                        best = {
+                            "corners": intersections,
+                            "score": score,
+                            "details": details,
+                            "lines": (top_line, bottom_line, left_line, right_line),
+                        }
 
     if best is None:
         return None, mask, debug
@@ -368,34 +482,62 @@ def auto_detect_court_corners(image):
     ]
     if any(point is None for point in corners_float):
         corners_float = best["corners"]
+        selected_lines = best["lines"]
 
-    debug["score"] = best["score"]
+    final_score = best["score"]
+    final_details = best["details"]
+    final_scored = _score_court_quad(
+        corners_float,
+        image.shape,
+        selected_lines,
+        mask,
+        horizontal_lines,
+        court_reference,
+        line_support,
+    )
+    if final_scored is not None:
+        final_score, final_details = final_scored
+
+    debug["score"] = final_score
+    debug["details"] = final_details
     corners = [(int(round(point[0])), int(round(point[1]))) for point in corners_float]
     return corners, mask, debug
 
-
 def render_auto_court_preview(image, corners, roi_corners=None, debug=None):
     preview = image.copy()
-    if debug:
+
+    if corners:
+        court_reference = BadmintonCourtReference()
+        for start, end, weight in court_reference.project_lines(corners):
+            p1 = tuple(np.round(start).astype(int))
+            p2 = tuple(np.round(end).astype(int))
+            color = (0, 255, 0) if weight >= 1.3 else (0, 220, 255)
+            thickness = 3 if weight >= 1.3 else 2
+            cv2.line(preview, p1, p2, color, thickness, cv2.LINE_AA)
+
+        points = np.array(corners, dtype=np.int32)
+        cv2.polylines(preview, [points], True, (0, 255, 0), 3, cv2.LINE_AA)
+        for idx, point in enumerate(corners, start=1):
+            cv2.circle(preview, point, 6, (0, 0, 255), -1, cv2.LINE_AA)
+            cv2.putText(preview, str(idx), (point[0] + 8, point[1] - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 0, 255), 2, cv2.LINE_AA)
+    elif debug:
         for line in debug.get("horizontal", []):
             cv2.line(preview, line["points"][:2], line["points"][2:], (0, 220, 255), 2)
         for line in debug.get("side", []):
             cv2.line(preview, line["points"][:2], line["points"][2:], (255, 180, 0), 2)
 
-    if corners:
-        points = np.array(corners, dtype=np.int32)
-        cv2.polylines(preview, [points], True, (0, 255, 0), 3)
-        for idx, point in enumerate(corners, start=1):
-            cv2.circle(preview, point, 6, (0, 0, 255), -1)
-            cv2.putText(preview, str(idx), (point[0] + 8, point[1] - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 0, 255), 2, cv2.LINE_AA)
-
     if roi_corners:
         cv2.rectangle(preview, roi_corners[0], roi_corners[1], (255, 0, 0), 3)
 
     cv2.rectangle(preview, (0, 0), (preview.shape[1], 44), (0, 0, 0), -1)
+    detail = ""
+    if debug and debug.get("details"):
+        reference_score = debug["details"].get("reference_score")
+        if isinstance(reference_score, (int, float)):
+            detail = f" ref={reference_score:.2f}"
     cv2.putText(
         preview,
-        "Auto court detection: Enter/Y accept, M/R/Esc manual",
+        f"Auto court detection{detail}: Enter/Y accept, M/R/Esc manual",
         (16, 29),
         cv2.FONT_HERSHEY_SIMPLEX,
         0.72,

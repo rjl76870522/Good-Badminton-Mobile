@@ -1,6 +1,13 @@
-﻿import cv2
+import cv2
 import numpy as np
 
+from .reference import (
+    BADMINTON_BACK_SERVICE_OFFSET,
+    BADMINTON_COURT_LENGTH,
+    BADMINTON_COURT_WIDTH,
+    BADMINTON_SERVICE_LINE_FROM_NET,
+    BADMINTON_SINGLES_MARGIN,
+)
 from .detector import auto_detect_court_corners, render_auto_court_preview
 
 
@@ -52,27 +59,37 @@ class CourtMapper:
         transformed_points = cv2.perspectiveTransform(points, self.inv_matrix)
         return np.round(transformed_points[0][0], 2)
 
+    def _line_to_image(self, start, end):
+        return self.court_to_image(np.array(start)), self.court_to_image(np.array(end))
+
     def compute_court_overlay(self):
-        thirds = [2.033, 4.066]
-        self.vertical_lines = []
-        for x in thirds:
-            top = np.array([x, 0])
-            bottom = np.array([x, 13.4])
-            top_image = self.court_to_image(top)
-            bottom_image = self.court_to_image(bottom)
-            self.vertical_lines.append((top_image, bottom_image))
+        width, length = self.court_dimensions
+        scale_x = width / BADMINTON_COURT_WIDTH
+        scale_y = length / BADMINTON_COURT_LENGTH
+        singles_margin = BADMINTON_SINGLES_MARGIN * scale_x
+        net_y = length / 2.0
+        service_top = net_y - BADMINTON_SERVICE_LINE_FROM_NET * scale_y
+        service_bottom = net_y + BADMINTON_SERVICE_LINE_FROM_NET * scale_y
+        back_service_top = BADMINTON_BACK_SERVICE_OFFSET * scale_y
+        back_service_bottom = length - BADMINTON_BACK_SERVICE_OFFSET * scale_y
+        center_x = width / 2.0
 
-        ninths = np.linspace(0, 13.4, 11)
-        self.horizontal_lines = []
-        for y in ninths:
-            left = np.array([0, y])
-            right = np.array([6.1, y])
-            left_image = self.court_to_image(left)
-            right_image = self.court_to_image(right)
-            self.horizontal_lines.append((left_image, right_image))
+        self.vertical_lines = [
+            self._line_to_image((singles_margin, 0), (singles_margin, length)),
+            self._line_to_image((width - singles_margin, 0), (width - singles_margin, length)),
+            self._line_to_image((center_x, 0), (center_x, service_top)),
+            self._line_to_image((center_x, service_bottom), (center_x, length)),
+        ]
+        self.horizontal_lines = [
+            self._line_to_image((0, back_service_top), (width, back_service_top)),
+            self._line_to_image((0, service_top), (width, service_top)),
+            self._line_to_image((0, net_y), (width, net_y)),
+            self._line_to_image((0, service_bottom), (width, service_bottom)),
+            self._line_to_image((0, back_service_bottom), (width, back_service_bottom)),
+        ]
 
-        left_mid = np.array([0, 6.7])
-        right_mid = np.array([6.1, 6.7])
+        left_mid = np.array([0, net_y])
+        right_mid = np.array([width, net_y])
         left_mid_image = self.court_to_image(left_mid)
         right_mid_image = self.court_to_image(right_mid)
         self.mid_height = int((left_mid_image[1] + right_mid_image[1]) / 2)
