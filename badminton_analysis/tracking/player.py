@@ -1,7 +1,7 @@
 from collections import deque
+import math
 
-import numpy as np
-
+from ..movement_metrics import MAX_SEGMENT_DT_SEC, MAX_STABLE_SPEED_MPS
 from ..court.mapper import CourtMapper
 
 
@@ -17,7 +17,6 @@ class PlayerTracker:
         self.threshold = threshold
         self.fps = fps
         self.detection_writer = detection_writer
-        self.max_frame_distance = 8.0 / self.fps
 
         self.players = {
             "upper": None,
@@ -43,6 +42,14 @@ class PlayerTracker:
         self.current_speed = {
             "upper": 0,
             "lower": 0,
+        }
+        self.last_valid_court_position = {
+            "upper": None,
+            "lower": None,
+        }
+        self.last_valid_frame = {
+            "upper": None,
+            "lower": None,
         }
 
         self.court_mapper = CourtMapper(corners)
@@ -120,7 +127,7 @@ class PlayerTracker:
                 region = "upper" if centroid[1] < self.threshold else "lower"
                 left_hand = left_hand_positions.get(centroid[1])
                 right_hand = right_hand_positions.get(centroid[1])
-                self._update_player_position(region, centroid, left_hand, right_hand, players_record)
+                self._update_player_position(region, centroid, left_hand, right_hand, players_record, frame_index)
             except Exception as exc:
                 print(f"Error processing player position: {exc}")
                 import traceback
@@ -129,21 +136,58 @@ class PlayerTracker:
         self.write_detection_record(frame_index, players_record, ball_image_position, detect_frame_count)
         return self.players
 
-    def _update_player_position(self, region, centroid, left_hand_pos, right_hand_pos, players_record):
+    def _update_player_position(self, region, centroid, left_hand_pos, right_hand_pos, players_record, frame_index):
         self.players[region] = centroid
         self.history[region].append(centroid)
 
         court_position = self.court_mapper.image_to_court(centroid)
         self.court_history[region].append(court_position)
+        stable_speed = self._update_stable_motion(region, court_position, frame_index)
 
         player_record = players_record[region]
         player_record["image"] = self._point_or_none(centroid)
         player_record["court"] = self._point_or_none(court_position)
-        player_record["speed"] = float(self.current_speed[region])
+        player_record["speed"] = float(stable_speed)
         if left_hand_pos:
             player_record["hands"]["left"] = self._point_or_none(left_hand_pos)
         if right_hand_pos:
             player_record["hands"]["right"] = self._point_or_none(right_hand_pos)
+
+    def _update_stable_motion(self, region, court_position, frame_index):
+        point = self._point_or_none(court_position)
+        if point is None:
+            self.current_speed[region] = 0
+            return 0
+
+        current = (float(point[0]), float(point[1]))
+        previous = self.last_valid_court_position[region]
+        previous_frame = self.last_valid_frame[region]
+        if previous is None or previous_frame is None:
+            self.last_valid_court_position[region] = current
+            self.last_valid_frame[region] = frame_index
+            self.current_speed[region] = 0
+            return 0
+
+        frame_delta = frame_index - previous_frame
+        dt = frame_delta / self.fps if self.fps else 0
+        if dt <= 0:
+            return self.current_speed[region]
+        if dt > MAX_SEGMENT_DT_SEC:
+            self.last_valid_court_position[region] = current
+            self.last_valid_frame[region] = frame_index
+            self.current_speed[region] = 0
+            return 0
+
+        distance = math.dist(previous, current)
+        speed = distance / dt
+        if speed > MAX_STABLE_SPEED_MPS:
+            self.current_speed[region] = 0
+            return 0
+
+        self.last_valid_court_position[region] = current
+        self.last_valid_frame[region] = frame_index
+        self._update_rally_and_match_stats(region, distance, speed)
+        return self.current_speed[region]
 
     def _update_rally_and_match_stats(self, region, distance, speed):
         capped_speed = round(min(speed, 8.0), 2)
@@ -181,40 +225,7 @@ class PlayerTracker:
                 stats[region] = region_stats
                 continue
 
-            current_time = len(history) - 1
-            window_start = max(0, current_time - int(self.fps / 2))
-            half_second_total_distance = 0
-            valid_frames = 0
-            actual_time_span = 0
-            sample_interval = 5
-
-            if current_time - window_start < sample_interval:
-                sample_points = [window_start, current_time]
-            else:
-                sample_points = list(range(window_start, current_time + 1, sample_interval))
-                if current_time not in sample_points:
-                    sample_points.append(current_time)
-
-            for i in range(len(sample_points) - 1):
-                idx1 = sample_points[i]
-                idx2 = sample_points[i + 1]
-                p1 = np.array(history[idx1])
-                p2 = np.array(history[idx2])
-                distance = np.linalg.norm(p2 - p1)
-                time_span = (idx2 - idx1) / self.fps
-                max_possible_distance = self.max_frame_distance * (idx2 - idx1)
-
-                if distance > 0.05 and distance < max_possible_distance:
-                    half_second_total_distance += distance
-                    valid_frames += 1
-                    actual_time_span += time_span
-
-            current_speed = 0
-            if valid_frames > 0 and actual_time_span > 0:
-                current_speed = half_second_total_distance / actual_time_span
-                self._update_rally_and_match_stats(region, half_second_total_distance, current_speed)
-
-            current_speed = min(current_speed, 8.0)
+            current_speed = self.current_speed[region]
 
             rally_distance = self.rally_stats[region]["total_distance"]
             rally_max_speed = self.rally_stats[region]["max_speed"]
