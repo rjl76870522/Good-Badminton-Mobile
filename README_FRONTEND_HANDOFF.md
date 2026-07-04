@@ -64,8 +64,22 @@ For same-Wi-Fi development:
 http://172.29.72.218:8001
 ```
 
+For temporary public HTTPS testing, start:
+
+```bat
+D:\py\Good-Badminton\start_public_tunnel.bat
+```
+
+Then use the generated URL:
+
+```text
+https://<generated-name>.trycloudflare.com
+```
+
 When deploying through tunnel/public server later, replace only the base URL.
 Endpoint paths stay the same.
+
+More network setup notes are in `NETWORK_DEPLOYMENT.md`.
 
 ## Main App Flow
 

@@ -21,6 +21,7 @@ mobile_backend_data/
 batch_summary.json
 batch_report.html
 *.log
+cloudflared-tunnel.log
 
 # Local ad-hoc videos and accidental shell artifacts
 videos/*.mp4
