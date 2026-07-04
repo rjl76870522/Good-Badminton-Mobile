@@ -13,6 +13,8 @@ from typing import Any
 
 import imageio_ffmpeg
 
+from .movement_metrics import load_stable_player_lookup
+
 
 MAX_PLAYER_SPEED_MPS = 12.0
 SHUTTLE_SCORE_REFERENCE_PX_PER_SEC = 3500.0
@@ -22,7 +24,7 @@ SHUTTLE_SCORE_REFERENCE_PX_PER_SEC = 3500.0
 class DetectionFrame:
     time_sec: float
     shuttle_xy: tuple[float, float] | None
-    player_positions: list[tuple[float, float]]
+    player_positions: dict[str, tuple[float, float]]
     player_speeds: list[float]
 
 
@@ -94,6 +96,7 @@ def generate_highlight(
 
 def _load_frames(path: Path) -> list[DetectionFrame]:
     frames: list[DetectionFrame] = []
+    stable_lookup = load_stable_player_lookup(path)
     with path.open("r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
@@ -109,21 +112,16 @@ def _load_frames(path: Path) -> list[DetectionFrame]:
                 continue
 
             shuttle_xy = _xy(record.get("shuttlecock", {}).get("image"))
-            player_positions: list[tuple[float, float]] = []
-            player_speeds: list[float] = []
-            for payload in (record.get("players") or {}).values():
-                if not isinstance(payload, dict):
-                    continue
-                court_xy = _xy(payload.get("court"))
-                if court_xy is not None:
-                    player_positions.append(court_xy)
-                speed = payload.get("speed")
-                if (
-                    isinstance(speed, (int, float))
-                    and math.isfinite(speed)
-                    and 0 <= speed <= MAX_PLAYER_SPEED_MPS
-                ):
-                    player_speeds.append(float(speed))
+            stable_players = stable_lookup.get(round(float(time_sec), 6), {})
+            player_positions = {
+                name: (point.x, point.y)
+                for name, point in stable_players.items()
+            }
+            player_speeds = [
+                point.speed_mps
+                for point in stable_players.values()
+                if 0 <= point.speed_mps <= MAX_PLAYER_SPEED_MPS
+            ]
 
             frames.append(
                 DetectionFrame(
@@ -198,7 +196,7 @@ def _score_window(
     player_peak_speed = 0.0
     player_distance = 0.0
     previous_shuttle: tuple[float, tuple[float, float]] | None = None
-    previous_players: dict[int, tuple[float, tuple[float, float]]] = {}
+    previous_players: dict[str, tuple[float, tuple[float, float]]] = {}
 
     for frame in window:
         if frame.player_speeds:
@@ -214,8 +212,8 @@ def _score_window(
                         shuttle_speeds.append(speed)
             previous_shuttle = (frame.time_sec, frame.shuttle_xy)
 
-        for idx, xy in enumerate(frame.player_positions):
-            previous = previous_players.get(idx)
+        for name, xy in frame.player_positions.items():
+            previous = previous_players.get(name)
             if previous is not None:
                 prev_time, prev_xy = previous
                 dt = frame.time_sec - prev_time
@@ -224,7 +222,7 @@ def _score_window(
                 if 0 < dt <= 0.5 and speed <= MAX_PLAYER_SPEED_MPS:
                     player_distance += dist
                     player_peak_speed = max(player_peak_speed, speed)
-            previous_players[idx] = (frame.time_sec, xy)
+            previous_players[name] = (frame.time_sec, xy)
 
     if len(shuttle_speeds) < 3 and player_distance < 1.0:
         return None
