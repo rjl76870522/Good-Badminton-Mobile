@@ -9,9 +9,20 @@
 
 **基于计算机视觉的羽毛球比赛视频分析工具**
 
-[中文](README.md) | [English](README_EN.md)
+当前比赛/移动端主后端：`backend_api.py`，端口 `8001`。
 
 </div>
+
+## 当前项目文档
+
+| 文档 | 用途 |
+| --- | --- |
+| [README_FRONTEND_HANDOFF.md](README_FRONTEND_HANDOFF.md) | 给前端同学的总交接说明 |
+| [FRONTEND_API.md](FRONTEND_API.md) | 移动端接口字段、响应、错误码 |
+| [CORNER_PICKER_HANDOFF.md](CORNER_PICKER_HANDOFF.md) | 手机点选四角点的前后端协议 |
+| [NETWORK_DEPLOYMENT.md](NETWORK_DEPLOYMENT.md) | 同 WiFi、内网穿透、公网 baseUrl 配置 |
+| [MOBILE_BACKEND.md](MOBILE_BACKEND.md) | 移动后端启动与接口概览 |
+| [mobile_app/README.md](mobile_app/README.md) | Flutter/Android App 构建与安装 |
 
 ## 🎬 效果预览
 
