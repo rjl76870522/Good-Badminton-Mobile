@@ -2,7 +2,7 @@
 
 Run from the project root:
 
-    uvicorn backend_api:app --host 0.0.0.0 --port 8000
+    uvicorn backend_api:app --host 0.0.0.0 --port 8001
 """
 
 from __future__ import annotations
@@ -41,6 +41,7 @@ MAX_UPLOAD_BYTES = 500 * 1024 * 1024
 MIN_VIDEO_DURATION_SEC = 5.0
 MAX_VIDEO_DURATION_SEC = 180.0
 MIN_DETECTION_RECORDS = 3
+PREVIEW_COURT_DETECT_CANDIDATES = 3
 DEFAULT_TEMPLATE_CANDIDATES = [
     PROJECT_ROOT / "templates" / "badminton_template.png",
     PROJECT_ROOT / "templates" / "my_template.png",
@@ -228,6 +229,36 @@ def get_task(task_id: str) -> dict[str, Any]:
     return _public_task(task)
 
 
+@app.delete("/api/tasks/{task_id}")
+def delete_task(
+    task_id: str,
+    user_id: str | None = Query(default=None),
+) -> dict[str, Any]:
+    task = _get_task_or_404(task_id)
+    if user_id and task.get("user_id", DEFAULT_USER_ID) != _safe_user_id(user_id):
+        raise_api_error(
+            status_code=404,
+            code="TASK_NOT_FOUND",
+            message="任务不存在。",
+            hint="请确认当前 user_id 和 task_id 是否匹配。",
+        )
+
+    deleted_paths = _delete_task_artifacts(task)
+    with TASKS_LOCK:
+        TASKS.pop(task_id, None)
+    snapshot = TASK_DIR / f"{task_id}.json"
+    try:
+        snapshot.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+    return {
+        "ok": True,
+        "task_id": task_id,
+        "deleted_paths": deleted_paths,
+    }
+
+
 @app.get("/api/tasks/{task_id}/report")
 def get_report(task_id: str) -> dict[str, Any]:
     task = _get_task_or_404(task_id)
@@ -389,6 +420,7 @@ def _run_analysis_task(
 
 def _build_report_with_urls(task_id: str, result: dict[str, Any]) -> dict[str, Any]:
     report = build_mobile_report(result=result)
+    highlight_segments = _decorate_highlight_segments(result.get("highlight_segments", []))
     files = {
         "analysis_video": _path_to_output_url(result.get("video")),
         "highlight": _path_to_output_url(result.get("highlight")),
@@ -403,11 +435,78 @@ def _build_report_with_urls(task_id: str, result: dict[str, Any]) -> dict[str, A
             "task_id": task_id,
             "status": "completed",
             "files": files,
-            "highlight_segments": result.get("highlight_segments", []),
+            "highlight_segments": highlight_segments,
             "highlight_error": result.get("highlight_error"),
         }
     )
     return report
+
+
+def _decorate_highlight_segments(segments: Any) -> list[dict[str, Any]]:
+    if not isinstance(segments, list):
+        return []
+    decorated: list[dict[str, Any]] = []
+    for item in segments:
+        if not isinstance(item, dict):
+            continue
+        segment = dict(item)
+        metrics = segment.get("metrics") if isinstance(segment.get("metrics"), dict) else {}
+        reason = str(segment.get("reason") or "")
+        segment["reason_zh"] = _highlight_reason_zh(reason, metrics)
+        segment["tags"] = _highlight_tags(reason, metrics)
+        segment["display_metrics"] = {
+            "player_peak_mps": _round_float(metrics.get("player_peak_mps")),
+            "player_distance_m": _round_float(metrics.get("player_distance_m")),
+            "shuttle_peak_px_s": _round_float(metrics.get("shuttle_peak_px_s")),
+        }
+        decorated.append(segment)
+    return decorated
+
+
+def _highlight_reason_zh(reason: str, metrics: dict[str, Any]) -> str:
+    player_peak = _to_float(metrics.get("player_peak_mps"))
+    player_distance = _to_float(metrics.get("player_distance_m"))
+    shuttle_peak = _to_float(metrics.get("shuttle_peak_px_s"))
+    parts: list[str] = []
+    if player_peak >= 5.0:
+        parts.append("球员出现快速启动或冲刺")
+    if player_distance >= 12.0:
+        parts.append("片段内移动距离较大")
+    if shuttle_peak >= 1000.0:
+        parts.append("球速变化明显")
+    if not parts:
+        if "fast" in reason.lower():
+            parts.append("速度指标较高")
+        else:
+            parts.append("该片段综合运动强度较高")
+    return "，".join(parts) + "，因此被选入精彩集锦。"
+
+
+def _highlight_tags(reason: str, metrics: dict[str, Any]) -> list[str]:
+    tags: list[str] = []
+    player_peak = _to_float(metrics.get("player_peak_mps"))
+    player_distance = _to_float(metrics.get("player_distance_m"))
+    shuttle_peak = _to_float(metrics.get("shuttle_peak_px_s"))
+    if player_peak >= 5.0 or "fast player" in reason.lower():
+        tags.append("快速启动")
+    if player_distance >= 12.0:
+        tags.append("高强度跑动")
+    if player_distance >= 18.0:
+        tags.append("覆盖范围大")
+    if shuttle_peak >= 1000.0:
+        tags.append("高速来球")
+    return tags or ["精彩回合"]
+
+
+def _round_float(value: Any) -> float:
+    return round(_to_float(value), 2)
+
+
+def _to_float(value: Any) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def _path_to_output_url(path: str | os.PathLike[str] | None) -> str | None:
@@ -486,22 +585,43 @@ def _select_preview_frame(video_path: Path, source_upload_id: str) -> dict[str, 
         )
 
     sample_indices = _preview_sample_indices(total_frames)
-    best: dict[str, Any] | None = None
+    candidates: list[dict[str, Any]] = []
     for frame_index in sample_indices:
         cap.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
         ok, frame = cap.read()
         if not ok or frame is None:
             continue
-        scored = _score_preview_frame(frame, frame_index, fps)
+        scored = _score_preview_frame(frame, frame_index, fps, detect_court=False)
+        if not scored["usable"]:
+            continue
+        candidates.append(scored)
+    cap.release()
+
+    best: dict[str, Any] | None = None
+    for candidate in sorted(candidates, key=lambda item: item["score"], reverse=True)[
+        :PREVIEW_COURT_DETECT_CANDIDATES
+    ]:
+        scored = _score_preview_frame(
+            candidate["frame"],
+            candidate["frame_index"],
+            fps,
+            detect_court=True,
+        )
+        if not scored["usable"]:
+            continue
         if best is None or scored["score"] > best["score"]:
             best = scored
-    cap.release()
+
+    if best is None and candidates:
+        best = max(candidates, key=lambda item: item["score"])
+        best["reason"] = "visual_quality_fallback"
 
     if best is None:
         raise_api_error(
             status_code=400,
             code="PREVIEW_FRAME_FAILED",
-            message="无法从视频中提取可用预览帧。",
+            message="无法从视频中提取清晰的球场预览帧。",
+            hint="请换一段画面更亮、开头没有黑屏、能看到完整球场的视频。",
         )
 
     image_path = PREVIEW_FRAME_DIR / f"{source_upload_id}.jpg"
@@ -520,6 +640,7 @@ def _select_preview_frame(video_path: Path, source_upload_id: str) -> dict[str, 
         "time_sec": round(float(best["time_sec"]), 2),
         "score": round(float(best["score"]), 3),
         "selection_reason": best["reason"],
+        "quality": best.get("quality"),
         "auto_corners": best["auto_corners"],
         "video": {
             "width": width,
@@ -532,7 +653,7 @@ def _select_preview_frame(video_path: Path, source_upload_id: str) -> dict[str, 
 
 
 def _preview_sample_indices(total_frames: int) -> list[int]:
-    fractions = [0.08, 0.14, 0.22, 0.32, 0.45, 0.58, 0.70, 0.82]
+    fractions = [0.10, 0.16, 0.22, 0.30, 0.38, 0.46, 0.54, 0.62, 0.70, 0.78, 0.86]
     indices = {
         min(total_frames - 1, max(0, int(total_frames * fraction)))
         for fraction in fractions
@@ -542,14 +663,29 @@ def _preview_sample_indices(total_frames: int) -> list[int]:
     return sorted(indices)
 
 
-def _score_preview_frame(frame: Any, frame_index: int, fps: float) -> dict[str, Any]:
+def _score_preview_frame(
+    frame: Any,
+    frame_index: int,
+    fps: float,
+    *,
+    detect_court: bool = True,
+) -> dict[str, Any]:
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     brightness = float(gray.mean())
+    dark_ratio = float(np.mean(gray < 22))
+    nonblack_ratio = float(np.mean(gray > 32))
+    center = gray[
+        gray.shape[0] // 5 : gray.shape[0] * 4 // 5,
+        gray.shape[1] // 5 : gray.shape[1] * 4 // 5,
+    ]
+    center_nonblack_ratio = float(np.mean(center > 32)) if center.size else nonblack_ratio
     sharpness = float(cv2.Laplacian(gray, cv2.CV_64F).var())
     edges = cv2.Canny(gray, 80, 180)
     edge_density = float(cv2.countNonZero(edges)) / max(edges.size, 1)
 
-    auto_corners, _preview = auto_detect_preview(frame)
+    auto_corners = None
+    if detect_court:
+        auto_corners, _preview = auto_detect_preview(frame)
     h, w = frame.shape[:2]
     area_ratio = 0.0
     if auto_corners:
@@ -560,16 +696,29 @@ def _score_preview_frame(frame: Any, frame_index: int, fps: float) -> dict[str, 
     sharpness_score = min(sharpness / 600.0, 1.0)
     edge_score = min(edge_density / 0.08, 1.0)
     area_score = min(area_ratio / 0.18, 1.0)
+    content_score = min((nonblack_ratio + center_nonblack_ratio) / 1.4, 1.0)
+    dark_penalty = max(0.0, (dark_ratio - 0.35) * 2.0)
     court_bonus = 2.5 if auto_corners else 0.0
+    usable = (
+        brightness >= 35.0
+        and nonblack_ratio >= 0.35
+        and center_nonblack_ratio >= 0.25
+        and dark_ratio <= 0.72
+        and sharpness >= 8.0
+    )
     score = (
         court_bonus
         + brightness_score * 0.8
         + sharpness_score * 0.8
         + edge_score * 0.5
         + area_score * 1.4
+        + content_score * 1.0
+        - dark_penalty
     )
 
     reason = "auto_court_detected" if auto_corners else "visual_quality_fallback"
+    if not usable:
+        reason = "rejected_dark_or_low_content"
     return {
         "frame": frame,
         "frame_index": frame_index,
@@ -577,6 +726,15 @@ def _score_preview_frame(frame: Any, frame_index: int, fps: float) -> dict[str, 
         "score": score,
         "reason": reason,
         "auto_corners": [[int(x), int(y)] for x, y in auto_corners] if auto_corners else None,
+        "usable": usable,
+        "quality": {
+            "brightness": round(brightness, 2),
+            "dark_ratio": round(dark_ratio, 3),
+            "nonblack_ratio": round(nonblack_ratio, 3),
+            "center_nonblack_ratio": round(center_nonblack_ratio, 3),
+            "sharpness": round(sharpness, 2),
+            "edge_density": round(edge_density, 4),
+        },
     }
 
 
@@ -643,6 +801,8 @@ def _history_item(task: dict[str, Any]) -> dict[str, Any]:
     public.update(
         {
             "summary": report.get("summary"),
+            "report_summary": report.get("report_summary"),
+            "highlight_segments": report.get("highlight_segments") or [],
             "video": report.get("video"),
             "thumbnail": files.get("heatmap") or files.get("trajectory"),
             "files": {
@@ -679,6 +839,71 @@ def _filter_tasks_by_user(tasks: list[dict[str, Any]], user_id: str | None) -> l
         return tasks
     safe_id = _safe_user_id(user_id)
     return [task for task in tasks if task.get("user_id", DEFAULT_USER_ID) == safe_id]
+
+
+def _delete_task_artifacts(task: dict[str, Any]) -> list[str]:
+    deleted: list[str] = []
+    upload_path = task.get("upload_path")
+    if _delete_file_under(upload_path, UPLOAD_DIR):
+        deleted.append(str(upload_path))
+
+    output_dir = task.get("output_dir")
+    if not output_dir:
+        report = task.get("report") or {}
+        files = report.get("files") if isinstance(report, dict) else {}
+        first_output_url = None
+        if isinstance(files, dict):
+            first_output_url = (
+                files.get("analysis_video")
+                or files.get("highlight")
+                or files.get("heatmap")
+                or files.get("trajectory")
+            )
+        output_path = _output_url_to_path(first_output_url)
+        if output_path is not None:
+            output_dir = str(output_path.parent)
+
+    if _delete_tree_under(output_dir, OUTPUTS_DIR):
+        deleted.append(str(output_dir))
+    return deleted
+
+
+def _delete_file_under(path_value: Any, allowed_root: Path) -> bool:
+    path = _safe_path_under(path_value, allowed_root)
+    if path is None or not path.is_file():
+        return False
+    try:
+        path.unlink()
+        return True
+    except OSError:
+        return False
+
+
+def _delete_tree_under(path_value: Any, allowed_root: Path) -> bool:
+    path = _safe_path_under(path_value, allowed_root)
+    if path is None or not path.is_dir():
+        return False
+    try:
+        shutil.rmtree(path)
+        return True
+    except OSError:
+        return False
+
+
+def _safe_path_under(path_value: Any, allowed_root: Path) -> Path | None:
+    if not path_value:
+        return None
+    path = Path(str(path_value))
+    if not path.is_absolute():
+        path = PROJECT_ROOT / path
+    try:
+        resolved = path.resolve()
+        root = allowed_root.resolve()
+    except OSError:
+        return None
+    if resolved == root or root not in resolved.parents:
+        return None
+    return resolved
 
 
 def _safe_user_id(user_id: str | None) -> str:

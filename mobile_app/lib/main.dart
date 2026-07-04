@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' show HandshakeException, SocketException;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -8,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_player/video_player.dart';
 
 const defaultBaseUrl = 'http://172.29.72.218:8001';
+const appDisplayName = 'AI羽毛球';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -20,7 +22,7 @@ class GoodBadmintonApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'AI 羽毛球复盘',
+      title: appDisplayName,
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
@@ -29,6 +31,24 @@ class GoodBadmintonApp extends StatelessWidget {
           secondary: const Color(0xFFD6513B),
         ),
         scaffoldBackgroundColor: const Color(0xFFF5F7FB),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Color(0xFFF5F7FB),
+          foregroundColor: Color(0xFF17201F),
+          elevation: 0,
+          centerTitle: false,
+        ),
+        navigationBarTheme: NavigationBarThemeData(
+          backgroundColor: const Color(0xFFEAF3F1),
+          indicatorColor: const Color(0xFFC9EBE5),
+          labelTextStyle: WidgetStateProperty.all(
+            const TextStyle(fontWeight: FontWeight.w600),
+          ),
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: Colors.white,
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+        ),
         useMaterial3: true,
       ),
       home: const ReviewHomePage(),
@@ -46,6 +66,7 @@ class ReviewHomePage extends StatefulWidget {
 class _ReviewHomePageState extends State<ReviewHomePage> {
   final _baseUrlController = TextEditingController(text: defaultBaseUrl);
   final _userIdController = TextEditingController();
+  final _nicknameController = TextEditingController();
   final _cornersJsonController = TextEditingController();
 
   late ApiClient _api;
@@ -56,11 +77,13 @@ class _ReviewHomePageState extends State<ReviewHomePage> {
   PlatformFile? _videoFile;
   Map<String, dynamic>? _previewFrame;
   List<Offset> _cornerPoints = [];
+  List<Offset> _autoCornerPoints = [];
   Map<String, dynamic>? _task;
   Map<String, dynamic>? _report;
   List<dynamic> _history = [];
   String? _message;
   Timer? _pollTimer;
+  int _pollNetworkFailures = 0;
 
   @override
   void initState() {
@@ -74,6 +97,7 @@ class _ReviewHomePageState extends State<ReviewHomePage> {
     _pollTimer?.cancel();
     _baseUrlController.dispose();
     _userIdController.dispose();
+    _nicknameController.dispose();
     _cornersJsonController.dispose();
     super.dispose();
   }
@@ -84,10 +108,13 @@ class _ReviewHomePageState extends State<ReviewHomePage> {
     final userId =
         prefs.getString('user_id') ??
         'guest_${DateTime.now().millisecondsSinceEpoch}';
+    final nickname = prefs.getString('nickname') ?? '羽毛球用户';
     _baseUrlController.text = baseUrl;
     _userIdController.text = userId;
+    _nicknameController.text = nickname;
     _api = ApiClient(baseUrl);
     await prefs.setString('user_id', userId);
+    await prefs.setString('nickname', nickname);
     await _checkHealth();
     await _loadHistory();
   }
@@ -109,6 +136,54 @@ class _ReviewHomePageState extends State<ReviewHomePage> {
     await _loadHistory();
   }
 
+  Future<void> _saveProfile() async {
+    final prefs = await SharedPreferences.getInstance();
+    final nickname = _nicknameController.text.trim().isEmpty
+        ? '羽毛球用户'
+        : _nicknameController.text.trim();
+    await prefs.setString('nickname', nickname);
+    setState(() {
+      _nicknameController.text = nickname;
+      _message = '个人信息已保存。';
+    });
+  }
+
+  Future<void> _resetLocalUser() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('清空本地用户'),
+        content: const Text('这会在本机生成新的游客身份。服务器上的历史记录不会删除，但旧身份的历史不会再自动显示。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('确认清空'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    final userId = 'guest_${DateTime.now().millisecondsSinceEpoch}';
+    await prefs.setString('user_id', userId);
+    await prefs.setString('nickname', '羽毛球用户');
+    setState(() {
+      _userIdController.text = userId;
+      _nicknameController.text = '羽毛球用户';
+      _history = [];
+      _task = null;
+      _report = null;
+      _message = '已生成新的游客身份。';
+      _tabIndex = 3;
+    });
+    await _loadHistory();
+  }
+
   Future<void> _checkHealth() async {
     try {
       await _api.get('/api/health');
@@ -119,7 +194,7 @@ class _ReviewHomePageState extends State<ReviewHomePage> {
     } catch (error) {
       setState(() {
         _backendOk = false;
-        _message = error.toString();
+        _message = _friendlyErrorMessage(error);
       });
     }
   }
@@ -131,6 +206,7 @@ class _ReviewHomePageState extends State<ReviewHomePage> {
       _videoFile = result.files.single;
       _previewFrame = null;
       _cornerPoints = [];
+      _autoCornerPoints = [];
       _cornersJsonController.clear();
       _message = null;
     });
@@ -158,14 +234,16 @@ class _ReviewHomePageState extends State<ReviewHomePage> {
       final autoCorners = _parseCornerPoints(preview['auto_corners']);
       setState(() {
         _previewFrame = preview;
+        _autoCornerPoints = autoCorners;
         _cornerPoints = autoCorners;
         _preparingPreview = false;
+        _message = autoCorners.length == 4 ? '已自动检测并标注球场四角点。' : null;
       });
       _syncCornerJson();
     } catch (error) {
       setState(() {
         _preparingPreview = false;
-        _message = error.toString();
+        _message = _friendlyErrorMessage(error);
       });
     }
   }
@@ -194,6 +272,18 @@ class _ReviewHomePageState extends State<ReviewHomePage> {
     setState(() {
       _cornerPoints = [];
       _message = null;
+    });
+    _syncCornerJson();
+  }
+
+  void _useAutoCornerPoints() {
+    if (_autoCornerPoints.length != 4) {
+      setState(() => _message = '当前预览帧没有可用的自动角点，请手动点选四个角点。');
+      return;
+    }
+    setState(() {
+      _cornerPoints = List<Offset>.from(_autoCornerPoints);
+      _message = '已恢复自动检测角点。';
     });
     _syncCornerJson();
   }
@@ -227,6 +317,7 @@ class _ReviewHomePageState extends State<ReviewHomePage> {
     setState(() {
       _busy = true;
       _message = null;
+      _pollNetworkFailures = 0;
       _task = {'status': 'uploading', 'progress': 0.0, 'stage': 'uploading'};
       _tabIndex = 2;
     });
@@ -243,7 +334,7 @@ class _ReviewHomePageState extends State<ReviewHomePage> {
       await _pollTask(taskId);
     } catch (error) {
       setState(() {
-        _message = error.toString();
+        _message = _friendlyErrorMessage(error);
         _busy = false;
       });
     }
@@ -253,6 +344,7 @@ class _ReviewHomePageState extends State<ReviewHomePage> {
     _pollTimer?.cancel();
     try {
       final task = await _api.get('/api/tasks/$taskId');
+      _pollNetworkFailures = 0;
       setState(() => _task = task);
 
       final status = task['status'];
@@ -277,8 +369,17 @@ class _ReviewHomePageState extends State<ReviewHomePage> {
 
       _pollTimer = Timer(const Duration(seconds: 3), () => _pollTask(taskId));
     } catch (error) {
+      if (_shouldRetryPolling(error)) {
+        _pollNetworkFailures += 1;
+        setState(() {
+          _message = '网络连接短暂中断，正在自动重试（第 $_pollNetworkFailures 次）。';
+          _busy = true;
+        });
+        _pollTimer = Timer(const Duration(seconds: 3), () => _pollTask(taskId));
+        return;
+      }
       setState(() {
-        _message = error.toString();
+        _message = _friendlyErrorMessage(error);
         _busy = false;
       });
     }
@@ -292,7 +393,47 @@ class _ReviewHomePageState extends State<ReviewHomePage> {
       final data = await _api.get('/api/history?user_id=$userId&limit=30');
       setState(() => _history = data['items'] as List<dynamic>? ?? []);
     } catch (error) {
-      setState(() => _message = error.toString());
+      setState(() => _message = _friendlyErrorMessage(error));
+    }
+  }
+
+  Future<void> _deleteHistoryTask(String taskId) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('删除历史记录'),
+        content: const Text('会删除这条历史、上传视频和后端生成的分析文件。此操作不能恢复。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    try {
+      final userId = Uri.encodeQueryComponent(
+        _sanitizeUserId(_userIdController.text),
+      );
+      await _api.delete('/api/tasks/$taskId?user_id=$userId');
+      if (!mounted) return;
+      setState(() {
+        _message = '已删除历史记录。';
+        if (_task?['task_id']?.toString() == taskId) {
+          _task = null;
+          _report = null;
+        }
+      });
+      await _loadHistory();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _message = _friendlyErrorMessage(error));
     }
   }
 
@@ -300,6 +441,7 @@ class _ReviewHomePageState extends State<ReviewHomePage> {
     setState(() {
       _tabIndex = 2;
       _message = null;
+      _pollNetworkFailures = 0;
     });
     try {
       final task = await _api.get('/api/tasks/$taskId');
@@ -313,7 +455,15 @@ class _ReviewHomePageState extends State<ReviewHomePage> {
         await _pollTask(taskId);
       }
     } catch (error) {
-      setState(() => _message = error.toString());
+      if (_shouldRetryPolling(error)) {
+        setState(() {
+          _message = '网络连接短暂中断，正在重新获取任务。';
+          _busy = true;
+        });
+        _pollTimer = Timer(const Duration(seconds: 3), () => _pollTask(taskId));
+        return;
+      }
+      setState(() => _message = _friendlyErrorMessage(error));
     }
   }
 
@@ -327,7 +477,7 @@ class _ReviewHomePageState extends State<ReviewHomePage> {
         _message = null;
       });
     } catch (error) {
-      setState(() => _message = error.toString());
+      setState(() => _message = _friendlyErrorMessage(error));
     }
   }
 
@@ -339,9 +489,11 @@ class _ReviewHomePageState extends State<ReviewHomePage> {
         baseUrlController: _baseUrlController,
         userIdController: _userIdController,
         baseUrl: _api.baseUrl,
+        historyItems: _history,
         videoFile: _videoFile,
         previewFrame: _previewFrame,
         cornerPoints: _cornerPoints,
+        autoCornerPoints: _autoCornerPoints,
         busy: _busy,
         preparingPreview: _preparingPreview,
         message: _message,
@@ -351,6 +503,7 @@ class _ReviewHomePageState extends State<ReviewHomePage> {
         onAddCornerPoint: _addCornerPoint,
         onUndoCornerPoint: _undoCornerPoint,
         onResetCornerPoints: _resetCornerPoints,
+        onUseAutoCornerPoints: _useAutoCornerPoints,
         onUpload: _uploadVideo,
         onLoadDemo: _loadDemo,
       ),
@@ -359,6 +512,7 @@ class _ReviewHomePageState extends State<ReviewHomePage> {
         baseUrl: _api.baseUrl,
         onRefresh: _loadHistory,
         onOpenTask: _openTask,
+        onDeleteTask: _deleteHistoryTask,
       ),
       _ReportPage(
         task: _task,
@@ -366,11 +520,27 @@ class _ReviewHomePageState extends State<ReviewHomePage> {
         message: _message,
         baseUrl: _api.baseUrl,
       ),
+      _ProfilePage(
+        nicknameController: _nicknameController,
+        userId: _sanitizeUserId(_userIdController.text),
+        backendOk: _backendOk,
+        baseUrl: _api.baseUrl,
+        historyItems: _history,
+        historyCount: _history.length,
+        completedCount: _history
+            .where(
+              (item) =>
+                  item is Map && item['status']?.toString() == 'completed',
+            )
+            .length,
+        onSaveProfile: _saveProfile,
+        onResetLocalUser: _resetLocalUser,
+      ),
     ];
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('AI 羽毛球训练复盘'),
+        title: const Text(appDisplayName),
         actions: [
           IconButton(
             tooltip: '刷新',
@@ -382,7 +552,9 @@ class _ReviewHomePageState extends State<ReviewHomePage> {
           ),
         ],
       ),
-      body: SafeArea(child: pages[_tabIndex]),
+      body: SafeArea(
+        child: IndexedStack(index: _tabIndex, children: pages),
+      ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _tabIndex,
         onDestinationSelected: (index) => setState(() => _tabIndex = index),
@@ -402,6 +574,11 @@ class _ReviewHomePageState extends State<ReviewHomePage> {
             selectedIcon: Icon(Icons.analytics),
             label: '报告',
           ),
+          NavigationDestination(
+            icon: Icon(Icons.person_outline),
+            selectedIcon: Icon(Icons.person),
+            label: '我的',
+          ),
         ],
       ),
     );
@@ -414,9 +591,11 @@ class _UploadPage extends StatelessWidget {
     required this.baseUrlController,
     required this.userIdController,
     required this.baseUrl,
+    required this.historyItems,
     required this.videoFile,
     required this.previewFrame,
     required this.cornerPoints,
+    required this.autoCornerPoints,
     required this.busy,
     required this.preparingPreview,
     required this.message,
@@ -426,6 +605,7 @@ class _UploadPage extends StatelessWidget {
     required this.onAddCornerPoint,
     required this.onUndoCornerPoint,
     required this.onResetCornerPoints,
+    required this.onUseAutoCornerPoints,
     required this.onUpload,
     required this.onLoadDemo,
   });
@@ -434,9 +614,11 @@ class _UploadPage extends StatelessWidget {
   final TextEditingController baseUrlController;
   final TextEditingController userIdController;
   final String baseUrl;
+  final List<dynamic> historyItems;
   final PlatformFile? videoFile;
   final Map<String, dynamic>? previewFrame;
   final List<Offset> cornerPoints;
+  final List<Offset> autoCornerPoints;
   final bool busy;
   final bool preparingPreview;
   final String? message;
@@ -446,6 +628,7 @@ class _UploadPage extends StatelessWidget {
   final void Function(Offset point) onAddCornerPoint;
   final VoidCallback onUndoCornerPoint;
   final VoidCallback onResetCornerPoints;
+  final VoidCallback onUseAutoCornerPoints;
   final Future<void> Function() onUpload;
   final Future<void> Function() onLoadDemo;
 
@@ -499,6 +682,10 @@ class _UploadPage extends StatelessWidget {
             ],
           ),
         ),
+        if (historyItems.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          _RecentTrainingOverview(items: historyItems),
+        ],
         const SizedBox(height: 16),
         _Section(
           title: '上传视频',
@@ -522,12 +709,14 @@ class _UploadPage extends StatelessWidget {
                 videoFile: videoFile,
                 previewFrame: previewFrame,
                 points: cornerPoints,
+                autoPoints: autoCornerPoints,
                 busy: busy,
                 preparingPreview: preparingPreview,
                 onPreparePreview: onPreparePreview,
                 onAddPoint: onAddCornerPoint,
                 onUndo: onUndoCornerPoint,
                 onReset: onResetCornerPoints,
+                onUseAuto: onUseAutoCornerPoints,
               ),
               const SizedBox(height: 14),
               Row(
@@ -561,11 +750,112 @@ class _UploadPage extends StatelessWidget {
             ],
           ),
         ),
+        const SizedBox(height: 16),
+        const _Section(
+          title: '拍摄规范',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _GuidanceRow(
+                icon: Icons.stay_current_landscape,
+                text: '横屏拍摄，手机或相机固定，不要跟拍。',
+              ),
+              _GuidanceRow(
+                icon: Icons.grid_on_outlined,
+                text: '画面尽量包含完整球场四条边线，球场线要清楚。',
+              ),
+              _GuidanceRow(
+                icon: Icons.timer_outlined,
+                text: '正式复盘建议上传 30 秒到 3 分钟，短视频更适合功能测试。',
+              ),
+              _GuidanceRow(
+                icon: Icons.wb_sunny_outlined,
+                text: '光线稳定，球和背景反差越明显，球速和集锦越可靠。',
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        const _Section(
+          title: '分析失败处理',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _GuidanceRow(
+                icon: Icons.crop_free_outlined,
+                text: '角点不准时，先生成预览帧，再双指放大手动点选四个球场角。',
+              ),
+              _GuidanceRow(
+                icon: Icons.videocam_off_outlined,
+                text: '视频太短、黑屏、球场没拍完整时，换一段更稳定的视频。',
+              ),
+              _GuidanceRow(
+                icon: Icons.wifi_tethering_error_outlined,
+                text: '公网访问中断时，保持后端和内网穿透窗口运行，App 会自动重连。',
+              ),
+            ],
+          ),
+        ),
         if (message != null) ...[
           const SizedBox(height: 16),
           _MessageBox(message: message!),
         ],
       ],
+    );
+  }
+}
+
+class _RecentTrainingOverview extends StatelessWidget {
+  const _RecentTrainingOverview({required this.items});
+
+  final List<dynamic> items;
+
+  @override
+  Widget build(BuildContext context) {
+    final item = items.firstWhere(
+      (item) => item is Map && item['summary'] is Map,
+      orElse: () => items.first,
+    );
+    final data = item is Map ? item : <dynamic, dynamic>{};
+    final summary = data['summary'] is Map
+        ? data['summary'] as Map<dynamic, dynamic>
+        : <dynamic, dynamic>{};
+    return _Section(
+      title: '最近训练概览',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            data['video_name']?.toString() ?? '最近一次训练',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            _formatTimestamp(data['created_at']),
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: Colors.black54),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _IntensityChip(score: _number(summary['intensity_score'])),
+              _InfoPill(
+                icon: Icons.route_outlined,
+                label: '${_value(summary['total_distance_m'])} m',
+              ),
+              _InfoPill(
+                icon: Icons.speed_outlined,
+                label: '${_value(summary['max_speed_mps'])} m/s',
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
@@ -576,24 +866,28 @@ class _CornerPicker extends StatefulWidget {
     required this.videoFile,
     required this.previewFrame,
     required this.points,
+    required this.autoPoints,
     required this.busy,
     required this.preparingPreview,
     required this.onPreparePreview,
     required this.onAddPoint,
     required this.onUndo,
     required this.onReset,
+    required this.onUseAuto,
   });
 
   final String baseUrl;
   final PlatformFile? videoFile;
   final Map<String, dynamic>? previewFrame;
   final List<Offset> points;
+  final List<Offset> autoPoints;
   final bool busy;
   final bool preparingPreview;
   final Future<void> Function() onPreparePreview;
   final void Function(Offset point) onAddPoint;
   final VoidCallback onUndo;
   final VoidCallback onReset;
+  final VoidCallback onUseAuto;
 
   @override
   State<_CornerPicker> createState() => _CornerPickerState();
@@ -647,6 +941,9 @@ class _CornerPickerState extends State<_CornerPicker> {
     );
     final nextName = _cornerName(widget.points.length);
     final hasFour = widget.points.length == 4;
+    final hasAuto = widget.autoPoints.length == 4;
+    final usingAuto =
+        hasAuto && _sameCornerPoints(widget.points, widget.autoPoints);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -655,7 +952,9 @@ class _CornerPickerState extends State<_CornerPicker> {
           children: [
             Expanded(
               child: Text(
-                hasFour ? '四个角点已选择' : '请点选$nextName',
+                hasFour
+                    ? (usingAuto ? '已自动检测球场角点' : '已手动选择四个角点')
+                    : '请点选$nextName',
                 style: Theme.of(context).textTheme.titleSmall,
               ),
             ),
@@ -667,7 +966,9 @@ class _CornerPickerState extends State<_CornerPicker> {
         ),
         const SizedBox(height: 6),
         Text(
-          '后端选帧：${_value(preview['time_sec'])} 秒，双指可放大到 16 倍并拖动画面。',
+          hasAuto
+              ? '后端选帧：${_value(preview['time_sec'])} 秒。绿色框为自动检测结果；不贴合边线时点“手动校正”。'
+              : '后端选帧：${_value(preview['time_sec'])} 秒。未检测到稳定角点，请双指放大后手动点选四个角点。',
           style: Theme.of(
             context,
           ).textTheme.bodySmall?.copyWith(color: Colors.black54),
@@ -716,6 +1017,7 @@ class _CornerPickerState extends State<_CornerPicker> {
                               points: widget.points,
                               imageWidth: imageWidth,
                               imageHeight: imageHeight,
+                              isAuto: usingAuto,
                             ),
                           ),
                         ],
@@ -732,15 +1034,23 @@ class _CornerPickerState extends State<_CornerPicker> {
           spacing: 8,
           runSpacing: 8,
           children: [
-            OutlinedButton.icon(
-              onPressed: widget.points.isEmpty ? null : widget.onUndo,
-              icon: const Icon(Icons.undo),
-              label: const Text('撤销'),
-            ),
+            if (hasAuto)
+              OutlinedButton.icon(
+                onPressed: usingAuto ? null : widget.onUseAuto,
+                icon: const Icon(Icons.auto_awesome),
+                label: const Text('使用自动角点'),
+              ),
             OutlinedButton.icon(
               onPressed: widget.points.isEmpty ? null : widget.onReset,
-              icon: const Icon(Icons.refresh),
-              label: const Text('重选角点'),
+              icon: const Icon(Icons.edit_location_alt_outlined),
+              label: const Text('手动校正'),
+            ),
+            OutlinedButton.icon(
+              onPressed: widget.points.isEmpty || usingAuto
+                  ? null
+                  : widget.onUndo,
+              icon: const Icon(Icons.undo),
+              label: const Text('撤销手动点'),
             ),
             OutlinedButton.icon(
               onPressed: () => _transformController.value = Matrix4.identity(),
@@ -751,7 +1061,7 @@ class _CornerPickerState extends State<_CornerPicker> {
         ),
         const SizedBox(height: 8),
         Text(
-          '顺序：左上、右上、右下、左下。留空或重置后上传则使用后端自动识别。',
+          '手动校正顺序：左上、右上、右下、左下。上传时会使用当前画面上的四个角点。',
           style: Theme.of(
             context,
           ).textTheme.bodySmall?.copyWith(color: Colors.black54),
@@ -811,11 +1121,13 @@ class _CornerOverlayPainter extends CustomPainter {
     required this.points,
     required this.imageWidth,
     required this.imageHeight,
+    required this.isAuto,
   });
 
   final List<Offset> points;
   final double imageWidth;
   final double imageHeight;
+  final bool isAuto;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -828,11 +1140,11 @@ class _CornerOverlayPainter extends CustomPainter {
         )
         .toList();
     final linePaint = Paint()
-      ..color = const Color(0xFFFFD54F)
+      ..color = isAuto ? const Color(0xFF21B36B) : const Color(0xFFFFD54F)
       ..strokeWidth = 2.5
       ..style = PaintingStyle.stroke;
     final fillPaint = Paint()
-      ..color = const Color(0xFFD6513B)
+      ..color = isAuto ? const Color(0xFF21B36B) : const Color(0xFFD6513B)
       ..style = PaintingStyle.fill;
     final textPainter = TextPainter(textDirection: TextDirection.ltr);
 
@@ -868,7 +1180,8 @@ class _CornerOverlayPainter extends CustomPainter {
   bool shouldRepaint(covariant _CornerOverlayPainter oldDelegate) {
     return oldDelegate.points != points ||
         oldDelegate.imageWidth != imageWidth ||
-        oldDelegate.imageHeight != imageHeight;
+        oldDelegate.imageHeight != imageHeight ||
+        oldDelegate.isAuto != isAuto;
   }
 }
 
@@ -878,12 +1191,14 @@ class _HistoryPage extends StatelessWidget {
     required this.baseUrl,
     required this.onRefresh,
     required this.onOpenTask,
+    required this.onDeleteTask,
   });
 
   final List<dynamic> items;
   final String baseUrl;
   final Future<void> Function() onRefresh;
   final Future<void> Function(String taskId) onOpenTask;
+  final Future<void> Function(String taskId) onDeleteTask;
 
   @override
   Widget build(BuildContext context) {
@@ -911,9 +1226,11 @@ class _HistoryPage extends StatelessWidget {
           final item = items[index] as Map<String, dynamic>;
           final summary = item['summary'] as Map<String, dynamic>? ?? {};
           final thumb = item['thumbnail']?.toString();
+          final taskId = item['task_id'].toString();
+          final createdAt = _formatTimestamp(item['created_at']);
           return InkWell(
             borderRadius: BorderRadius.circular(10),
-            onTap: () => onOpenTask(item['task_id'].toString()),
+            onTap: () => onOpenTask(taskId),
             child: Ink(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
@@ -937,16 +1254,51 @@ class _HistoryPage extends StatelessWidget {
                     ),
                   const SizedBox(height: 12),
                   Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Expanded(
-                        child: Text(
-                          item['video_name']?.toString() ??
-                              item['task_id'].toString(),
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.titleMedium,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              item['video_name']?.toString() ?? taskId,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              createdAt,
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(color: Colors.black54),
+                            ),
+                          ],
                         ),
                       ),
+                      IconButton(
+                        tooltip: '删除历史',
+                        onPressed: () => onDeleteTask(taskId),
+                        icon: const Icon(Icons.delete_outline),
+                      ),
+                      const SizedBox(width: 4),
                       _StatusChip(status: item['status']?.toString() ?? '-'),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _IntensityChip(
+                        score: _number(summary['intensity_score']),
+                      ),
+                      _InfoPill(
+                        icon: Icons.route_outlined,
+                        label: '${_value(summary['total_distance_m'])} m',
+                      ),
+                      _InfoPill(
+                        icon: Icons.speed_outlined,
+                        label: '${_value(summary['max_speed_mps'])} m/s',
+                      ),
                     ],
                   ),
                   const SizedBox(height: 10),
@@ -997,13 +1349,23 @@ class _ReportPage extends StatelessWidget {
     );
     final status = task?['status']?.toString();
     final summary = report?['summary'] as Map<String, dynamic>? ?? {};
+    final video = report?['video'] as Map<String, dynamic>? ?? {};
     final files = report?['files'] as Map<String, dynamic>? ?? {};
     final coaching = report?['coaching'] as Map<String, dynamic>?;
     final advice = report?['advice'] as List<dynamic>? ?? [];
+    final reportSummary =
+        report?['report_summary']?.toString() ??
+        _localReportSummary(summary: summary, video: video);
+    final highlightSegments =
+        report?['highlight_segments'] as List<dynamic>? ?? [];
 
     return ListView(
       padding: const EdgeInsets.all(18),
       children: [
+        if (!_isEmptySummary(summary)) ...[
+          _Section(title: '本次总结', child: Text(reportSummary)),
+          const SizedBox(height: 16),
+        ],
         _Section(
           title: '任务状态',
           child: Column(
@@ -1031,23 +1393,68 @@ class _ReportPage extends StatelessWidget {
         const SizedBox(height: 16),
         _Section(
           title: '核心指标',
-          child: Wrap(
-            runSpacing: 10,
-            spacing: 10,
-            children: [
+          child: _MetricGrid(
+            metrics: [
               _Metric(
                 label: '总距离',
                 value: '${_value(summary['total_distance_m'])} m',
+                note: '根据球员在标准球场坐标中的轨迹累加估算。',
               ),
               _Metric(
                 label: '最高速度',
                 value: '${_value(summary['max_speed_mps'])} m/s',
+                note: '取稳定速度样本的高位值，减少单帧误检影响。',
               ),
               _Metric(
                 label: '平均速度',
                 value: '${_value(summary['avg_speed_mps'])} m/s',
+                note: '总移动距离除以有效检测时长。',
               ),
-              _Metric(label: '训练强度', value: _value(summary['intensity_score'])),
+              _Metric(
+                label: '训练强度',
+                value: _value(summary['intensity_score']),
+                note: '综合移动距离、速度和有效时长的 0-100 分。',
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        _Section(
+          title: '进阶指标',
+          child: _MetricGrid(
+            metrics: [
+              _Metric(
+                label: '有效分析时长',
+                value: '${_value(_effectiveDuration(summary, video))} s',
+                note: '真正检测到稳定球员轨迹的时间。短视频结果波动会更大。',
+              ),
+              _Metric(
+                label: '场地覆盖面积',
+                value: '${_value(summary['coverage_area_m2'])} m²',
+                note: '按轨迹横向跨度和纵向跨度估算，用于判断覆盖范围。',
+              ),
+              _Metric(
+                label: '前后场比例',
+                value:
+                    '${_percent(summary['front_court_ratio'])} / ${_percent(summary['back_court_ratio'])}',
+                note: '前场与后场停留比例，帮助判断训练落点是否均衡。',
+              ),
+              _Metric(
+                label: '左右场比例',
+                value:
+                    '${_percent(summary['left_court_ratio'])} / ${_percent(summary['right_court_ratio'])}',
+                note: '左半场与右半场覆盖比例，帮助发现偏侧训练。',
+              ),
+              _Metric(
+                label: '高强度移动次数',
+                value: _value(summary['high_intensity_moves']),
+                note: '速度超过阈值的移动样本数量，可代表启动和冲刺频次。',
+              ),
+              _Metric(
+                label: '羽毛球识别占比',
+                value: _percent(summary['shuttlecock_ratio']),
+                note: '球识别越稳定，球速和精彩集锦判断越可靠。',
+              ),
             ],
           ),
         ),
@@ -1056,6 +1463,13 @@ class _ReportPage extends StatelessWidget {
           title: '精彩集锦',
           url: _optionalUrl(baseUrl, files['highlight']),
         ),
+        if (highlightSegments.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          _Section(
+            title: '集锦入选理由',
+            child: _HighlightSegmentsPanel(segments: highlightSegments),
+          ),
+        ],
         const SizedBox(height: 16),
         _VideoPanel(
           title: '分析视频',
@@ -1071,7 +1485,12 @@ class _ReportPage extends StatelessWidget {
         const SizedBox(height: 16),
         _Section(
           title: '训练建议',
-          child: _CoachingPanel(coaching: coaching, legacyAdvice: advice),
+          child: _CoachingPanel(
+            coaching: coaching,
+            legacyAdvice: advice,
+            summary: summary,
+            video: video,
+          ),
         ),
       ],
     );
@@ -1090,8 +1509,15 @@ class _Section extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(color: const Color(0xFFD8E1E8)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0F203833),
+            blurRadius: 14,
+            offset: Offset(0, 6),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1106,7 +1532,316 @@ class _Section extends StatelessWidget {
 }
 
 class _Metric extends StatelessWidget {
-  const _Metric({required this.label, required this.value});
+  const _Metric({required this.label, required this.value, required this.note});
+
+  final String label;
+  final String value;
+  final String note;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: const Color(0xFFEEF4F7),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFE2EAEE)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label, style: Theme.of(context).textTheme.bodySmall),
+            const SizedBox(height: 6),
+            Text(value, style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: 8),
+            Text(
+              note,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: Colors.black54),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MetricGrid extends StatelessWidget {
+  const _MetricGrid({required this.metrics});
+
+  final List<_Metric> metrics;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columns = constraints.maxWidth >= 520 ? 4 : 2;
+        const spacing = 10.0;
+        final width =
+            (constraints.maxWidth - spacing * (columns - 1)) / columns;
+        return Wrap(
+          spacing: spacing,
+          runSpacing: spacing,
+          children: metrics
+              .map((metric) => SizedBox(width: width, child: metric))
+              .toList(),
+        );
+      },
+    );
+  }
+}
+
+class _GuidanceRow extends StatelessWidget {
+  const _GuidanceRow({required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 20, color: const Color(0xFF0B7A75)),
+          const SizedBox(width: 8),
+          Expanded(child: Text(text)),
+        ],
+      ),
+    );
+  }
+}
+
+class _HighlightSegmentsPanel extends StatelessWidget {
+  const _HighlightSegmentsPanel({required this.segments});
+
+  final List<dynamic> segments;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: segments.map((segment) {
+        final data = segment is Map ? segment : <dynamic, dynamic>{};
+        final metrics = data['display_metrics'] is Map
+            ? data['display_metrics'] as Map<dynamic, dynamic>
+            : data['metrics'] is Map
+            ? data['metrics'] as Map<dynamic, dynamic>
+            : <dynamic, dynamic>{};
+        final tags = data['tags'] is List
+            ? (data['tags'] as List).map((item) => item.toString()).toList()
+            : _localHighlightTags(metrics);
+        final start = _number(data['start_sec']);
+        final end = _number(data['end_sec']);
+        return Container(
+          width: double.infinity,
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFFEEF4F7),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: const Color(0xFFE2EAEE)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${_value(start)}s - ${_value(end)}s',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const SizedBox(height: 6),
+              Text(
+                data['reason_zh']?.toString() ?? '该片段综合速度和移动距离较高，因此被选入精彩集锦。',
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: tags.map((tag) => Chip(label: Text(tag))).toList(),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _InfoPill(
+                    icon: Icons.speed_outlined,
+                    label: '最高速度 ${_value(metrics['player_peak_mps'])} m/s',
+                  ),
+                  _InfoPill(
+                    icon: Icons.route_outlined,
+                    label: '移动距离 ${_value(metrics['player_distance_m'])} m',
+                  ),
+                  _InfoPill(
+                    icon: Icons.sports_tennis_outlined,
+                    label: '球速样本 ${_value(metrics['shuttle_peak_px_s'])} px/s',
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      }).toList(),
+    );
+  }
+}
+
+class _ProfilePage extends StatelessWidget {
+  const _ProfilePage({
+    required this.nicknameController,
+    required this.userId,
+    required this.backendOk,
+    required this.baseUrl,
+    required this.historyItems,
+    required this.historyCount,
+    required this.completedCount,
+    required this.onSaveProfile,
+    required this.onResetLocalUser,
+  });
+
+  final TextEditingController nicknameController;
+  final String userId;
+  final bool backendOk;
+  final String baseUrl;
+  final List<dynamic> historyItems;
+  final int historyCount;
+  final int completedCount;
+  final Future<void> Function() onSaveProfile;
+  final Future<void> Function() onResetLocalUser;
+
+  @override
+  Widget build(BuildContext context) {
+    final archive = _trainingArchive(historyItems);
+    return ListView(
+      padding: const EdgeInsets.all(18),
+      children: [
+        _Section(
+          title: '训练档案',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                nicknameController.text.trim().isEmpty
+                    ? '游客训练档案'
+                    : '${nicknameController.text.trim()} 的训练档案',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: nicknameController,
+                decoration: const InputDecoration(
+                  labelText: '昵称',
+                  hintText: '羽毛球用户',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: onSaveProfile,
+                  icon: const Icon(Icons.save_outlined),
+                  label: const Text('保存昵称'),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        _Section(
+          title: '训练概览',
+          child: Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              _ArchiveTile(label: '完成训练', value: '$completedCount 次'),
+              _ArchiveTile(
+                label: '累计移动',
+                value: '${_value(archive.totalDistance)} m',
+              ),
+              _ArchiveTile(
+                label: '速度纪录',
+                value: '${_value(archive.maxSpeed)} m/s',
+              ),
+              _ArchiveTile(label: '平均强度', value: _value(archive.avgIntensity)),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        _Section(
+          title: '游客身份',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _InfoRow(label: '用户 ID', value: userId),
+              const SizedBox(height: 10),
+              _InfoRow(
+                label: '训练记录',
+                value: '$completedCount 次完成 / $historyCount 条历史',
+              ),
+              const SizedBox(height: 10),
+              _InfoRow(label: '后端状态', value: backendOk ? '已连接' : '未连接'),
+              const SizedBox(height: 10),
+              _InfoRow(label: '后端地址', value: baseUrl),
+              const SizedBox(height: 14),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: onResetLocalUser,
+                  icon: const Icon(Icons.restart_alt),
+                  label: const Text('清空本地用户并重新生成'),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        const _Section(
+          title: '隐私说明',
+          child: Text(
+            '当前版本使用游客模式，不需要手机号和密码。App 会把游客 ID 和昵称保存在本机；上传的视频会发送到用户填写的后端服务器，用于生成训练报告、热力图、轨迹图和精彩集锦。清空本地用户只会更换本机游客身份，不会删除服务器已保存的历史文件。',
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _InfoRow extends StatelessWidget {
+  const _InfoRow({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 76,
+          child: Text(
+            label,
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: Colors.black54),
+          ),
+        ),
+        Expanded(
+          child: SelectableText(
+            value,
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ArchiveTile extends StatelessWidget {
+  const _ArchiveTile({required this.label, required this.value});
 
   final String label;
   final String value;
@@ -1114,20 +1849,26 @@ class _Metric extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 145,
+      width: 142,
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: const Color(0xFFEEF4F7),
           borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: const Color(0xFFE2EAEE)),
         ),
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(label, style: Theme.of(context).textTheme.bodySmall),
+              Text(
+                label,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: Colors.black54),
+              ),
               const SizedBox(height: 6),
-              Text(value, style: Theme.of(context).textTheme.titleLarge),
+              Text(value, style: Theme.of(context).textTheme.titleMedium),
             ],
           ),
         ),
@@ -1137,10 +1878,17 @@ class _Metric extends StatelessWidget {
 }
 
 class _CoachingPanel extends StatelessWidget {
-  const _CoachingPanel({required this.coaching, required this.legacyAdvice});
+  const _CoachingPanel({
+    required this.coaching,
+    required this.legacyAdvice,
+    required this.summary,
+    required this.video,
+  });
 
   final Map<String, dynamic>? coaching;
   final List<dynamic> legacyAdvice;
+  final Map<String, dynamic> summary;
+  final Map<String, dynamic> video;
 
   @override
   Widget build(BuildContext context) {
@@ -1153,29 +1901,22 @@ class _CoachingPanel extends StatelessWidget {
       final items = coaching?[group.key];
       return items is List && items.isNotEmpty;
     });
+    final effectiveCoaching = hasStructured
+        ? coaching!
+        : _fallbackCoaching(summary: summary, video: video);
 
-    if (!hasStructured) {
-      if (legacyAdvice.isEmpty) {
-        return const Text('暂无训练建议。');
-      }
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: legacyAdvice
-            .map(
-              (item) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Text('• ${item.toString()}'),
-              ),
-            )
-            .toList(),
-      );
+    if (!hasStructured && legacyAdvice.isEmpty && _isEmptySummary(summary)) {
+      return const Text('暂无训练建议。');
     }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: groups
           .map(
-            (group) => _CoachingGroup(spec: group, items: coaching?[group.key]),
+            (group) => _CoachingGroup(
+              spec: group,
+              items: effectiveCoaching[group.key],
+            ),
           )
           .toList(),
     );
@@ -1268,6 +2009,130 @@ class _CoachingGroupSpec {
   final String emptyText;
 }
 
+Map<String, dynamic> _fallbackCoaching({
+  required Map<String, dynamic> summary,
+  required Map<String, dynamic> video,
+}) {
+  final distance = _number(summary['total_distance_m']);
+  final maxSpeed = _number(summary['max_speed_mps']);
+  final avgSpeed = _number(summary['avg_speed_mps']);
+  final intensity = _number(summary['intensity_score']);
+  final duration = _number(summary['active_time_sec']) > 0
+      ? _number(summary['active_time_sec'])
+      : _number(video['duration_sec']);
+  final coverage = _number(summary['coverage_area_m2']);
+  final shuttleRatio = _number(summary['shuttlecock_ratio']);
+
+  final strengths = <Map<String, String>>[];
+  final weaknesses = <Map<String, String>>[];
+  final improvements = <Map<String, String>>[];
+
+  if (distance > 0) {
+    strengths.add({
+      'title': maxSpeed >= 4.5 ? '爆发启动较明显' : '已形成有效运动轨迹',
+      'basis': maxSpeed >= 4.5
+          ? '本次最高速度约 ${_value(maxSpeed)} m/s，说明短距离启动和抢点有表现。'
+          : '本次记录到约 ${_value(distance)} m 的移动距离，可用于基础复盘。',
+      'detail': '报告已能从视频中提取移动距离、速度和轨迹数据。',
+      'training_focus': '后续重点看每次击球后的回中是否稳定，而不只看单次速度。',
+    });
+  }
+  if (coverage > 0) {
+    strengths.add({
+      'title': '场地覆盖可观察',
+      'basis': '轨迹覆盖约 ${_value(coverage)} 平方米。',
+      'detail': '热力图和轨迹图可以帮助判断训练是否集中在局部区域。',
+      'training_focus': '观察前后场、左右侧是否均衡，避免长期只练习固定落点。',
+    });
+  }
+  if (strengths.isEmpty) {
+    strengths.add({
+      'title': '已完成一次视频分析',
+      'basis': '当前报告包含基础指标和可视化结果。',
+      'detail': '这份历史报告缺少新版训练建议字段，App 已按指标做本地解读。',
+      'training_focus': '重新上传同一视频可获得后端新版三段式建议。',
+    });
+  }
+
+  if (duration > 0 && duration < 25) {
+    weaknesses.add({
+      'title': '样本时长偏短',
+      'basis': '本次有效片段约 ${_value(duration)} 秒。',
+      'detail': '短视频更适合功能测试，训练强度和覆盖范围判断会不够稳定。',
+      'training_focus': '正式复盘建议上传 30 秒到 3 分钟的连续训练片段。',
+    });
+  }
+  if (maxSpeed >= 4.5 && avgSpeed > 0 && avgSpeed < 2.0) {
+    weaknesses.add({
+      'title': '爆发后连续衔接还可提升',
+      'basis': '最高速度 ${_value(maxSpeed)} m/s，平均速度 ${_value(avgSpeed)} m/s。',
+      'detail': '单次启动速度不错，但连续回位和下一拍启动可能还有提升空间。',
+      'training_focus': '训练时关注“启动、到位、回中、再启动”的完整链条。',
+    });
+  }
+  if (intensity > 0 && intensity < 50) {
+    weaknesses.add({
+      'title': '整体训练强度偏低',
+      'basis': '训练强度评分为 ${_value(intensity)}。',
+      'detail': '当前片段更像轻量练习或短片段测试，负荷不足以反映完整训练状态。',
+      'training_focus': '可以增加连续多拍、前后场衔接和左右调动。',
+    });
+  }
+  if (shuttleRatio > 0 && shuttleRatio < 0.45) {
+    weaknesses.add({
+      'title': '羽毛球识别稳定性不足',
+      'basis': '羽毛球识别占比约 ${_value(shuttleRatio * 100)}%。',
+      'detail': '球识别不足会影响球速和精彩集锦判断。',
+      'training_focus': '尽量使用光线稳定、球和背景反差明显、完整覆盖球场的视频。',
+    });
+  }
+  if (weaknesses.isEmpty) {
+    weaknesses.add({
+      'title': '旧报告缺少更细分判断',
+      'basis': '这份历史报告没有新版 coaching 字段。',
+      'detail': 'App 已按核心指标补充解读，但重新分析会更准确。',
+      'training_focus': '后端重启到最新版后重新上传视频，可生成更完整建议。',
+    });
+  }
+
+  improvements.add({
+    'title': '分腿垫步 + 回中衔接',
+    'basis': maxSpeed >= 4.5 ? '适合把爆发速度转成连续回合能力。' : '适合建立稳定启动节奏。',
+    'detail': '重点练从上一拍恢复到下一拍启动的衔接。',
+    'training_focus': '做六点影子步：每次到点后回中，30 秒训练、30 秒休息，做 4 组。',
+  });
+  improvements.add({
+    'title': '多方向连续移动',
+    'basis': intensity < 60 ? '用于提升整体训练强度。' : '用于保持高强度下的移动质量。',
+    'detail': '比赛移动通常是多个方向连续切换，不能只练单点启动。',
+    'training_focus': '做 30-60 秒多方向喂球或抛球，休息 60-90 秒，做 4 组。',
+  });
+  improvements.add({
+    'title': '固定机位和角点校准',
+    'basis': '拍摄角度会直接影响距离、速度、热力图和轨迹判断。',
+    'detail': '完整球场和准确角点是训练报告可信的前提。',
+    'training_focus': '横屏固定拍摄，尽量拍到完整双打边线和底线；自动角点不准时手动放大点选四角。',
+  });
+
+  return {
+    'strengths': strengths.take(3).toList(),
+    'weaknesses': weaknesses.take(3).toList(),
+    'improvements': improvements.take(3).toList(),
+  };
+}
+
+bool _isEmptySummary(Map<String, dynamic> summary) {
+  return _number(summary['total_distance_m']) == 0 &&
+      _number(summary['max_speed_mps']) == 0 &&
+      _number(summary['avg_speed_mps']) == 0 &&
+      _number(summary['intensity_score']) == 0;
+}
+
+double _number(Object? value) {
+  if (value is num) return value.toDouble();
+  return double.tryParse(value?.toString() ?? '') ?? 0.0;
+}
+
 class _MiniMetric extends StatelessWidget {
   const _MiniMetric({required this.label, required this.value});
 
@@ -1352,7 +2217,7 @@ class _VideoPanelState extends State<_VideoPanel> {
                 if (snapshot.connectionState != ConnectionState.done) {
                   return const AspectRatio(
                     aspectRatio: 16 / 9,
-                    child: Center(child: CircularProgressIndicator()),
+                    child: _VideoLoadingHint(),
                   );
                 }
                 final controller = _controller!;
@@ -1391,6 +2256,30 @@ class _VideoPanelState extends State<_VideoPanel> {
                 );
               },
             ),
+    );
+  }
+}
+
+class _VideoLoadingHint extends StatelessWidget {
+  const _VideoLoadingHint();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const CircularProgressIndicator(strokeWidth: 2),
+          const SizedBox(height: 12),
+          Text(
+            '正在加载视频，切换页面回来时可能需要几秒缓冲。',
+            textAlign: TextAlign.center,
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: Colors.black54),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1443,6 +2332,62 @@ class _StatusChip extends StatelessWidget {
   }
 }
 
+class _IntensityChip extends StatelessWidget {
+  const _IntensityChip({required this.score});
+
+  final double score;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = score >= 70
+        ? const Color(0xFFD6513B)
+        : score >= 45
+        ? const Color(0xFFB7791F)
+        : const Color(0xFF23865D);
+    final label = score >= 70
+        ? '高强度'
+        : score >= 45
+        ? '中等强度'
+        : '轻强度';
+    return Chip(
+      label: Text(score > 0 ? '$label ${_value(score)}' : '暂无强度'),
+      avatar: Icon(Icons.local_fire_department, color: color, size: 18),
+      side: BorderSide(color: color.withValues(alpha: 0.35)),
+      backgroundColor: color.withValues(alpha: 0.08),
+      visualDensity: VisualDensity.compact,
+    );
+  }
+}
+
+class _InfoPill extends StatelessWidget {
+  const _InfoPill({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: const Color(0xFFEEF4F7),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: const Color(0xFFE2EAEE)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 16, color: const Color(0xFF0B7A75)),
+            const SizedBox(width: 5),
+            Text(label, style: Theme.of(context).textTheme.bodySmall),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _MessageBox extends StatelessWidget {
   const _MessageBox({required this.message});
 
@@ -1450,17 +2395,74 @@ class _MessageBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tone = _messageTone(message);
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFF1EE),
+        color: tone.background,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFD6513B)),
+        border: Border.all(color: tone.border),
       ),
-      child: Text(message, style: const TextStyle(color: Color(0xFF8F2E20))),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(tone.icon, color: tone.foreground, size: 20),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(message, style: TextStyle(color: tone.foreground)),
+          ),
+        ],
+      ),
     );
   }
+}
+
+class _MessageTone {
+  const _MessageTone({
+    required this.background,
+    required this.border,
+    required this.foreground,
+    required this.icon,
+  });
+
+  final Color background;
+  final Color border;
+  final Color foreground;
+  final IconData icon;
+}
+
+_MessageTone _messageTone(String message) {
+  final isRecovering =
+      message.contains('自动重试') ||
+      message.contains('重新获取任务') ||
+      message.contains('短暂中断');
+  final isSuccess =
+      message.startsWith('已') ||
+      message.contains('成功') ||
+      message.contains('后端已连接');
+  if (isRecovering) {
+    return const _MessageTone(
+      background: Color(0xFFEFF8F3),
+      border: Color(0xFF55B87A),
+      foreground: Color(0xFF1F7A4B),
+      icon: Icons.sync,
+    );
+  }
+  if (isSuccess) {
+    return const _MessageTone(
+      background: Color(0xFFEFF8F3),
+      border: Color(0xFF55B87A),
+      foreground: Color(0xFF1F7A4B),
+      icon: Icons.check_circle_outline,
+    );
+  }
+  return const _MessageTone(
+    background: Color(0xFFFFF1EE),
+    border: Color(0xFFD6513B),
+    foreground: Color(0xFF8F2E20),
+    icon: Icons.error_outline,
+  );
 }
 
 class ApiClient {
@@ -1470,6 +2472,11 @@ class ApiClient {
 
   Future<Map<String, dynamic>> get(String path) async {
     final response = await http.get(Uri.parse('$baseUrl$path'));
+    return _decodeResponse(response.statusCode, response.bodyBytes);
+  }
+
+  Future<Map<String, dynamic>> delete(String path) async {
+    final response = await http.delete(Uri.parse('$baseUrl$path'));
     return _decodeResponse(response.statusCode, response.bodyBytes);
   }
 
@@ -1556,6 +2563,37 @@ class ApiException implements Exception {
   String toString() => message;
 }
 
+bool _shouldRetryPolling(Object error) {
+  if (error is ApiException) return false;
+  return _isNetworkInterruption(error);
+}
+
+bool _isNetworkInterruption(Object error) {
+  if (error is TimeoutException ||
+      error is SocketException ||
+      error is HandshakeException ||
+      error is http.ClientException) {
+    return true;
+  }
+  final text = error.toString().toLowerCase();
+  return text.contains('handshake') ||
+      text.contains('connection terminated') ||
+      text.contains('connection abort') ||
+      text.contains('connection reset') ||
+      text.contains('failed host lookup') ||
+      text.contains('network is unreachable') ||
+      text.contains('timed out') ||
+      text.contains('timeout');
+}
+
+String _friendlyErrorMessage(Object error) {
+  if (error is ApiException) return error.message;
+  if (_isNetworkInterruption(error)) {
+    return '网络连接中断，请确认后端和内网穿透窗口仍在运行，然后稍后重试。';
+  }
+  return error.toString();
+}
+
 String _sanitizeUserId(String value) {
   final normalized = value.trim().replaceAll(RegExp(r'[^\w.-]'), '_');
   if (normalized.isEmpty) return 'guest';
@@ -1573,6 +2611,16 @@ List<Offset> _parseCornerPoints(Object? value) {
     points.add(Offset(x.toDouble(), y.toDouble()));
   }
   return points;
+}
+
+bool _sameCornerPoints(List<Offset> a, List<Offset> b) {
+  if (a.length != b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if ((a[i].dx - b[i].dx).abs() > 0.5 || (a[i].dy - b[i].dy).abs() > 0.5) {
+      return false;
+    }
+  }
+  return true;
 }
 
 String _absoluteUrl(String baseUrl, String path) {
@@ -1593,6 +2641,100 @@ String _value(Object? value) {
     return value.toStringAsFixed(2).replaceFirst(RegExp(r'\.?0+$'), '');
   }
   return value.toString();
+}
+
+String _percent(Object? value) {
+  final number = _number(value);
+  if (number <= 0) return '-';
+  return '${_value(number * 100)}%';
+}
+
+double _effectiveDuration(
+  Map<String, dynamic> summary,
+  Map<String, dynamic> video,
+) {
+  final active = _number(summary['active_time_sec']);
+  if (active > 0) return active;
+  return _number(video['duration_sec']);
+}
+
+String _localReportSummary({
+  required Map<String, dynamic> summary,
+  required Map<String, dynamic> video,
+}) {
+  final intensity = _number(summary['intensity_score']);
+  final maxSpeed = _number(summary['max_speed_mps']);
+  final duration = _effectiveDuration(summary, video);
+  final intensityText = intensity >= 70
+      ? '较高'
+      : intensity >= 45
+      ? '中等'
+      : '偏低';
+  final speedText = maxSpeed >= 4.5 ? '爆发移动明显' : '移动节奏较平稳';
+  if (duration > 0 && duration < 25) {
+    return '本次片段较短，训练强度$intensityText，$speedText，可作为快速复盘样例。';
+  }
+  return '本次训练强度$intensityText，$speedText，建议结合热力图和轨迹图观察场地覆盖是否均衡。';
+}
+
+String _formatTimestamp(Object? value) {
+  final seconds = _number(value);
+  if (seconds <= 0) return '时间未知';
+  final dateTime = DateTime.fromMillisecondsSinceEpoch(
+    (seconds * 1000).round(),
+  );
+  final month = dateTime.month.toString().padLeft(2, '0');
+  final day = dateTime.day.toString().padLeft(2, '0');
+  final hour = dateTime.hour.toString().padLeft(2, '0');
+  final minute = dateTime.minute.toString().padLeft(2, '0');
+  return '${dateTime.year}-$month-$day $hour:$minute';
+}
+
+List<String> _localHighlightTags(Map<dynamic, dynamic> metrics) {
+  final tags = <String>[];
+  if (_number(metrics['player_peak_mps']) >= 5.0) tags.add('快速启动');
+  if (_number(metrics['player_distance_m']) >= 12.0) tags.add('高强度跑动');
+  if (_number(metrics['player_distance_m']) >= 18.0) tags.add('覆盖范围大');
+  if (_number(metrics['shuttle_peak_px_s']) >= 1000.0) tags.add('高速来球');
+  return tags.isEmpty ? ['精彩回合'] : tags;
+}
+
+_TrainingArchive _trainingArchive(List<dynamic> items) {
+  var totalDistance = 0.0;
+  var maxSpeed = 0.0;
+  var intensityTotal = 0.0;
+  var intensityCount = 0;
+  for (final item in items) {
+    if (item is! Map) continue;
+    final summary = item['summary'];
+    if (summary is! Map) continue;
+    totalDistance += _number(summary['total_distance_m']);
+    maxSpeed = maxSpeed < _number(summary['max_speed_mps'])
+        ? _number(summary['max_speed_mps'])
+        : maxSpeed;
+    final intensity = _number(summary['intensity_score']);
+    if (intensity > 0) {
+      intensityTotal += intensity;
+      intensityCount += 1;
+    }
+  }
+  return _TrainingArchive(
+    totalDistance: totalDistance,
+    maxSpeed: maxSpeed,
+    avgIntensity: intensityCount == 0 ? 0.0 : intensityTotal / intensityCount,
+  );
+}
+
+class _TrainingArchive {
+  const _TrainingArchive({
+    required this.totalDistance,
+    required this.maxSpeed,
+    required this.avgIntensity,
+  });
+
+  final double totalDistance;
+  final double maxSpeed;
+  final double avgIntensity;
 }
 
 String _statusText(String status) {

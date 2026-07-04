@@ -14,7 +14,7 @@ void main() {
     await tester.pumpWidget(const GoodBadmintonApp());
     await tester.pump();
 
-    expect(find.text('AI 羽毛球训练复盘'), findsOneWidget);
+    expect(find.text('AI羽毛球'), findsOneWidget);
     expect(find.text('上传视频'), findsOneWidget);
   });
 }

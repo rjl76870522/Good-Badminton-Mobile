@@ -81,6 +81,7 @@ class PlayerStats:
         peak_speed = percentile(self.speed_samples_mps or [], ROBUST_PEAK_PERCENTILE)
         distance_per_min = self.total_distance_m / active_time * 60.0 if active_time > 0 else 0.0
         coverage = coverage_metrics(self.positions_m or [])
+        zone = zone_metrics(self.positions_m or [], self.speed_samples_mps or [])
         return {
             "name": self.name,
             "detected_frames": self.detected_frames,
@@ -91,6 +92,7 @@ class PlayerStats:
             "avg_speed_mps": round(avg_speed, 2),
             "distance_per_min": round(distance_per_min, 2),
             **coverage,
+            **zone,
         }
 
 
@@ -168,6 +170,11 @@ def summarize_detections(detections_path: str | os.PathLike[str] | None) -> dict
                 "coverage_area_m2": primary["coverage_area_m2"],
                 "court_span_x_m": primary["court_span_x_m"],
                 "court_span_y_m": primary["court_span_y_m"],
+                "front_court_ratio": primary["front_court_ratio"],
+                "back_court_ratio": primary["back_court_ratio"],
+                "left_court_ratio": primary["left_court_ratio"],
+                "right_court_ratio": primary["right_court_ratio"],
+                "high_intensity_moves": primary["high_intensity_moves"],
             }
         )
         match["intensity_score"] = calculate_intensity_score(
@@ -235,6 +242,32 @@ def coverage_metrics(positions: list[tuple[float, float]]) -> dict[str, float]:
     }
 
 
+def zone_metrics(
+    positions: list[tuple[float, float]],
+    speed_samples: list[float],
+) -> dict[str, float | int]:
+    if not positions:
+        return {
+            "front_court_ratio": 0.0,
+            "back_court_ratio": 0.0,
+            "left_court_ratio": 0.0,
+            "right_court_ratio": 0.0,
+            "high_intensity_moves": 0,
+        }
+
+    total = len(positions)
+    left_count = sum(1 for x, _ in positions if x < 3.05)
+    front_count = sum(1 for _, y in positions if y < 6.7)
+    high_intensity_moves = sum(1 for speed in speed_samples if speed >= 4.0)
+    return {
+        "front_court_ratio": round(front_count / total, 2),
+        "back_court_ratio": round((total - front_count) / total, 2),
+        "left_court_ratio": round(left_count / total, 2),
+        "right_court_ratio": round((total - left_count) / total, 2),
+        "high_intensity_moves": int(high_intensity_moves),
+    }
+
+
 def build_mobile_report(
     *,
     result: dict[str, Any],
@@ -249,6 +282,7 @@ def build_mobile_report(
     video = metadata.get("video") or {}
     match = detection_summary["match"]
     coaching = generate_coaching(detection_summary)
+    report_summary = generate_report_summary(match)
 
     return {
         "schema_version": "mobile-report-v1",
@@ -271,8 +305,14 @@ def build_mobile_report(
             "coverage_area_m2": match["coverage_area_m2"],
             "court_span_x_m": match["court_span_x_m"],
             "court_span_y_m": match["court_span_y_m"],
+            "front_court_ratio": match["front_court_ratio"],
+            "back_court_ratio": match["back_court_ratio"],
+            "left_court_ratio": match["left_court_ratio"],
+            "right_court_ratio": match["right_court_ratio"],
+            "high_intensity_moves": match["high_intensity_moves"],
             "shuttlecock_ratio": detection_summary["shuttlecock_ratio"],
         },
+        "report_summary": report_summary,
         "players": detection_summary["players"],
         "coaching": coaching,
         "advice": flatten_coaching_advice(coaching),
@@ -281,6 +321,24 @@ def build_mobile_report(
             "metadata": metadata,
         },
     }
+
+
+def generate_report_summary(match: dict[str, Any]) -> str:
+    distance = float(match.get("total_distance_m") or 0.0)
+    max_speed = float(match.get("max_speed_mps") or 0.0)
+    intensity = int(match.get("intensity_score") or 0)
+    coverage = float(match.get("coverage_area_m2") or 0.0)
+    active_time = float(match.get("active_time_sec") or 0.0)
+
+    if distance <= 0:
+        return "本次视频未检测到稳定移动数据，建议检查拍摄角度或手动校准球场角点。"
+
+    intensity_text = "较高" if intensity >= 70 else "中等" if intensity >= 45 else "偏低"
+    speed_text = "爆发移动明显" if max_speed >= 4.5 else "移动节奏较平稳"
+    coverage_text = "场地覆盖较完整" if coverage >= 12 else "覆盖范围偏集中"
+    if active_time < 25:
+        return f"本次片段较短，训练强度{intensity_text}，{speed_text}，可作为快速复盘样例。"
+    return f"本次训练强度{intensity_text}，{speed_text}，{coverage_text}。"
 
 
 def generate_coaching(detection_summary: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
@@ -521,6 +579,11 @@ def _empty_match_summary() -> dict[str, Any]:
         "coverage_area_m2": 0.0,
         "court_span_x_m": 0.0,
         "court_span_y_m": 0.0,
+        "front_court_ratio": 0.0,
+        "back_court_ratio": 0.0,
+        "left_court_ratio": 0.0,
+        "right_court_ratio": 0.0,
+        "high_intensity_moves": 0,
         "frames_with_detections": 0,
         "frames_with_shuttlecock": 0,
         "shuttlecock_ratio": 0.0,
