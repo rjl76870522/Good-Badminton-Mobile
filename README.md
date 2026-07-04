@@ -1,4 +1,4 @@
-﻿# Good-Badminton: AI 羽毛球鹰眼系统 🏸
+# Good-Badminton: AI 羽毛球鹰眼系统 🏸
 
 <div align="center">
 
@@ -17,11 +17,13 @@
 
 | 文档 | 用途 |
 | --- | --- |
-| [README_FRONTEND_HANDOFF.md](README_FRONTEND_HANDOFF.md) | 给前端同学的总交接说明 |
-| [FRONTEND_API.md](FRONTEND_API.md) | 移动端接口字段、响应、错误码 |
-| [CORNER_PICKER_HANDOFF.md](CORNER_PICKER_HANDOFF.md) | 手机点选四角点的前后端协议 |
-| [NETWORK_DEPLOYMENT.md](NETWORK_DEPLOYMENT.md) | 同 WiFi、内网穿透、公网 baseUrl 配置 |
-| [MOBILE_BACKEND.md](MOBILE_BACKEND.md) | 移动后端启动与接口概览 |
+| [00_FRONTEND_HANDOFF.md](00_FRONTEND_HANDOFF.md) | 给前端同学的总交接说明 |
+| [01_MOBILE_BACKEND.md](01_MOBILE_BACKEND.md) | 移动后端启动与接口概览 |
+| [02_FRONTEND_API.md](02_FRONTEND_API.md) | 移动端接口字段、响应、错误码 |
+| [03_FRONTEND_API_CHANGELOG.md](03_FRONTEND_API_CHANGELOG.md) | 接口变更记录 |
+| [04_MOBILE_FRONTEND.md](04_MOBILE_FRONTEND.md) | 浏览器测试前端说明 |
+| [05_NETWORK_DEPLOYMENT.md](05_NETWORK_DEPLOYMENT.md) | 同 WiFi、内网穿透、公网 baseUrl 配置 |
+| [06_CORNER_PICKER_HANDOFF.md](06_CORNER_PICKER_HANDOFF.md) | 手机点选四角点的前后端协议 |
 | [mobile_app/README.md](mobile_app/README.md) | Flutter/Android App 构建与安装 |
 
 ## 🎬 效果预览

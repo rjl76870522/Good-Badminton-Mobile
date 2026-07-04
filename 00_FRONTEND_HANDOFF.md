@@ -79,7 +79,7 @@ https://<generated-name>.trycloudflare.com
 When deploying through tunnel/public server later, replace only the base URL.
 Endpoint paths stay the same.
 
-More network setup notes are in `NETWORK_DEPLOYMENT.md`.
+More network setup notes are in `05_NETWORK_DEPLOYMENT.md`.
 
 ## Main App Flow
 
@@ -93,7 +93,7 @@ More network setup notes are in `NETWORK_DEPLOYMENT.md`.
 8. Render report cards, images, analysis video, and highlight video.
 9. Use history endpoint for the history page.
 
-Manual corner picker details are in `CORNER_PICKER_HANDOFF.md`.
+Manual corner picker details are in `06_CORNER_PICKER_HANDOFF.md`.
 
 ## Endpoints
 
@@ -324,7 +324,7 @@ baseUrl = https://your-public-domain
 
 ## Related Docs
 
-- `FRONTEND_API.md`: detailed API contract
-- `MOBILE_BACKEND.md`: backend notes
+- `02_FRONTEND_API.md`: detailed API contract
+- `01_MOBILE_BACKEND.md`: backend notes
 - `backend_api.py`: mobile API implementation
 - `server/main.py`: browser demo backend
