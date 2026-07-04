@@ -178,7 +178,48 @@ Completed reports include:
     "shuttlecock_frames": 162
   },
   "players": [],
-  "advice": [],
+  "coaching": {
+    "strengths": [
+      {
+        "id": "fast_start_strength",
+        "title": "爆发启动明显",
+        "detail": "本次检测到较高峰值移动速度，说明抢点、启动和短距离冲刺能力有表现。",
+        "basis": "检测最高移动速度 6.03 m/s，具备明显爆发移动。",
+        "training_focus": "继续保持分腿垫步后再启动的节奏，避免只靠大步硬追导致下一拍回位慢。",
+        "source_ids": ["bwf-coach-l1"]
+      }
+    ],
+    "weaknesses": [
+      {
+        "id": "low_intensity_weakness",
+        "title": "训练强度偏低",
+        "detail": "移动距离、速度和持续时间综合偏低，当前视频更像轻量练习或片段测试。",
+        "basis": "本次有效运动时长约 8.21 s，强度分 38。",
+        "training_focus": "正式复盘建议上传 30 秒到 3 分钟的连续训练片段。",
+        "source_ids": []
+      }
+    ],
+    "improvements": [
+      {
+        "id": "split_step_recovery_drill",
+        "title": "分腿垫步 + 回中衔接",
+        "detail": "分腿垫步能把上一拍恢复和下一拍启动连接起来，帮助更快改变方向。",
+        "basis": "把爆发速度转化成连续回合能力。",
+        "training_focus": "做六点影子步：每次到点后回中，30 秒训练、30 秒休息，4 组；保持低重心，启动前做分腿垫步。",
+        "source_ids": ["bwf-coach-l1", "badmintonskills-footwork-drills"]
+      }
+    ]
+  },
+  "advice": [
+    "当前优点：爆发启动明显。本次检测到较高峰值移动速度，说明抢点、启动和短距离冲刺能力有表现。"
+  ],
+  "advice_sources": [
+    {
+      "id": "bwf-coach-l1",
+      "title": "BWF Coach Education Coaches Manual Level 1",
+      "url": "https://www.badminton-israel.co.il/newsNdata/General/CoachEducationBWF/BWF_Coach_Manual_Level_1.pdf"
+    }
+  ],
   "files": {
     "analysis_video": "/outputs/.../web_detect_sample.mp4",
     "heatmap": "/outputs/.../match_heatmap.png",
@@ -202,6 +243,18 @@ Completed reports include:
   ]
 }
 ```
+
+Frontend should render `coaching` first:
+
+| Field | Meaning |
+| --- | --- |
+| `coaching.strengths` | 当前优点 |
+| `coaching.weaknesses` | 目前缺点 |
+| `coaching.improvements` | 改进建议 |
+| `basis` | 后端根据本次视频指标生成的判断依据 |
+| `detail` | 羽毛球训练原则说明 |
+| `training_focus` | 可直接展示给用户的训练动作/剂量 |
+| `advice` | Legacy fallback list for old UI |
 
 File paths are relative. Build absolute URLs by prefixing the base URL:
 

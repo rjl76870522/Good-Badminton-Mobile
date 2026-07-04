@@ -522,6 +522,54 @@ a {
   line-height: 1.7;
 }
 
+.advice-panel > ul {
+  display: grid;
+  gap: 14px;
+  padding-left: 0;
+}
+
+.coaching-group {
+  list-style: none;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.coaching-group > strong {
+  display: block;
+  margin-bottom: 10px;
+  color: var(--primary);
+}
+
+.coaching-group p {
+  margin: 6px 0 0;
+  color: var(--muted);
+}
+
+.coaching-items {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.coaching-items b,
+.coaching-items span,
+.coaching-items em {
+  display: block;
+}
+
+.coaching-items span {
+  color: var(--text);
+}
+
+.coaching-items em {
+  margin-top: 4px;
+  color: #52616b;
+  font-style: normal;
+}
+
 @media (max-width: 900px) {
   .app-shell {
     grid-template-columns: 1fr;

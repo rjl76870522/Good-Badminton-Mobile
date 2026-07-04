@@ -998,6 +998,7 @@ class _ReportPage extends StatelessWidget {
     final status = task?['status']?.toString();
     final summary = report?['summary'] as Map<String, dynamic>? ?? {};
     final files = report?['files'] as Map<String, dynamic>? ?? {};
+    final coaching = report?['coaching'] as Map<String, dynamic>?;
     final advice = report?['advice'] as List<dynamic>? ?? [];
 
     return ListView(
@@ -1070,19 +1071,7 @@ class _ReportPage extends StatelessWidget {
         const SizedBox(height: 16),
         _Section(
           title: '训练建议',
-          child: advice.isEmpty
-              ? const Text('暂无训练建议。')
-              : Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: advice
-                      .map(
-                        (item) => Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: Text('• ${item.toString()}'),
-                        ),
-                      )
-                      .toList(),
-                ),
+          child: _CoachingPanel(coaching: coaching, legacyAdvice: advice),
         ),
       ],
     );
@@ -1145,6 +1134,138 @@ class _Metric extends StatelessWidget {
       ),
     );
   }
+}
+
+class _CoachingPanel extends StatelessWidget {
+  const _CoachingPanel({required this.coaching, required this.legacyAdvice});
+
+  final Map<String, dynamic>? coaching;
+  final List<dynamic> legacyAdvice;
+
+  @override
+  Widget build(BuildContext context) {
+    final groups = [
+      _CoachingGroupSpec('strengths', '当前优点', '暂无明显优点。'),
+      _CoachingGroupSpec('weaknesses', '目前缺点', '暂无明显缺点。'),
+      _CoachingGroupSpec('improvements', '改进建议', '暂无改进建议。'),
+    ];
+    final hasStructured = groups.any((group) {
+      final items = coaching?[group.key];
+      return items is List && items.isNotEmpty;
+    });
+
+    if (!hasStructured) {
+      if (legacyAdvice.isEmpty) {
+        return const Text('暂无训练建议。');
+      }
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: legacyAdvice
+            .map(
+              (item) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text('• ${item.toString()}'),
+              ),
+            )
+            .toList(),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: groups
+          .map(
+            (group) => _CoachingGroup(spec: group, items: coaching?[group.key]),
+          )
+          .toList(),
+    );
+  }
+}
+
+class _CoachingGroup extends StatelessWidget {
+  const _CoachingGroup({required this.spec, required this.items});
+
+  final _CoachingGroupSpec spec;
+  final Object? items;
+
+  @override
+  Widget build(BuildContext context) {
+    final itemList = items is List ? items as List<dynamic> : <dynamic>[];
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: const Color(0xFFEEF4F7),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(spec.title, style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 8),
+              if (itemList.isEmpty)
+                Text(spec.emptyText)
+              else
+                ...itemList.map((item) => _CoachingItem(item: item)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CoachingItem extends StatelessWidget {
+  const _CoachingItem({required this.item});
+
+  final Object? item;
+
+  @override
+  Widget build(BuildContext context) {
+    final data = item is Map
+        ? item as Map<dynamic, dynamic>
+        : <dynamic, dynamic>{};
+    final title = data['title']?.toString() ?? '';
+    final detail = data['detail']?.toString() ?? '';
+    final basis = data['basis']?.toString() ?? '';
+    final trainingFocus = data['training_focus']?.toString() ?? '';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title.isEmpty ? '建议' : title,
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+          if (basis.isNotEmpty) Text(basis),
+          if (detail.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                detail,
+                style: const TextStyle(color: Colors.black54),
+              ),
+            ),
+          if (trainingFocus.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(trainingFocus),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CoachingGroupSpec {
+  const _CoachingGroupSpec(this.key, this.title, this.emptyText);
+
+  final String key;
+  final String title;
+  final String emptyText;
 }
 
 class _MiniMetric extends StatelessWidget {

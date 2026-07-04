@@ -279,14 +279,53 @@ function renderReport(report) {
   setImage(els.heatmapImage, els.heatmapEmpty, els.heatmapLink, files.heatmap);
   setImage(els.trajectoryImage, els.trajectoryEmpty, els.trajectoryLink, files.trajectory);
 
-  const advice = report.advice || [];
-  els.adviceList.innerHTML = advice.length
-    ? advice.map((item) => `<li>${escapeHtml(item)}</li>`).join("")
-    : "<li>暂无训练建议。</li>";
+  els.adviceList.innerHTML = renderCoaching(report.coaching, report.advice || []);
 
   if (report.task_id) {
     state.currentTaskId = report.task_id;
   }
+}
+
+function renderCoaching(coaching, legacyAdvice) {
+  const groups = [
+    ["strengths", "当前优点", "暂无明显优点。"],
+    ["weaknesses", "目前缺点", "暂无明显缺点。"],
+    ["improvements", "改进建议", "暂无改进建议。"],
+  ];
+  const hasStructured =
+    coaching &&
+    groups.some(([key]) => Array.isArray(coaching[key]) && coaching[key].length > 0);
+
+  if (!hasStructured) {
+    return legacyAdvice.length
+      ? legacyAdvice.map((item) => `<li>${escapeHtml(item)}</li>`).join("")
+      : "<li>暂无训练建议。</li>";
+  }
+
+  return groups
+    .map(([key, label, emptyText]) => {
+      const items = Array.isArray(coaching[key]) ? coaching[key] : [];
+      const body = items.length
+        ? `<ul class="coaching-items">${items.map(coachingItemHtml).join("")}</ul>`
+        : `<p>${emptyText}</p>`;
+      return `<li class="coaching-group"><strong>${label}</strong>${body}</li>`;
+    })
+    .join("");
+}
+
+function coachingItemHtml(item) {
+  const title = escapeHtml(item.title || "");
+  const detail = escapeHtml(item.detail || "");
+  const basis = escapeHtml(item.basis || "");
+  const trainingFocus = escapeHtml(item.training_focus || "");
+  return `
+    <li>
+      <b>${title}</b>
+      ${basis ? `<span>${basis}</span>` : ""}
+      ${detail ? `<p>${detail}</p>` : ""}
+      ${trainingFocus ? `<em>${trainingFocus}</em>` : ""}
+    </li>
+  `;
 }
 
 function setMedia(videoEl, emptyEl, linkEl, path) {

@@ -24,7 +24,7 @@ from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from badminton_analysis.highlight import generate_highlight
-from badminton_analysis.mobile_report import build_mobile_report
+from badminton_analysis.mobile_report import build_mobile_report, load_advice_knowledge
 from badminton_analysis.court.mapper import auto_detect_preview
 from webui.pipeline import prepare_court, run_analysis
 
@@ -688,6 +688,54 @@ def _safe_user_id(user_id: str | None) -> str:
 
 
 def _mock_demo_report() -> dict[str, Any]:
+    coaching = {
+        "strengths": [
+            {
+                "id": "fast_start_strength",
+                "title": "爆发启动明显",
+                "detail": "本次检测到较高峰值移动速度，说明抢点、启动和短距离冲刺能力有表现。",
+                "basis": "检测最高移动速度 4.8 m/s。",
+                "training_focus": "继续保持分腿垫步后再启动的节奏，避免只靠大步硬追导致下一拍回位慢。",
+                "source_ids": ["bwf-coach-l1"],
+            },
+            {
+                "id": "work_rate_strength",
+                "title": "连续跑动强度较高",
+                "detail": "单位时间移动距离和训练强度较高，说明这段训练包含较多连续移动或攻防转换。",
+                "basis": "训练强度分 82。",
+                "training_focus": "后续训练可以把快速移动和稳定回中连起来，不只看单次速度。",
+                "source_ids": ["bwf-coach-l1", "badmintonskills-footwork-drills"],
+            },
+        ],
+        "weaknesses": [
+            {
+                "id": "low_continuity_weakness",
+                "title": "连续移动和回位衔接偏弱",
+                "detail": "峰值速度不低，但平均速度或单位时间移动量偏低，可能是爆发后停顿较多，回中衔接不够连续。",
+                "basis": "最高速度 4.8 m/s，平均速度 1.6 m/s。",
+                "training_focus": "重点练启动、到位、回中、再启动的连续链条。",
+                "source_ids": ["bwf-coach-l1"],
+            }
+        ],
+        "improvements": [
+            {
+                "id": "split_step_recovery_drill",
+                "title": "分腿垫步 + 回中衔接",
+                "detail": "分腿垫步能把上一拍恢复和下一拍启动连接起来，帮助更快改变方向。",
+                "basis": "用于把爆发速度转化成连续回合能力。",
+                "training_focus": "做六点影子步：每次到点后回中，30 秒训练、30 秒休息，4 组；保持低重心，启动前做分腿垫步。",
+                "source_ids": ["bwf-coach-l1", "badmintonskills-footwork-drills"],
+            },
+            {
+                "id": "multi_directional_drill",
+                "title": "多方向连续移动",
+                "detail": "比赛移动通常是多个方向连续切换，训练应把启动、到位、回中和再次启动连成循环。",
+                "basis": "提高连续多拍下的移动质量。",
+                "training_focus": "做多方向抛球/喂球：30-60 秒连续移动，休息 60-90 秒，4 组；每拍后都回到合理中区。",
+                "source_ids": ["bwf-coach-l1", "badmintonskills-footwork-drills"],
+            },
+        ],
+    }
     return {
         "schema_version": "mobile-report-v1",
         "video": {
@@ -704,12 +752,21 @@ def _mock_demo_report() -> dict[str, Any]:
             "intensity_score": 82,
             "detected_frames": 1800,
             "shuttlecock_frames": 960,
+            "active_time_sec": 60.0,
+            "distance_per_min": 438.0,
+            "coverage_area_m2": 31.5,
+            "court_span_x_m": 5.0,
+            "court_span_y_m": 6.3,
+            "shuttlecock_ratio": 0.53,
         },
         "players": [],
+        "coaching": coaching,
         "advice": [
-            "本次训练爆发性移动明显，建议加强连续多拍后的恢复能力。",
-            "可结合热力图观察前后场覆盖是否均衡。",
+            "当前优点：爆发启动明显。本次检测到较高峰值移动速度，说明抢点、启动和短距离冲刺能力有表现。",
+            "目前缺点：连续移动和回位衔接偏弱。峰值速度不低，但平均速度或单位时间移动量偏低，可能是爆发后停顿较多。",
+            "改进建议：分腿垫步 + 回中衔接。做六点影子步：每次到点后回中，30 秒训练、30 秒休息，4 组。",
         ],
+        "advice_sources": load_advice_knowledge()["sources"],
         "raw": {"metadata": {}},
         "task_id": "demo_sample",
         "status": "completed",

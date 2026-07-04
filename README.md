@@ -24,6 +24,7 @@
 | [04_MOBILE_FRONTEND.md](04_MOBILE_FRONTEND.md) | 浏览器测试前端说明 |
 | [05_NETWORK_DEPLOYMENT.md](05_NETWORK_DEPLOYMENT.md) | 同 WiFi、内网穿透、公网 baseUrl 配置 |
 | [06_CORNER_PICKER_HANDOFF.md](06_CORNER_PICKER_HANDOFF.md) | 手机点选四角点的前后端协议 |
+| [07_COACHING_ADVICE.md](07_COACHING_ADVICE.md) | 结构化训练建议与知识库说明 |
 | [mobile_app/README.md](mobile_app/README.md) | Flutter/Android App 构建与安装 |
 
 ## 🎬 效果预览

@@ -160,6 +160,43 @@ The highlight generator no longer discards shuttle speed samples above a fixed p
 
 Frontend can display only the highlight video first; these metrics are optional debug/detail data.
 
+## 5. Structured Coaching Advice
+
+Reports now include structured coaching advice:
+
+```json
+{
+  "coaching": {
+    "strengths": [],
+    "weaknesses": [],
+    "improvements": []
+  },
+  "advice": []
+}
+```
+
+### Frontend Action
+
+Render `coaching` first:
+
+```text
+当前优点 -> coaching.strengths
+目前缺点 -> coaching.weaknesses
+改进建议 -> coaching.improvements
+```
+
+Each item contains:
+
+| Field | Meaning |
+| --- | --- |
+| `title` | Short heading |
+| `basis` | Why the backend made this judgment from the current video |
+| `detail` | Training principle |
+| `training_focus` | Concrete improvement drill or action |
+| `source_ids` | Optional knowledge-base source ids |
+
+Keep `advice` only as a fallback for old UI.
+
 ## Common Error Codes
 
 | Code | Meaning | Suggested UI |
