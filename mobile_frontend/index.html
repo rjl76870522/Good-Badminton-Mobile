@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI Badminton Review</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">AI</div>
+        <div>
+          <h1>羽毛球复盘</h1>
+          <p>上传视频，生成训练报告</p>
+        </div>
+      </div>
+
+      <nav class="tabs" aria-label="主要页面">
+        <button class="tab is-active" type="button" data-view="upload">上传</button>
+        <button class="tab" type="button" data-view="history">历史</button>
+        <button class="tab" type="button" data-view="report">报告</button>
+      </nav>
+
+      <div class="status-panel">
+        <span class="status-dot" id="healthDot"></span>
+        <div>
+          <strong id="healthText">连接中</strong>
+          <span id="baseUrlText"></span>
+        </div>
+      </div>
+
+      <label class="field-label" for="userIdInput">user_id</label>
+      <div class="user-row">
+        <input id="userIdInput" type="text" autocomplete="off">
+        <button class="icon-button" type="button" id="resetUserButton" title="生成新的游客 ID" aria-label="生成新的游客 ID">↻</button>
+      </div>
+    </aside>
+
+    <main class="content">
+      <section class="view is-active" id="uploadView">
+        <div class="view-head">
+          <div>
+            <h2>视频上传</h2>
+            <p>固定机位、完整球场、5 秒到 3 分钟的视频效果最好。</p>
+          </div>
+          <button class="secondary-button" type="button" id="loadDemoButton">载入样例</button>
+        </div>
+
+        <form class="upload-zone" id="uploadForm">
+          <input id="videoInput" name="file" type="file" accept="video/*">
+          <div class="upload-copy">
+            <strong id="fileName">选择或拖入视频</strong>
+            <span>MP4/MOV，最大 500MB</span>
+          </div>
+          <button class="primary-button" type="submit">开始分析</button>
+        </form>
+
+        <div class="corner-panel">
+          <label class="field-label-main" for="cornersJsonInput">手动角点（可选）</label>
+          <textarea id="cornersJsonInput" rows="3" spellcheck="false" placeholder="[[824,711],[1728,711],[2093,1382],[459,1382]]"></textarea>
+          <p>按视频画面像素坐标填写：左上、右上、右下、左下。留空时由后端自动识别。</p>
+        </div>
+
+        <div class="progress-wrap" id="progressWrap" hidden>
+          <div class="progress-meta">
+            <strong id="taskStage">等待中</strong>
+            <span id="taskPercent">0%</span>
+          </div>
+          <div class="progress-bar">
+            <span id="progressFill"></span>
+          </div>
+        </div>
+
+        <div class="notice" id="messageBox" hidden></div>
+      </section>
+
+      <section class="view" id="historyView">
+        <div class="view-head">
+          <div>
+            <h2>历史记录</h2>
+            <p>按当前 user_id 过滤，便于模拟游客模式。</p>
+          </div>
+          <button class="secondary-button" type="button" id="refreshHistoryButton">刷新</button>
+        </div>
+        <div class="history-grid" id="historyList"></div>
+      </section>
+
+      <section class="view" id="reportView">
+        <div class="view-head">
+          <div>
+            <h2>分析报告</h2>
+            <p id="reportSubtitle">完成一次分析后会显示结果。</p>
+          </div>
+          <a class="secondary-link" id="openDocsLink" href="/docs" target="_blank" rel="noreferrer">接口文档</a>
+        </div>
+
+        <div class="summary-grid" id="summaryGrid"></div>
+
+        <div class="media-grid">
+          <section class="media-panel">
+            <div class="panel-head">
+              <h3>精彩集锦</h3>
+              <a id="highlightLink" href="#" target="_blank" rel="noreferrer" hidden>打开</a>
+            </div>
+            <video id="highlightVideo" controls playsinline></video>
+            <div class="empty-media" id="highlightEmpty">暂无精彩集锦</div>
+          </section>
+
+          <section class="media-panel">
+            <div class="panel-head">
+              <h3>分析视频</h3>
+              <a id="analysisVideoLink" href="#" target="_blank" rel="noreferrer" hidden>打开</a>
+            </div>
+            <video id="analysisVideo" controls playsinline></video>
+            <div class="empty-media" id="analysisEmpty">暂无分析视频</div>
+          </section>
+
+          <section class="media-panel">
+            <div class="panel-head">
+              <h3>热力图</h3>
+              <a id="heatmapLink" href="#" target="_blank" rel="noreferrer" hidden>打开</a>
+            </div>
+            <img id="heatmapImage" alt="训练热力图">
+            <div class="empty-media" id="heatmapEmpty">暂无热力图</div>
+          </section>
+
+          <section class="media-panel">
+            <div class="panel-head">
+              <h3>轨迹图</h3>
+              <a id="trajectoryLink" href="#" target="_blank" rel="noreferrer" hidden>打开</a>
+            </div>
+            <img id="trajectoryImage" alt="移动轨迹图">
+            <div class="empty-media" id="trajectoryEmpty">暂无轨迹图</div>
+          </section>
+        </div>
+
+        <section class="advice-panel">
+          <h3>训练建议</h3>
+          <ul id="adviceList"></ul>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>

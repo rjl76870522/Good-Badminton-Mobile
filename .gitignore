@@ -14,7 +14,18 @@ env/
 # Local inputs and generated outputs
 results/
 outputs/
+mobile_app/build/
+server/uploads/
+server/results/
+mobile_backend_data/
+batch_summary.json
+batch_report.html
 *.log
+
+# Local ad-hoc videos and accidental shell artifacts
+videos/*.mp4
+videos/badminton.mp4
+=4.0.0
 
 # Model weights are intentionally not published
 weights/*

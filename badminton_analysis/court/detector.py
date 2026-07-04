@@ -187,29 +187,87 @@ def _dedupe_lines(lines, orientation, max_count):
     return selected
 
 
+def _enhance_for_detection(image):
+    """Return a list of pre-processed image variants for robust detection."""
+    variants = [image]  # original
+
+    h, w = image.shape[:2]
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    median = np.median(gray)
+
+    # 1. CLAHE on LAB L-channel (handles dark courts)
+    lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
+    l, a, b = cv2.split(lab)
+    clahe = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(8, 8))
+    l_eq = clahe.apply(l)
+    variants.append(cv2.cvtColor(cv2.merge([l_eq, a, b]), cv2.COLOR_LAB2BGR))
+
+    # 2. Auto-brightness: when median < 80, boost
+    if median < 80:
+        alpha = min(3.0, 120.0 / max(median, 1))
+        beta = int((90 - median) * 0.6)
+        variants.append(cv2.convertScaleAbs(image, alpha=alpha, beta=beta))
+
+    # 3. Gamma correction for very dark frames
+    if median < 60:
+        gamma = 0.55
+        lut = np.array([(i / 255.0) ** gamma * 255 for i in range(256)], dtype=np.uint8)
+        variants.append(cv2.LUT(image, lut))
+
+    return variants
+
+
 def build_court_line_mask(image):
     hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
     h, s, v = cv2.split(hsv)
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    median_v = np.median(v)
 
-    green_mask = (((h >= 35) & (h <= 95) & (s >= 30) & (v >= 45)).astype(np.uint8)) * 255
+    # Adaptive thresholds based on brightness
+    v_low = max(25, median_v * 0.5)
+    s_high = min(30, median_v * 0.6)
+
+    # Multi-level green detection
+    green_masks = []
+    # Standard green
+    green_masks.append(((h >= 35) & (h <= 95) & (s >= 25) & (v >= v_low)).astype(np.uint8) * 255)
+    # Blue-green (cool lighting)
+    green_masks.append(((h >= 90) & (h <= 120) & (s >= 20) & (v >= v_low)).astype(np.uint8) * 255)
+
+    green_mask = green_masks[0]
+    if green_masks[1].sum() > green_masks[0].sum():
+        green_mask = green_masks[1]
+
     green_mask = cv2.morphologyEx(green_mask, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8), iterations=1)
     green_mask = cv2.morphologyEx(green_mask, cv2.MORPH_CLOSE, np.ones((25, 25), np.uint8), iterations=2)
 
     count, labels, stats, _centroids = cv2.connectedComponentsWithStats(green_mask)
     if count > 1:
         image_area = image.shape[0] * image.shape[1]
-        candidates = [idx for idx in range(1, count) if stats[idx, cv2.CC_STAT_AREA] > image_area * 0.08]
+        candidates = [idx for idx in range(1, count) if stats[idx, cv2.CC_STAT_AREA] > image_area * 0.06]
         if candidates:
             court_idx = max(candidates, key=lambda idx: stats[idx, cv2.CC_STAT_AREA])
             green_mask = ((labels == court_idx).astype(np.uint8)) * 255
 
+    # If green detection is weak, expand to include any large non-sky region
+    green_ratio = cv2.countNonZero(green_mask) / (image.shape[0] * image.shape[1])
+    if green_ratio < 0.10:
+        # Fallback: just use the bottom 70% of the frame as court roi
+        green_mask = np.zeros_like(green_mask)
+        green_mask[int(image.shape[0] * 0.3):, :] = 255
+
     court_roi = cv2.dilate(green_mask, cv2.getStructuringElement(cv2.MORPH_RECT, (17, 17)), iterations=1)
-    white_mask = (((s <= 95) & (v >= 135)).astype(np.uint8)) * 255
+
+    # Adaptive white/yellow line thresholds
+    v_white = max(100, median_v * 1.8) if median_v > 30 else 100
+    white_mask = (((s <= 100) & (v >= v_white)).astype(np.uint8)) * 255
     white_mask = cv2.bitwise_and(white_mask, court_roi)
 
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    # Adaptive Canny
+    canny_low = max(20, int(median_v * 0.8))
+    canny_high = min(250, int(median_v * 2.4))
     blurred = cv2.GaussianBlur(gray, (3, 3), 0)
-    edges = cv2.Canny(blurred, 45, 135)
+    edges = cv2.Canny(blurred, canny_low, canny_high)
     edges = cv2.bitwise_and(edges, court_roi)
 
     merged = cv2.bitwise_or(white_mask, edges)
@@ -302,7 +360,7 @@ def _score_court_quad(corners, image_shape, lines, line_mask, horizontal_lines, 
 
     area = _polygon_area(points)
     image_area = width * height
-    if area < image_area * 0.12:
+    if area < image_area * 0.08:
         return None
 
     top_width = float(np.linalg.norm(top_right - top_left))
@@ -312,20 +370,20 @@ def _score_court_quad(corners, image_shape, lines, line_mask, horizontal_lines, 
     avg_height = (left_height + right_height) / 2.0
     if min(top_width, bottom_width, avg_height) <= 1:
         return None
-    if avg_height < height * 0.34:
+    if avg_height < height * 0.22:
         return None
-    if bottom_width < top_width * 0.82:
+    if bottom_width < top_width * 0.60:
         return None
 
     center = np.mean(points, axis=0)
     top_y = (top_left[1] + top_right[1]) / 2.0
     bottom_y = (bottom_left[1] + bottom_right[1]) / 2.0
     width_ratio = top_width / bottom_width
-    if not (width * 0.42 <= center[0] <= width * 0.76 and height * 0.58 <= center[1] <= height * 0.86):
+    if not (width * 0.30 <= center[0] <= width * 0.80 and height * 0.45 <= center[1] <= height * 0.90):
         return None
-    if top_y < height * 0.30 or bottom_y < height * 0.74:
+    if top_y < height * 0.18 or bottom_y < height * 0.68:
         return None
-    if not (0.45 <= width_ratio <= 0.86):
+    if not (0.35 <= width_ratio <= 0.95):
         return None
 
     min_edge_distance = min(
@@ -418,61 +476,76 @@ def _score_court_quad(corners, image_shape, lines, line_mask, horizontal_lines, 
     return total_score, details
 
 def auto_detect_court_corners(image):
-    horizontal_lines, side_lines, mask = detect_court_line_segments(image)
+    """Auto-detect with multi-stage preprocessing for robustness."""
     court_reference = BadmintonCourtReference()
-    reference_mask = build_reference_line_mask(image)
-    line_support = court_reference.prepare_line_support(reference_mask, image.shape)
-    debug = {"horizontal": horizontal_lines, "side": side_lines, "score": None, "details": None}
-    if len(horizontal_lines) < 2 or len(side_lines) < 2:
-        return None, mask, debug
 
-    height, width = image.shape[:2]
-    best = None
-    horizontals = sorted(horizontal_lines, key=lambda item: item["mid"][1])
-    sides = sorted(side_lines, key=lambda item: item["mid"][0])
+    # Try each enhanced variant
+    variants = _enhance_for_detection(image)
+    best_result = None
+    best_score = 0
 
-    for top_idx, top_line in enumerate(horizontals):
-        for bottom_line in horizontals[top_idx + 1:]:
-            if bottom_line["mid"][1] - top_line["mid"][1] < height * 0.28:
-                continue
-            for left_idx, left_line in enumerate(sides):
-                for right_line in sides[left_idx + 1:]:
-                    if right_line["mid"][0] - left_line["mid"][0] < width * 0.22:
-                        continue
+    for v_idx, variant in enumerate(variants):
+        horizontal_lines, side_lines, mask = detect_court_line_segments(variant)
+        if len(horizontal_lines) < 2 or len(side_lines) < 2:
+            continue
 
-                    intersections = [
-                        _line_intersection(top_line["points"], left_line["points"]),
-                        _line_intersection(top_line["points"], right_line["points"]),
-                        _line_intersection(bottom_line["points"], right_line["points"]),
-                        _line_intersection(bottom_line["points"], left_line["points"]),
-                    ]
-                    if any(point is None for point in intersections):
-                        continue
+        reference_mask = build_reference_line_mask(variant)
+        line_support = court_reference.prepare_line_support(reference_mask, variant.shape)
 
-                    scored = _score_court_quad(
-                        intersections,
-                        image.shape,
-                        (top_line, bottom_line, left_line, right_line),
-                        mask,
-                        horizontal_lines,
-                        court_reference,
-                        line_support,
-                    )
-                    if scored is None:
-                        continue
-                    score, details = scored
-                    if best is None or score > best["score"]:
-                        best = {
-                            "corners": intersections,
-                            "score": score,
-                            "details": details,
-                            "lines": (top_line, bottom_line, left_line, right_line),
-                        }
+        height, width = variant.shape[:2]
+        horizontals = sorted(horizontal_lines, key=lambda x: x["mid"][1])
+        sides = sorted(side_lines, key=lambda x: x["mid"][0])
 
-    if best is None:
-        return None, mask, debug
+        for top_idx, top_line in enumerate(horizontals):
+            for bottom_line in horizontals[top_idx + 1:]:
+                if bottom_line["mid"][1] - top_line["mid"][1] < height * 0.20:
+                    continue
+                for left_idx, left_line in enumerate(sides):
+                    for right_line in sides[left_idx + 1:]:
+                        if right_line["mid"][0] - left_line["mid"][0] < width * 0.15:
+                            continue
 
-    selected_lines = _promote_far_baseline(best["lines"], horizontal_lines, image.shape)
+                        intersections = [
+                            _line_intersection(top_line["points"], left_line["points"]),
+                            _line_intersection(top_line["points"], right_line["points"]),
+                            _line_intersection(bottom_line["points"], right_line["points"]),
+                            _line_intersection(bottom_line["points"], left_line["points"]),
+                        ]
+                        if any(p is None for p in intersections):
+                            continue
+
+                        scored = _score_court_quad(
+                            intersections, variant.shape,
+                            (top_line, bottom_line, left_line, right_line),
+                            mask, horizontal_lines,
+                            court_reference, line_support)
+                        if scored is None:
+                            continue
+                        score, details = scored
+                        if score > best_score:
+                            best_score = score
+                            best_result = {
+                                "corners": intersections,
+                                "score": score, "details": details,
+                                "lines": (top_line, bottom_line, left_line, right_line),
+                                "mask": mask,
+                                "variant_scale": image.shape[0] / variant.shape[0]
+                            }
+
+    if best_result is None:
+        debug = {"horizontal": [], "side": [], "score": None, "details": None}
+        return None, np.zeros(image.shape[:2], dtype=np.uint8), debug
+
+    # Scale corners back to original resolution
+    scale = image.shape[0] / best_result["corners"][0].shape[0] if False else 1.0
+    # (variants don't change resolution, so scale=1. No scaling needed for CLAHE/brighten)
+
+    horizontal_lines, side_lines, mask = detect_court_line_segments(image)
+    debug = {"horizontal": horizontal_lines, "side": side_lines,
+             "score": best_result["score"], "details": best_result["details"]}
+
+    # Promote far baseline and refine
+    selected_lines = _promote_far_baseline(best_result["lines"], horizontal_lines, image.shape)
     top_line, bottom_line, left_line, right_line = selected_lines
     corners_float = [
         _line_intersection(top_line["points"], left_line["points"]),
@@ -480,27 +553,18 @@ def auto_detect_court_corners(image):
         _line_intersection(bottom_line["points"], right_line["points"]),
         _line_intersection(bottom_line["points"], left_line["points"]),
     ]
-    if any(point is None for point in corners_float):
-        corners_float = best["corners"]
-        selected_lines = best["lines"]
+    if any(p is None for p in corners_float):
+        corners_float = best_result["corners"]
 
-    final_score = best["score"]
-    final_details = best["details"]
+    reference_mask = build_reference_line_mask(image)
+    line_support = court_reference.prepare_line_support(reference_mask, image.shape)
     final_scored = _score_court_quad(
-        corners_float,
-        image.shape,
-        selected_lines,
-        mask,
-        horizontal_lines,
-        court_reference,
-        line_support,
-    )
+        corners_float, image.shape, selected_lines, mask,
+        horizontal_lines, court_reference, line_support)
     if final_scored is not None:
-        final_score, final_details = final_scored
+        debug["score"], debug["details"] = final_scored
 
-    debug["score"] = final_score
-    debug["details"] = final_details
-    corners = [(int(round(point[0])), int(round(point[1]))) for point in corners_float]
+    corners = [(int(round(p[0])), int(round(p[1]))) for p in corners_float]
     return corners, mask, debug
 
 def render_auto_court_preview(image, corners, roi_corners=None, debug=None):
