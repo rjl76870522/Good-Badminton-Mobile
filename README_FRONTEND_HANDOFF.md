@@ -84,12 +84,16 @@ More network setup notes are in `NETWORK_DEPLOYMENT.md`.
 ## Main App Flow
 
 1. Check backend health.
-2. Upload video.
-3. Save `task_id`.
-4. Poll task status every 2-5 seconds.
-5. When status is `completed`, load report.
-6. Render report cards, images, analysis video, and highlight video.
-7. Use history endpoint for the history page.
+2. Choose a video.
+3. Optionally call `/api/videos/preview-frame` to get a good frame for manual corner picking.
+4. Upload/start analysis with either `file` or `source_upload_id`.
+5. Save `task_id`.
+6. Poll task status every 2-5 seconds.
+7. When status is `completed`, load report.
+8. Render report cards, images, analysis video, and highlight video.
+9. Use history endpoint for the history page.
+
+Manual corner picker details are in `CORNER_PICKER_HANDOFF.md`.
 
 ## Endpoints
 

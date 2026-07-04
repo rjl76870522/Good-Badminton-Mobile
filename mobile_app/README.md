@@ -58,7 +58,8 @@ build-tools;36.0.0
 - Save/test backend base URL
 - Local guest `user_id`
 - Pick a video file
-- Optional manual court corners with `corners_json`
+- Backend-selected preview frame for court corner picking
+- Tap court corners on a zoomable frame instead of typing JSON
 - Upload video to `POST /api/videos/upload`
 - Poll task progress
 - Show history from `GET /api/history`

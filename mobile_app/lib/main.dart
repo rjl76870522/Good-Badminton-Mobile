@@ -51,8 +51,11 @@ class _ReviewHomePageState extends State<ReviewHomePage> {
   late ApiClient _api;
   int _tabIndex = 0;
   bool _busy = false;
+  bool _preparingPreview = false;
   bool _backendOk = false;
   PlatformFile? _videoFile;
+  Map<String, dynamic>? _previewFrame;
+  List<Offset> _cornerPoints = [];
   Map<String, dynamic>? _task;
   Map<String, dynamic>? _report;
   List<dynamic> _history = [];
@@ -81,10 +84,8 @@ class _ReviewHomePageState extends State<ReviewHomePage> {
     final userId =
         prefs.getString('user_id') ??
         'guest_${DateTime.now().millisecondsSinceEpoch}';
-    final cornersJson = prefs.getString('corners_json') ?? '';
     _baseUrlController.text = baseUrl;
     _userIdController.text = userId;
-    _cornersJsonController.text = cornersJson;
     _api = ApiClient(baseUrl);
     await prefs.setString('user_id', userId);
     await _checkHealth();
@@ -100,7 +101,6 @@ class _ReviewHomePageState extends State<ReviewHomePage> {
     final userId = _sanitizeUserId(_userIdController.text);
     await prefs.setString('base_url', baseUrl);
     await prefs.setString('user_id', userId);
-    await prefs.setString('corners_json', _cornersJsonController.text.trim());
     setState(() {
       _api = ApiClient(baseUrl);
       _userIdController.text = userId;
@@ -129,8 +129,81 @@ class _ReviewHomePageState extends State<ReviewHomePage> {
     if (result == null || result.files.isEmpty) return;
     setState(() {
       _videoFile = result.files.single;
+      _previewFrame = null;
+      _cornerPoints = [];
+      _cornersJsonController.clear();
       _message = null;
     });
+    await _preparePreviewFrame();
+  }
+
+  Future<void> _preparePreviewFrame() async {
+    final path = _videoFile?.path;
+    if (path == null) {
+      setState(() => _message = '请先选择视频。');
+      return;
+    }
+
+    setState(() {
+      _preparingPreview = true;
+      _message = null;
+    });
+
+    try {
+      final preview = await _api.createPreviewFrame(
+        path: path,
+        filename: _videoFile?.name ?? 'training_video.mp4',
+        userId: _sanitizeUserId(_userIdController.text),
+      );
+      final autoCorners = _parseCornerPoints(preview['auto_corners']);
+      setState(() {
+        _previewFrame = preview;
+        _cornerPoints = autoCorners;
+        _preparingPreview = false;
+      });
+      _syncCornerJson();
+    } catch (error) {
+      setState(() {
+        _preparingPreview = false;
+        _message = error.toString();
+      });
+    }
+  }
+
+  void _addCornerPoint(Offset point) {
+    if (_cornerPoints.length >= 4) {
+      setState(() => _message = '已经有 4 个角点，如需修改请先重选角点。');
+      return;
+    }
+    setState(() {
+      _cornerPoints = [..._cornerPoints, point];
+      _message = null;
+    });
+    _syncCornerJson();
+  }
+
+  void _undoCornerPoint() {
+    if (_cornerPoints.isEmpty) return;
+    setState(
+      () => _cornerPoints = _cornerPoints.sublist(0, _cornerPoints.length - 1),
+    );
+    _syncCornerJson();
+  }
+
+  void _resetCornerPoints() {
+    setState(() {
+      _cornerPoints = [];
+      _message = null;
+    });
+    _syncCornerJson();
+  }
+
+  void _syncCornerJson() {
+    _cornersJsonController.text = _cornerPoints.length == 4
+        ? jsonEncode(
+            _cornerPoints.map((p) => [p.dx.round(), p.dy.round()]).toList(),
+          )
+        : '';
   }
 
   Future<void> _uploadVideo() async {
@@ -140,15 +213,16 @@ class _ReviewHomePageState extends State<ReviewHomePage> {
       return;
     }
 
-    String? cornersJson;
-    try {
-      cornersJson = _normalizeCornersJson(_cornersJsonController.text);
-    } on FormatException catch (error) {
-      setState(() => _message = error.message);
+    if (_cornerPoints.isNotEmpty && _cornerPoints.length != 4) {
+      setState(() => _message = '请点选四个角点，或重置后使用自动识别。');
       return;
     }
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('corners_json', cornersJson ?? '');
+    final cornersJson = _cornerPoints.length == 4
+        ? jsonEncode(
+            _cornerPoints.map((p) => [p.dx.round(), p.dy.round()]).toList(),
+          )
+        : null;
+    final sourceUploadId = _previewFrame?['source_upload_id']?.toString();
 
     setState(() {
       _busy = true;
@@ -159,9 +233,10 @@ class _ReviewHomePageState extends State<ReviewHomePage> {
 
     try {
       final upload = await _api.uploadVideo(
-        path: path,
+        path: sourceUploadId == null ? path : null,
         filename: _videoFile?.name ?? 'training_video.mp4',
         userId: _sanitizeUserId(_userIdController.text),
+        sourceUploadId: sourceUploadId,
         cornersJson: cornersJson,
       );
       final taskId = upload['task_id'] as String;
@@ -263,12 +338,19 @@ class _ReviewHomePageState extends State<ReviewHomePage> {
         backendOk: _backendOk,
         baseUrlController: _baseUrlController,
         userIdController: _userIdController,
-        cornersJsonController: _cornersJsonController,
+        baseUrl: _api.baseUrl,
         videoFile: _videoFile,
+        previewFrame: _previewFrame,
+        cornerPoints: _cornerPoints,
         busy: _busy,
+        preparingPreview: _preparingPreview,
         message: _message,
         onSaveConnection: _saveConnection,
         onPickVideo: _pickVideo,
+        onPreparePreview: _preparePreviewFrame,
+        onAddCornerPoint: _addCornerPoint,
+        onUndoCornerPoint: _undoCornerPoint,
+        onResetCornerPoints: _resetCornerPoints,
         onUpload: _uploadVideo,
         onLoadDemo: _loadDemo,
       ),
@@ -331,12 +413,19 @@ class _UploadPage extends StatelessWidget {
     required this.backendOk,
     required this.baseUrlController,
     required this.userIdController,
-    required this.cornersJsonController,
+    required this.baseUrl,
     required this.videoFile,
+    required this.previewFrame,
+    required this.cornerPoints,
     required this.busy,
+    required this.preparingPreview,
     required this.message,
     required this.onSaveConnection,
     required this.onPickVideo,
+    required this.onPreparePreview,
+    required this.onAddCornerPoint,
+    required this.onUndoCornerPoint,
+    required this.onResetCornerPoints,
     required this.onUpload,
     required this.onLoadDemo,
   });
@@ -344,12 +433,19 @@ class _UploadPage extends StatelessWidget {
   final bool backendOk;
   final TextEditingController baseUrlController;
   final TextEditingController userIdController;
-  final TextEditingController cornersJsonController;
+  final String baseUrl;
   final PlatformFile? videoFile;
+  final Map<String, dynamic>? previewFrame;
+  final List<Offset> cornerPoints;
   final bool busy;
+  final bool preparingPreview;
   final String? message;
   final Future<void> Function() onSaveConnection;
   final Future<void> Function() onPickVideo;
+  final Future<void> Function() onPreparePreview;
+  final void Function(Offset point) onAddCornerPoint;
+  final VoidCallback onUndoCornerPoint;
+  final VoidCallback onResetCornerPoints;
   final Future<void> Function() onUpload;
   final Future<void> Function() onLoadDemo;
 
@@ -415,22 +511,23 @@ class _UploadPage extends StatelessWidget {
               ),
               const SizedBox(height: 6),
               Text(
-                '建议固定机位，完整拍到球场，视频 5 秒到 3 分钟。',
+                '选择视频后，后端会自动挑一帧完整球场画面用于点选角点。',
                 style: Theme.of(
                   context,
                 ).textTheme.bodyMedium?.copyWith(color: Colors.black54),
               ),
               const SizedBox(height: 14),
-              TextField(
-                controller: cornersJsonController,
-                minLines: 2,
-                maxLines: 4,
-                decoration: const InputDecoration(
-                  labelText: '手动角点 JSON（可选）',
-                  hintText: '[[824,711],[1728,711],[2093,1382],[459,1382]]',
-                  helperText: '按视频画面坐标填写：左上、右上、右下、左下',
-                  border: OutlineInputBorder(),
-                ),
+              _CornerPicker(
+                baseUrl: baseUrl,
+                videoFile: videoFile,
+                previewFrame: previewFrame,
+                points: cornerPoints,
+                busy: busy,
+                preparingPreview: preparingPreview,
+                onPreparePreview: onPreparePreview,
+                onAddPoint: onAddCornerPoint,
+                onUndo: onUndoCornerPoint,
+                onReset: onResetCornerPoints,
               ),
               const SizedBox(height: 14),
               Row(
@@ -470,6 +567,308 @@ class _UploadPage extends StatelessWidget {
         ],
       ],
     );
+  }
+}
+
+class _CornerPicker extends StatefulWidget {
+  const _CornerPicker({
+    required this.baseUrl,
+    required this.videoFile,
+    required this.previewFrame,
+    required this.points,
+    required this.busy,
+    required this.preparingPreview,
+    required this.onPreparePreview,
+    required this.onAddPoint,
+    required this.onUndo,
+    required this.onReset,
+  });
+
+  final String baseUrl;
+  final PlatformFile? videoFile;
+  final Map<String, dynamic>? previewFrame;
+  final List<Offset> points;
+  final bool busy;
+  final bool preparingPreview;
+  final Future<void> Function() onPreparePreview;
+  final void Function(Offset point) onAddPoint;
+  final VoidCallback onUndo;
+  final VoidCallback onReset;
+
+  @override
+  State<_CornerPicker> createState() => _CornerPickerState();
+}
+
+class _CornerPickerState extends State<_CornerPicker> {
+  final TransformationController _transformController =
+      TransformationController();
+
+  @override
+  void dispose() {
+    _transformController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final preview = widget.previewFrame;
+    if (widget.videoFile == null) {
+      return _CornerInfoBox(
+        icon: Icons.control_point_duplicate_outlined,
+        text: '选择视频后可在清晰预览帧上点选四个球场角点。',
+      );
+    }
+
+    if (widget.preparingPreview) {
+      return const _CornerInfoBox(
+        icon: Icons.auto_awesome,
+        text: '正在上传视频并自动挑选完整球场预览帧...',
+        loading: true,
+      );
+    }
+
+    if (preview == null) {
+      return SizedBox(
+        width: double.infinity,
+        child: OutlinedButton.icon(
+          onPressed: widget.busy ? null : widget.onPreparePreview,
+          icon: const Icon(Icons.auto_awesome_motion_outlined),
+          label: const Text('生成角点预览帧'),
+        ),
+      );
+    }
+
+    final video = preview['video'] as Map<String, dynamic>? ?? {};
+    final imageWidth = (video['width'] as num?)?.toDouble() ?? 1.0;
+    final imageHeight = (video['height'] as num?)?.toDouble() ?? 1.0;
+    final imageUrl = _absoluteUrl(
+      widget.baseUrl,
+      preview['image_url'].toString(),
+    );
+    final nextName = _cornerName(widget.points.length);
+    final hasFour = widget.points.length == 4;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                hasFour ? '四个角点已选择' : '请点选$nextName',
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+            ),
+            Text(
+              '${widget.points.length}/4',
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Text(
+          '后端选帧：${_value(preview['time_sec'])} 秒，双指可放大到 16 倍并拖动画面。',
+          style: Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(color: Colors.black54),
+        ),
+        const SizedBox(height: 10),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child: Container(
+            color: Colors.black,
+            child: AspectRatio(
+              aspectRatio: imageWidth / imageHeight,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final displayWidth = constraints.maxWidth;
+                  final displayHeight = constraints.maxHeight;
+                  return InteractiveViewer(
+                    transformationController: _transformController,
+                    minScale: 1,
+                    maxScale: 16,
+                    boundaryMargin: const EdgeInsets.all(600),
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTapDown: hasFour
+                          ? null
+                          : (details) {
+                              final local = details.localPosition;
+                              if (local.dx < 0 ||
+                                  local.dy < 0 ||
+                                  local.dx > displayWidth ||
+                                  local.dy > displayHeight) {
+                                return;
+                              }
+                              widget.onAddPoint(
+                                Offset(
+                                  local.dx / displayWidth * imageWidth,
+                                  local.dy / displayHeight * imageHeight,
+                                ),
+                              );
+                            },
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          Image.network(imageUrl, fit: BoxFit.fill),
+                          CustomPaint(
+                            painter: _CornerOverlayPainter(
+                              points: widget.points,
+                              imageWidth: imageWidth,
+                              imageHeight: imageHeight,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            OutlinedButton.icon(
+              onPressed: widget.points.isEmpty ? null : widget.onUndo,
+              icon: const Icon(Icons.undo),
+              label: const Text('撤销'),
+            ),
+            OutlinedButton.icon(
+              onPressed: widget.points.isEmpty ? null : widget.onReset,
+              icon: const Icon(Icons.refresh),
+              label: const Text('重选角点'),
+            ),
+            OutlinedButton.icon(
+              onPressed: () => _transformController.value = Matrix4.identity(),
+              icon: const Icon(Icons.center_focus_strong),
+              label: const Text('重置缩放'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          '顺序：左上、右上、右下、左下。留空或重置后上传则使用后端自动识别。',
+          style: Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(color: Colors.black54),
+        ),
+      ],
+    );
+  }
+
+  String _cornerName(int index) {
+    const names = ['左上角', '右上角', '右下角', '左下角'];
+    if (index < 0 || index >= names.length) return '角点';
+    return names[index];
+  }
+}
+
+class _CornerInfoBox extends StatelessWidget {
+  const _CornerInfoBox({
+    required this.icon,
+    required this.text,
+    this.loading = false,
+  });
+
+  final IconData icon;
+  final String text;
+  final bool loading;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEFF6F5),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFD8E1E8)),
+      ),
+      child: Row(
+        children: [
+          if (loading)
+            const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          else
+            Icon(icon, color: const Color(0xFF0B7A75)),
+          const SizedBox(width: 10),
+          Expanded(child: Text(text)),
+        ],
+      ),
+    );
+  }
+}
+
+class _CornerOverlayPainter extends CustomPainter {
+  _CornerOverlayPainter({
+    required this.points,
+    required this.imageWidth,
+    required this.imageHeight,
+  });
+
+  final List<Offset> points;
+  final double imageWidth;
+  final double imageHeight;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final scaled = points
+        .map(
+          (point) => Offset(
+            point.dx / imageWidth * size.width,
+            point.dy / imageHeight * size.height,
+          ),
+        )
+        .toList();
+    final linePaint = Paint()
+      ..color = const Color(0xFFFFD54F)
+      ..strokeWidth = 2.5
+      ..style = PaintingStyle.stroke;
+    final fillPaint = Paint()
+      ..color = const Color(0xFFD6513B)
+      ..style = PaintingStyle.fill;
+    final textPainter = TextPainter(textDirection: TextDirection.ltr);
+
+    if (scaled.length > 1) {
+      final path = Path()..moveTo(scaled.first.dx, scaled.first.dy);
+      for (final point in scaled.skip(1)) {
+        path.lineTo(point.dx, point.dy);
+      }
+      if (scaled.length == 4) {
+        path.close();
+      }
+      canvas.drawPath(path, linePaint);
+    }
+
+    for (var i = 0; i < scaled.length; i++) {
+      final point = scaled[i];
+      canvas.drawCircle(point, 8, fillPaint);
+      canvas.drawCircle(point, 8, linePaint);
+      textPainter.text = TextSpan(
+        text: '${i + 1}',
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+        ),
+      );
+      textPainter.layout();
+      textPainter.paint(canvas, point + const Offset(11, -17));
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _CornerOverlayPainter oldDelegate) {
+    return oldDelegate.points != points ||
+        oldDelegate.imageWidth != imageWidth ||
+        oldDelegate.imageHeight != imageHeight;
   }
 }
 
@@ -954,11 +1353,16 @@ class ApiClient {
   }
 
   Future<Map<String, dynamic>> uploadVideo({
-    required String path,
+    String? path,
     required String filename,
     required String userId,
+    String? sourceUploadId,
     String? cornersJson,
   }) async {
+    if ((path == null || path.isEmpty) &&
+        (sourceUploadId == null || sourceUploadId.isEmpty)) {
+      throw ApiException('请先选择视频。');
+    }
     final request = http.MultipartRequest(
       'POST',
       Uri.parse('$baseUrl/api/videos/upload'),
@@ -967,9 +1371,32 @@ class ApiClient {
     request.fields['language'] = 'zh';
     request.fields['pose_mode'] = 'balanced';
     request.fields['keep_audio'] = 'true';
+    if (sourceUploadId != null && sourceUploadId.isNotEmpty) {
+      request.fields['source_upload_id'] = sourceUploadId;
+    }
     if (cornersJson != null && cornersJson.isNotEmpty) {
       request.fields['corners_json'] = cornersJson;
     }
+    if (path != null && path.isNotEmpty) {
+      request.files.add(
+        await http.MultipartFile.fromPath('file', path, filename: filename),
+      );
+    }
+    final streamed = await request.send();
+    final bytes = await streamed.stream.toBytes();
+    return _decodeResponse(streamed.statusCode, bytes);
+  }
+
+  Future<Map<String, dynamic>> createPreviewFrame({
+    required String path,
+    required String filename,
+    required String userId,
+  }) async {
+    final request = http.MultipartRequest(
+      'POST',
+      Uri.parse('$baseUrl/api/videos/preview-frame'),
+    );
+    request.fields['user_id'] = userId;
     request.files.add(
       await http.MultipartFile.fromPath('file', path, filename: filename),
     );
@@ -1008,48 +1435,23 @@ class ApiException implements Exception {
   String toString() => message;
 }
 
-String? _normalizeCornersJson(String value) {
-  final raw = value.trim();
-  if (raw.isEmpty) return null;
-
-  final dynamic parsed;
-  try {
-    parsed = jsonDecode(raw);
-  } catch (_) {
-    throw const FormatException(
-      '手动角点必须是合法 JSON，例如 [[824,711],[1728,711],[2093,1382],[459,1382]]。',
-    );
-  }
-
-  if (parsed is! List || parsed.length != 4) {
-    throw const FormatException('手动角点必须包含 4 个点，顺序为左上、右上、右下、左下。');
-  }
-
-  final normalized = <List<int>>[];
-  for (final point in parsed) {
-    if (point is! List || point.length != 2) {
-      throw const FormatException('每个角点必须是 [x, y]。');
-    }
-    final xRaw = point[0];
-    final yRaw = point[1];
-    if (xRaw is! num || yRaw is! num) {
-      throw const FormatException('角点坐标必须是数字。');
-    }
-    final x = xRaw.round();
-    final y = yRaw.round();
-    if (x < 0 || y < 0) {
-      throw const FormatException('角点坐标必须是非负数字。');
-    }
-    normalized.add([x, y]);
-  }
-
-  return jsonEncode(normalized);
-}
-
 String _sanitizeUserId(String value) {
   final normalized = value.trim().replaceAll(RegExp(r'[^\w.-]'), '_');
   if (normalized.isEmpty) return 'guest';
   return normalized.length > 64 ? normalized.substring(0, 64) : normalized;
+}
+
+List<Offset> _parseCornerPoints(Object? value) {
+  if (value is! List || value.length != 4) return [];
+  final points = <Offset>[];
+  for (final item in value) {
+    if (item is! List || item.length < 2) return [];
+    final x = item[0];
+    final y = item[1];
+    if (x is! num || y is! num) return [];
+    points.add(Offset(x.toDouble(), y.toDouble()));
+  }
+  return points;
 }
 
 String _absoluteUrl(String baseUrl, String path) {

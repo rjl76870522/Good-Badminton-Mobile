@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 import cv2
+import numpy as np
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse
@@ -24,11 +25,14 @@ from fastapi.staticfiles import StaticFiles
 
 from badminton_analysis.highlight import generate_highlight
 from badminton_analysis.mobile_report import build_mobile_report
+from badminton_analysis.court.mapper import auto_detect_preview
 from webui.pipeline import prepare_court, run_analysis
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 UPLOAD_DIR = PROJECT_ROOT / "mobile_backend_data" / "uploads"
+PREVIEW_UPLOAD_DIR = PROJECT_ROOT / "mobile_backend_data" / "preview_uploads"
+PREVIEW_FRAME_DIR = PROJECT_ROOT / "mobile_backend_data" / "preview_frames"
 TASK_DIR = PROJECT_ROOT / "mobile_backend_data" / "tasks"
 OUTPUTS_DIR = PROJECT_ROOT / "outputs"
 FRONTEND_DIR = PROJECT_ROOT / "mobile_frontend"
@@ -44,6 +48,8 @@ DEFAULT_TEMPLATE_CANDIDATES = [
 ]
 
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+PREVIEW_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+PREVIEW_FRAME_DIR.mkdir(parents=True, exist_ok=True)
 TASK_DIR.mkdir(parents=True, exist_ok=True)
 OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -56,6 +62,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.mount("/outputs", StaticFiles(directory=str(OUTPUTS_DIR)), name="outputs")
+app.mount("/preview-frames", StaticFiles(directory=str(PREVIEW_FRAME_DIR)), name="preview_frames")
 if FRONTEND_DIR.is_dir():
     app.mount("/app", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="mobile_frontend")
 
@@ -81,15 +88,16 @@ def index() -> RedirectResponse:
 @app.post("/api/videos/upload")
 def upload_video(
     background_tasks: BackgroundTasks,
-    file: UploadFile = File(...),
+    file: UploadFile | None = File(default=None),
     user_id: str = Form(default=DEFAULT_USER_ID),
+    source_upload_id: str | None = Form(default=None),
     template_path: str | None = Form(default=None),
     corners_json: str | None = Form(default=None),
     language: str = Form(default="zh"),
     pose_mode: str = Form(default="balanced"),
     keep_audio: bool = Form(default=True),
 ) -> dict[str, Any]:
-    if not file.filename:
+    if file is None and not source_upload_id:
         raise_api_error(
             status_code=400,
             code="MISSING_VIDEO",
@@ -98,15 +106,31 @@ def upload_video(
 
     user_id = _safe_user_id(user_id)
     task_id = uuid.uuid4().hex
-    safe_name = _safe_filename(file.filename)
+    if source_upload_id:
+        source_path, source_name = _resolve_preview_upload(source_upload_id)
+        safe_name = source_name
+    else:
+        if file is None or not file.filename:
+            raise_api_error(
+                status_code=400,
+                code="MISSING_VIDEO",
+                message="请选择要上传的视频文件。",
+            )
+        source_path = None
+        safe_name = _safe_filename(file.filename)
     upload_path = UPLOAD_DIR / f"{task_id}_{safe_name}"
 
-    with upload_path.open("wb") as out:
-        shutil.copyfileobj(file.file, out)
+    if source_upload_id:
+        shutil.copyfile(source_path, upload_path)
+    else:
+        with upload_path.open("wb") as out:
+            shutil.copyfileobj(file.file, out)
     _validate_uploaded_video(upload_path)
 
     template = _resolve_template(template_path)
     corners = _parse_corners(corners_json)
+    if corners:
+        _validate_corners_for_video(corners, upload_path)
     task = {
         "task_id": task_id,
         "status": "queued",
@@ -140,6 +164,37 @@ def upload_video(
         "status_url": f"/api/tasks/{task_id}",
         "report_url": f"/api/tasks/{task_id}/report",
     }
+
+
+@app.post("/api/videos/preview-frame")
+def create_preview_frame(
+    file: UploadFile = File(...),
+    user_id: str = Form(default=DEFAULT_USER_ID),
+) -> dict[str, Any]:
+    if not file.filename:
+        raise_api_error(
+            status_code=400,
+            code="MISSING_VIDEO",
+            message="请选择要上传的视频文件。",
+        )
+
+    user_id = _safe_user_id(user_id)
+    source_upload_id = uuid.uuid4().hex
+    safe_name = _safe_filename(file.filename)
+    source_path = PREVIEW_UPLOAD_DIR / f"{source_upload_id}_{safe_name}"
+    with source_path.open("wb") as out:
+        shutil.copyfileobj(file.file, out)
+    _validate_uploaded_video(source_path)
+
+    preview = _select_preview_frame(source_path, source_upload_id)
+    preview.update(
+        {
+            "source_upload_id": source_upload_id,
+            "user_id": user_id,
+            "video_name": safe_name,
+        }
+    )
+    return preview
 
 
 @app.get("/api/tasks")
@@ -368,6 +423,27 @@ def _path_to_output_url(path: str | os.PathLike[str] | None) -> str | None:
     return "/outputs/" + rel.as_posix()
 
 
+def _resolve_preview_upload(source_upload_id: str) -> tuple[Path, str]:
+    source_id = (source_upload_id or "").strip()
+    if not source_id or any(ch not in "0123456789abcdef" for ch in source_id.lower()):
+        raise_api_error(
+            status_code=400,
+            code="INVALID_SOURCE_UPLOAD",
+            message="预览视频来源无效，请重新选择视频。",
+        )
+
+    matches = list(PREVIEW_UPLOAD_DIR.glob(f"{source_id}_*"))
+    if not matches:
+        raise_api_error(
+            status_code=404,
+            code="SOURCE_UPLOAD_NOT_FOUND",
+            message="预览视频已失效，请重新选择视频。",
+        )
+    source_path = matches[0]
+    source_name = source_path.name.removeprefix(f"{source_id}_")
+    return source_path, source_name
+
+
 def _count_detection_records(path: str | os.PathLike[str] | None) -> int:
     if not path:
         return 0
@@ -385,6 +461,150 @@ def _count_detection_records(path: str | os.PathLike[str] | None) -> int:
                 if count >= MIN_DETECTION_RECORDS:
                     return count
     return count
+
+
+def _select_preview_frame(video_path: Path, source_upload_id: str) -> dict[str, Any]:
+    cap = cv2.VideoCapture(str(video_path))
+    if not cap.isOpened():
+        raise_api_error(
+            status_code=400,
+            code="VIDEO_UNREADABLE",
+            message="无法读取视频文件。",
+        )
+
+    fps = cap.get(cv2.CAP_PROP_FPS) or 0
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
+    duration_sec = total_frames / fps if fps > 0 else 0.0
+    if total_frames <= 0 or width <= 0 or height <= 0:
+        cap.release()
+        raise_api_error(
+            status_code=400,
+            code="VIDEO_UNREADABLE",
+            message="无法读取视频尺寸或帧数。",
+        )
+
+    sample_indices = _preview_sample_indices(total_frames)
+    best: dict[str, Any] | None = None
+    for frame_index in sample_indices:
+        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
+        ok, frame = cap.read()
+        if not ok or frame is None:
+            continue
+        scored = _score_preview_frame(frame, frame_index, fps)
+        if best is None or scored["score"] > best["score"]:
+            best = scored
+    cap.release()
+
+    if best is None:
+        raise_api_error(
+            status_code=400,
+            code="PREVIEW_FRAME_FAILED",
+            message="无法从视频中提取可用预览帧。",
+        )
+
+    image_path = PREVIEW_FRAME_DIR / f"{source_upload_id}.jpg"
+    ok, encoded = cv2.imencode(".jpg", best["frame"], [int(cv2.IMWRITE_JPEG_QUALITY), 90])
+    if not ok:
+        raise_api_error(
+            status_code=500,
+            code="PREVIEW_ENCODE_FAILED",
+            message="预览帧编码失败。",
+        )
+    encoded.tofile(str(image_path))
+
+    return {
+        "image_url": f"/preview-frames/{source_upload_id}.jpg",
+        "frame_index": best["frame_index"],
+        "time_sec": round(float(best["time_sec"]), 2),
+        "score": round(float(best["score"]), 3),
+        "selection_reason": best["reason"],
+        "auto_corners": best["auto_corners"],
+        "video": {
+            "width": width,
+            "height": height,
+            "duration_sec": round(duration_sec, 2),
+            "fps": round(float(fps), 2),
+            "total_frames": total_frames,
+        },
+    }
+
+
+def _preview_sample_indices(total_frames: int) -> list[int]:
+    fractions = [0.08, 0.14, 0.22, 0.32, 0.45, 0.58, 0.70, 0.82]
+    indices = {
+        min(total_frames - 1, max(0, int(total_frames * fraction)))
+        for fraction in fractions
+    }
+    if total_frames > 90:
+        indices.add(min(total_frames - 1, 30))
+    return sorted(indices)
+
+
+def _score_preview_frame(frame: Any, frame_index: int, fps: float) -> dict[str, Any]:
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    brightness = float(gray.mean())
+    sharpness = float(cv2.Laplacian(gray, cv2.CV_64F).var())
+    edges = cv2.Canny(gray, 80, 180)
+    edge_density = float(cv2.countNonZero(edges)) / max(edges.size, 1)
+
+    auto_corners, _preview = auto_detect_preview(frame)
+    h, w = frame.shape[:2]
+    area_ratio = 0.0
+    if auto_corners:
+        pts_np = np.array(auto_corners, dtype=np.float32)
+        area_ratio = float(cv2.contourArea(pts_np)) / max(float(w * h), 1.0)
+
+    brightness_score = max(0.0, 1.0 - abs(brightness - 125.0) / 125.0)
+    sharpness_score = min(sharpness / 600.0, 1.0)
+    edge_score = min(edge_density / 0.08, 1.0)
+    area_score = min(area_ratio / 0.18, 1.0)
+    court_bonus = 2.5 if auto_corners else 0.0
+    score = (
+        court_bonus
+        + brightness_score * 0.8
+        + sharpness_score * 0.8
+        + edge_score * 0.5
+        + area_score * 1.4
+    )
+
+    reason = "auto_court_detected" if auto_corners else "visual_quality_fallback"
+    return {
+        "frame": frame,
+        "frame_index": frame_index,
+        "time_sec": frame_index / fps if fps > 0 else 0.0,
+        "score": score,
+        "reason": reason,
+        "auto_corners": [[int(x), int(y)] for x, y in auto_corners] if auto_corners else None,
+    }
+
+
+def _validate_corners_for_video(corners: list[list[int]], video_path: Path) -> None:
+    cap = cv2.VideoCapture(str(video_path))
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
+    cap.release()
+    if width <= 0 or height <= 0:
+        return
+
+    for x, y in corners:
+        if x < 0 or y < 0 or x >= width or y >= height:
+            raise_api_error(
+                status_code=400,
+                code="INVALID_CORNERS",
+                message="手动角点超出视频画面范围。",
+                hint=f"视频尺寸为 {width}x{height}，请重新点选角点。",
+            )
+
+    area = float(cv2.contourArea(np.array(corners, dtype=np.float32)))
+    if area < width * height * 0.02:
+        raise_api_error(
+            status_code=400,
+            code="INVALID_CORNERS",
+            message="手动角点围成的球场区域过小。",
+            hint="请按左上、右上、右下、左下重新点选四个外侧角点。",
+        )
 
 
 def _output_url_to_path(url: str | None) -> Path | None:

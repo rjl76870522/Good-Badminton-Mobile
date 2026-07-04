@@ -45,8 +45,9 @@ Fields:
 
 | Name | Required | Value |
 | --- | --- | --- |
-| `file` | yes | video file |
+| `file` | yes, unless `source_upload_id` is used | video file |
 | `user_id` | no | stable guest/user id, default `guest` |
+| `source_upload_id` | no | returned by `/api/videos/preview-frame`; avoids uploading the same video twice |
 | `template_path` | no | leave empty, or use `templates/badminton_template.png` |
 | `corners_json` | no | leave empty, or JSON like `[[824,711],[1728,711],[2093,1382],[459,1382]]` |
 | `language` | no | `zh` or `en`, default `zh` |
@@ -62,6 +63,40 @@ left-top, right-top, right-bottom, left-bottom
 ```
 
 If the user does not set manual corners, omit `corners_json` or send it as an empty value.
+
+## Preview Frame For Manual Corners
+
+```http
+POST /api/videos/preview-frame
+Content-Type: multipart/form-data
+```
+
+Fields:
+
+| Name | Required | Value |
+| --- | --- | --- |
+| `file` | yes | video file |
+| `user_id` | no | stable guest/user id |
+
+The backend samples multiple frames and returns a good frame where the full court is likely visible.
+
+Response:
+
+```json
+{
+  "source_upload_id": "1f2e3d...",
+  "image_url": "/preview-frames/1f2e3d....jpg",
+  "time_sec": 2.86,
+  "selection_reason": "auto_court_detected",
+  "auto_corners": [[824,711],[1728,711],[2093,1382],[459,1382]],
+  "video": {
+    "width": 2560,
+    "height": 1600
+  }
+}
+```
+
+Display `baseUrl + image_url`, let the user tap corners, then call `/api/videos/upload` with `source_upload_id` and generated `corners_json`.
 
 For guest mode, the app should generate one UUID, store it locally, and send it as `user_id` on uploads and history queries.
 
