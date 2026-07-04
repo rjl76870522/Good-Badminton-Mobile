@@ -57,6 +57,39 @@ class MovementMetricsTest(unittest.TestCase):
         self.assertIn("lower", first)
         self.assertLess(first["upper"].y, first["lower"].y)
 
+    def test_match_summary_uses_clear_metric_semantics(self):
+        records = []
+        for index in range(7):
+            time_sec = index * 0.2
+            records.append(
+                frame(
+                    index,
+                    time_sec,
+                    [2.0 + index * 0.10, 3.0],
+                    lower=[3.0 + index * 0.15, 10.0],
+                )
+            )
+        path = write_jsonl(records)
+        try:
+            summary = summarize_detections(path)
+        finally:
+            path.unlink(missing_ok=True)
+
+        players = summary["players"]
+        match = summary["match"]
+        player_distance_sum = sum(player["total_distance_m"] for player in players)
+        player_active_time_sum = sum(player["active_time_sec"] for player in players)
+
+        self.assertAlmostEqual(match["total_distance_m"], player_distance_sum, places=2)
+        self.assertAlmostEqual(match["primary_player_distance_m"], players[0]["total_distance_m"], places=2)
+        self.assertEqual(match["max_speed_mps"], max(player["max_speed_mps"] for player in players))
+        self.assertAlmostEqual(
+            match["avg_speed_mps"],
+            player_distance_sum / player_active_time_sum,
+            places=2,
+        )
+        self.assertGreater(match["combined_distance_per_min"], match["distance_per_min"])
+
 
 def frame(index, time_sec, upper, lower=None):
     players = {

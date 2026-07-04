@@ -62,6 +62,7 @@ def build_mobile_report(
         },
         "summary": {
             "total_distance_m": match["total_distance_m"],
+            "primary_player_distance_m": match.get("primary_player_distance_m", 0.0),
             "max_speed_mps": match["max_speed_mps"],
             "raw_max_speed_mps": match.get("raw_max_speed_mps", 0.0),
             "avg_speed_mps": match["avg_speed_mps"],
@@ -70,6 +71,7 @@ def build_mobile_report(
             "shuttlecock_frames": detection_summary["frames_with_shuttlecock"],
             "active_time_sec": match["active_time_sec"],
             "distance_per_min": match["distance_per_min"],
+            "combined_distance_per_min": match.get("combined_distance_per_min", 0.0),
             "coverage_area_m2": match["coverage_area_m2"],
             "court_span_x_m": match["court_span_x_m"],
             "court_span_y_m": match["court_span_y_m"],
@@ -343,11 +345,13 @@ def format_metric(value: float, unit: str) -> str:
 def _empty_match_summary() -> dict[str, Any]:
     return {
         "total_distance_m": 0.0,
+        "primary_player_distance_m": 0.0,
         "max_speed_mps": 0.0,
         "raw_max_speed_mps": 0.0,
         "avg_speed_mps": 0.0,
         "active_time_sec": 0.0,
         "distance_per_min": 0.0,
+        "combined_distance_per_min": 0.0,
         "coverage_area_m2": 0.0,
         "court_span_x_m": 0.0,
         "court_span_y_m": 0.0,

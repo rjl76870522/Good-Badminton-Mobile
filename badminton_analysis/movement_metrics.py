@@ -107,32 +107,8 @@ def summarize_detections(detections_path: str | os.PathLike[str] | None) -> dict
 
     match = empty_match_summary()
     shuttlecock_ratio = shuttlecock_frames / frames if frames > 0 else 0.0
-    if primary:
-        for key in (
-            "total_distance_m",
-            "max_speed_mps",
-            "raw_max_speed_mps",
-            "avg_speed_mps",
-            "active_time_sec",
-            "distance_per_min",
-            "coverage_area_m2",
-            "court_span_x_m",
-            "court_span_y_m",
-            "front_court_ratio",
-            "back_court_ratio",
-            "left_court_ratio",
-            "right_court_ratio",
-            "high_intensity_moves",
-            "stable_position_frames",
-            "dropped_jump_count",
-            "tracking_quality_score",
-        ):
-            match[key] = primary.get(key, match.get(key))
-        match["intensity_score"] = calculate_intensity_score(
-            total_distance_m=primary["total_distance_m"],
-            max_speed_mps=primary["max_speed_mps"],
-            active_time_sec=primary["active_time_sec"],
-        )
+    if player_summaries:
+        match.update(build_match_summary(player_summaries, primary))
 
     match["frames_with_detections"] = frames
     match["frames_with_shuttlecock"] = shuttlecock_frames
@@ -157,6 +133,59 @@ def load_stable_player_lookup(detections_path: str | os.PathLike[str] | None) ->
         for point in metrics.stable_points:
             lookup.setdefault(round(point.time_sec, 6), {})[name] = point
     return lookup
+
+
+def build_match_summary(
+    player_summaries: list[dict[str, Any]],
+    primary: dict[str, Any] | None,
+) -> dict[str, Any]:
+    total_distance = sum(float(player.get("total_distance_m") or 0.0) for player in player_summaries)
+    total_active_time = sum(float(player.get("active_time_sec") or 0.0) for player in player_summaries)
+    match_active_time = max(float(player.get("active_time_sec") or 0.0) for player in player_summaries)
+    avg_speed = total_distance / total_active_time if total_active_time > 0 else 0.0
+    distance_per_min = avg_speed * 60.0
+    combined_distance_per_min = total_distance / match_active_time * 60.0 if match_active_time > 0 else 0.0
+    max_speed = max(float(player.get("max_speed_mps") or 0.0) for player in player_summaries)
+    raw_max_speed = max(float(player.get("raw_max_speed_mps") or 0.0) for player in player_summaries)
+    stable_frames = sum(int(player.get("stable_position_frames") or 0) for player in player_summaries)
+    dropped_jumps = sum(int(player.get("dropped_jump_count") or 0) for player in player_summaries)
+    high_intensity_moves = sum(int(player.get("high_intensity_moves") or 0) for player in player_summaries)
+    tracking_quality = _weighted_average(
+        player_summaries,
+        "tracking_quality_score",
+        "stable_position_frames",
+    )
+    coverage_area = max(float(player.get("coverage_area_m2") or 0.0) for player in player_summaries)
+    span_x = max(float(player.get("court_span_x_m") or 0.0) for player in player_summaries)
+    span_y = max(float(player.get("court_span_y_m") or 0.0) for player in player_summaries)
+
+    summary = {
+        "total_distance_m": round(total_distance, 2),
+        "primary_player_distance_m": round(float((primary or {}).get("total_distance_m") or 0.0), 2),
+        "max_speed_mps": round(max_speed, 2),
+        "raw_max_speed_mps": round(raw_max_speed, 2),
+        "avg_speed_mps": round(avg_speed, 2),
+        "active_time_sec": round(match_active_time, 2),
+        "distance_per_min": round(distance_per_min, 2),
+        "combined_distance_per_min": round(combined_distance_per_min, 2),
+        "coverage_area_m2": round(coverage_area, 2),
+        "court_span_x_m": round(span_x, 2),
+        "court_span_y_m": round(span_y, 2),
+        "front_court_ratio": round(_weighted_average(player_summaries, "front_court_ratio", "stable_position_frames"), 2),
+        "back_court_ratio": round(_weighted_average(player_summaries, "back_court_ratio", "stable_position_frames"), 2),
+        "left_court_ratio": round(_weighted_average(player_summaries, "left_court_ratio", "stable_position_frames"), 2),
+        "right_court_ratio": round(_weighted_average(player_summaries, "right_court_ratio", "stable_position_frames"), 2),
+        "high_intensity_moves": high_intensity_moves,
+        "stable_position_frames": stable_frames,
+        "dropped_jump_count": dropped_jumps,
+        "tracking_quality_score": int(round(tracking_quality)),
+    }
+    summary["intensity_score"] = calculate_intensity_score(
+        distance_per_min=summary["distance_per_min"],
+        max_speed_mps=summary["max_speed_mps"],
+        active_time_sec=summary["active_time_sec"],
+    )
+    return summary
 
 
 def load_detection_points(
@@ -281,14 +310,14 @@ def percentile(values: list[float], pct: int) -> float:
 
 def calculate_intensity_score(
     *,
-    total_distance_m: float,
+    distance_per_min: float,
     max_speed_mps: float,
     active_time_sec: float,
 ) -> int:
-    distance_score = min(total_distance_m / 500.0 * 100.0, 100.0)
-    speed_score = min(max_speed_mps / 5.0 * 100.0, 100.0)
-    time_score = min(active_time_sec / 180.0 * 100.0, 100.0)
-    score = 0.45 * distance_score + 0.35 * speed_score + 0.20 * time_score
+    work_rate_score = min(distance_per_min / 130.0 * 100.0, 100.0)
+    speed_score = min(max_speed_mps / 6.0 * 100.0, 100.0)
+    duration_score = min(active_time_sec / 20.0 * 100.0, 100.0)
+    score = 0.50 * work_rate_score + 0.35 * speed_score + 0.15 * duration_score
     return int(round(max(0.0, min(score, 100.0))))
 
 
@@ -339,11 +368,13 @@ def zone_metrics(
 def empty_match_summary() -> dict[str, Any]:
     return {
         "total_distance_m": 0.0,
+        "primary_player_distance_m": 0.0,
         "max_speed_mps": 0.0,
         "raw_max_speed_mps": 0.0,
         "avg_speed_mps": 0.0,
         "active_time_sec": 0.0,
         "distance_per_min": 0.0,
+        "combined_distance_per_min": 0.0,
         "coverage_area_m2": 0.0,
         "court_span_x_m": 0.0,
         "court_span_y_m": 0.0,
@@ -420,3 +451,18 @@ def _tracking_quality(raw_count: int, accepted_count: int, dropped_count: int) -
     dropped_ratio = dropped_count / max(raw_count + dropped_count, 1)
     score = accepted_ratio * 100.0 - dropped_ratio * 35.0
     return int(round(max(0.0, min(score, 100.0))))
+
+
+def _weighted_average(items: list[dict[str, Any]], value_key: str, weight_key: str) -> float:
+    numerator = 0.0
+    denominator = 0.0
+    for item in items:
+        value = float(item.get(value_key) or 0.0)
+        weight = float(item.get(weight_key) or 0.0)
+        if weight <= 0:
+            continue
+        numerator += value * weight
+        denominator += weight
+    if denominator <= 0:
+        return 0.0
+    return numerator / denominator

@@ -1398,7 +1398,7 @@ class _ReportPage extends StatelessWidget {
               _Metric(
                 label: '总距离',
                 value: '${_value(summary['total_distance_m'])} m',
-                note: '根据球员在标准球场坐标中的轨迹累加估算。',
+                note: '两名球员稳定轨迹距离合计，不是单个球员距离。',
               ),
               _Metric(
                 label: '最高速度',
@@ -1408,12 +1408,12 @@ class _ReportPage extends StatelessWidget {
               _Metric(
                 label: '平均速度',
                 value: '${_value(summary['avg_speed_mps'])} m/s',
-                note: '总移动距离除以有效检测时长。',
+                note: '按每名球员有效时长加权后的平均移动速度，不把两人速度相加。',
               ),
               _Metric(
                 label: '训练强度',
                 value: _value(summary['intensity_score']),
-                note: '综合移动距离、速度和有效时长的 0-100 分。',
+                note: '综合单位时间移动强度、最高稳定速度和有效时长的 0-100 分。',
               ),
             ],
           ),
