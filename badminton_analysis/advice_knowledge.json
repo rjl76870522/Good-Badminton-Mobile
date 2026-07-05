@@ -48,6 +48,14 @@
       "source_ids": []
     },
     {
+      "id": "balanced_rally_strength",
+      "category": "strength",
+      "title": "双方移动负荷接近",
+      "principle": "两名球员的移动距离和速度接近时，说明这一回合双方对抗参与度较高，数据更适合做攻防节奏复盘。",
+      "training_focus": "复盘时可以同时比较双方回中速度和被调动区域，而不只看单个球员。",
+      "source_ids": ["bwf-coach-l1"]
+    },
+    {
       "id": "data_insufficient_weakness",
       "category": "weakness",
       "title": "有效运动数据不足",
@@ -104,6 +112,14 @@
       "source_ids": []
     },
     {
+      "id": "player_load_gap_weakness",
+      "category": "weakness",
+      "title": "双方移动负荷差异明显",
+      "principle": "两名球员移动距离或速度差异较大时，可能是战术压迫、被动防守，也可能是某一侧跟踪质量不稳定。",
+      "training_focus": "结合视频确认是比赛战术导致，还是某名球员在连续回中和补位上更吃力。",
+      "source_ids": ["bwf-coach-l1"]
+    },
+    {
       "id": "low_shuttle_visibility_weakness",
       "category": "weakness",
       "title": "羽毛球识别稳定性不足",
@@ -158,6 +174,14 @@
       "principle": "当轨迹偏向某个半场时，需要用固定路线训练补齐另一侧或另一端的启动和回中。",
       "training_focus": "按前后场或左右场 2:2 组合练习：每次到点后回中，再去相反区域；每组 30 秒，做 4 组。",
       "source_ids": ["bwf-coach-l1", "badmintonskills-footwork-drills"]
+    },
+    {
+      "id": "longer_sample_review",
+      "category": "improvement",
+      "title": "连续片段采集与对比",
+      "principle": "短片段适合分析单回合，但训练趋势需要更长的连续片段才能稳定判断强度、覆盖和回中质量。",
+      "training_focus": "同一机位连续拍摄 30-90 秒，保留完整球场；每次复盘对比强度分、稳定速度、覆盖面积和回中质量。",
+      "source_ids": []
     },
     {
       "id": "camera_setup_improvement",

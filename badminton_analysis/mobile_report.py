@@ -124,8 +124,10 @@ def generate_coaching(detection_summary: dict[str, Any]) -> dict[str, list[dict[
     }
 
     match = detection_summary.get("match") or {}
+    players = detection_summary.get("players") or []
     distance = float(match.get("total_distance_m") or 0.0)
     max_speed = float(match.get("max_speed_mps") or 0.0)
+    raw_max_speed = float(match.get("raw_max_speed_mps") or 0.0)
     avg_speed = float(match.get("avg_speed_mps") or 0.0)
     active_time = float(match.get("active_time_sec") or 0.0)
     distance_per_min = float(match.get("distance_per_min") or 0.0)
@@ -144,6 +146,7 @@ def generate_coaching(detection_summary: dict[str, Any]) -> dict[str, list[dict[
     frames = int(detection_summary.get("frames_with_detections") or 0)
     shuttlecock_ratio = float(detection_summary.get("shuttlecock_ratio") or 0.0)
     zone_bias = max(abs(front_ratio - back_ratio), abs(left_ratio - right_ratio))
+    player_gap = player_load_gap(players)
 
     if distance <= 0 or frames <= 0:
         add_coaching_item(
@@ -215,6 +218,20 @@ def generate_coaching(detection_summary: dict[str, Any]) -> dict[str, list[dict[
             detail="画面识别质量可用，本次报告中的热力图、轨迹和集锦有参考价值。",
             training_focus="继续保持固定机位和完整球场画面，方便后续不同训练之间做对比。",
         )
+    if player_gap and player_gap["distance_gap_ratio"] <= 0.18 and player_gap["speed_gap_ratio"] <= 0.20:
+        add_coaching_item(
+            coaching,
+            "strengths",
+            entries,
+            "balanced_rally_strength",
+            (
+                f"{player_gap['first_name']} 移动 {format_metric(player_gap['first_distance'], 'm')}，"
+                f"{player_gap['second_name']} 移动 {format_metric(player_gap['second_distance'], 'm')}；"
+                f"双方距离差约 {format_percent(player_gap['distance_gap_ratio'])}。"
+            ),
+            detail="双方移动负荷接近，说明这一段对抗参与度比较均衡，适合做攻防节奏复盘。",
+            training_focus="对照视频分别观察双方被调动后的回中速度，找出谁在下一拍更早完成站位。",
+        )
 
     if max_speed >= 4.5 and (avg_speed < 1.5 or distance_per_min < 95):
         add_coaching_item(
@@ -285,6 +302,20 @@ def generate_coaching(detection_summary: dict[str, Any]) -> dict[str, list[dict[
             detail="移动分布存在明显偏向，可能是该回合战术集中，也可能暴露出某个区域覆盖不足。",
             training_focus="先结合视频画面判断对手是否持续压同一区域；若不是战术导致，再补相反区域的启动和回中。",
         )
+    if player_gap and player_gap["distance_gap_ratio"] >= 0.28:
+        add_coaching_item(
+            coaching,
+            "weaknesses",
+            entries,
+            "player_load_gap_weakness",
+            (
+                f"{player_gap['first_name']} 移动 {format_metric(player_gap['first_distance'], 'm')}，"
+                f"{player_gap['second_name']} 移动 {format_metric(player_gap['second_distance'], 'm')}；"
+                f"距离差约 {format_percent(player_gap['distance_gap_ratio'])}。"
+            ),
+            detail="双方移动负荷差异较大，可能是一方被持续调动，也可能是某一侧跟踪质量不稳定。",
+            training_focus="结合视频确认是哪一方承担了更多被动移动，再看对应球员的回中和补位是否慢半拍。",
+        )
     if shuttlecock_ratio < 0.45 and frames >= 60:
         add_coaching_item(
             coaching,
@@ -293,14 +324,21 @@ def generate_coaching(detection_summary: dict[str, Any]) -> dict[str, list[dict[
             "low_shuttle_visibility_weakness",
             f"羽毛球识别占比约 {round(shuttlecock_ratio * 100)}%，球速和集锦判断会更不稳定。",
         )
-    if tracking_quality and (tracking_quality < 80 or dropped_jump_count >= 80):
+    if tracking_quality and (
+        tracking_quality < 80
+        or dropped_jump_count >= 80
+        or (raw_max_speed >= max(max_speed * 2.2, 10.0) and dropped_jump_count >= 20)
+    ):
         add_coaching_item(
             coaching,
             "weaknesses",
             entries,
             "tracking_noise_weakness",
-            f"轨迹质量分 {tracking_quality}，过滤跳点 {dropped_jump_count} 个。",
-            detail="球员关键点或脚点仍有抖动，部分速度和距离需要按稳定值解读。",
+            (
+                f"轨迹质量分 {tracking_quality}，过滤跳点 {dropped_jump_count} 个；"
+                f"原始峰值 {format_metric(raw_max_speed, 'm/s')}，稳定峰值 {format_metric(max_speed, 'm/s')}。"
+            ),
+            detail="报告已经使用稳定速度，但原始轨迹里仍有跳点，说明部分脚点或关键点存在抖动。",
             training_focus="优先检查画面是否完整、角点是否贴合外线、球员脚部是否被遮挡。",
         )
 
@@ -324,38 +362,6 @@ def generate_coaching(detection_summary: dict[str, Any]) -> dict[str, list[dict[
             training_focus="复盘视频时逐拍暂停，观察每次击球后的第一步恢复方向和回中速度。",
         )
 
-    if has_item(coaching["weaknesses"], "movement_balance_weakness"):
-        add_coaching_item(
-            coaching,
-            "improvements",
-            entries,
-            "balanced_coverage_drill",
-            "根据前后场或左右场比例偏向，补齐相反区域的启动和回中。",
-        )
-    if has_item(coaching["weaknesses"], "narrow_coverage_weakness"):
-        add_coaching_item(
-            coaching,
-            "improvements",
-            entries,
-            "coverage_shadow_drill",
-            "用于补齐前后场和左右两侧覆盖。",
-        )
-    if has_item(coaching["weaknesses"], "low_shuttle_visibility_weakness"):
-        add_coaching_item(
-            coaching,
-            "improvements",
-            entries,
-            "camera_setup_improvement",
-            "先提升视频质量，再对球速和击球片段做判断。",
-        )
-    if has_item(coaching["weaknesses"], "tracking_noise_weakness"):
-        add_coaching_item(
-            coaching,
-            "improvements",
-            entries,
-            "camera_setup_improvement",
-            "先减少轨迹跳点，再比较速度、距离和集锦。",
-        )
     if has_item(coaching["weaknesses"], "low_continuity_weakness") or max_speed >= 4.8:
         add_coaching_item(
             coaching,
@@ -365,6 +371,14 @@ def generate_coaching(detection_summary: dict[str, Any]) -> dict[str, list[dict[
             "把爆发启动转化成连续回合能力。",
             detail="高强度片段里，真正影响下一拍的是启动后的回位质量。",
             training_focus="六点影子步每次到点后必须回中，30 秒训练、30 秒休息，4 组；不要只追求第一步快。",
+        )
+    if has_item(coaching["weaknesses"], "movement_balance_weakness"):
+        add_coaching_item(
+            coaching,
+            "improvements",
+            entries,
+            "balanced_coverage_drill",
+            "根据前后场或左右场比例偏向，补齐相反区域的启动和回中。",
         )
     if intensity < 60 or distance_per_min < 120:
         add_coaching_item(
@@ -381,6 +395,40 @@ def generate_coaching(detection_summary: dict[str, Any]) -> dict[str, list[dict[
             entries,
             "rear_court_recovery_drill",
             "高强度调动后重点保证后场到中区的恢复。",
+        )
+    if has_item(coaching["weaknesses"], "narrow_coverage_weakness"):
+        add_coaching_item(
+            coaching,
+            "improvements",
+            entries,
+            "coverage_shadow_drill",
+            "用于补齐前后场和左右两侧覆盖。",
+        )
+    if has_item(coaching["weaknesses"], "short_sample_weakness"):
+        add_coaching_item(
+            coaching,
+            "improvements",
+            entries,
+            "longer_sample_review",
+            f"当前有效时长 {format_metric(active_time, 's')}，更适合单回合复盘；连续训练建议补充更长片段。",
+            detail="短片段已经能看出启动和回中问题，但强度趋势、覆盖习惯和体能负荷需要更长样本。",
+            training_focus="同一机位连续拍摄 30-90 秒，保留完整球场；每次复盘对比强度分、稳定速度、覆盖面积和回中质量。",
+        )
+    if has_item(coaching["weaknesses"], "low_shuttle_visibility_weakness"):
+        add_coaching_item(
+            coaching,
+            "improvements",
+            entries,
+            "camera_setup_improvement",
+            "先提升视频质量，再对球速和击球片段做判断。",
+        )
+    if has_item(coaching["weaknesses"], "tracking_noise_weakness"):
+        add_coaching_item(
+            coaching,
+            "improvements",
+            entries,
+            "camera_setup_improvement",
+            "先减少轨迹跳点，再比较速度、距离和集锦。",
         )
     if len(coaching["improvements"]) < 2:
         add_coaching_item(
@@ -454,6 +502,31 @@ def format_metric(value: float, unit: str) -> str:
 
 def format_percent(value: float) -> str:
     return f"{round(max(0.0, min(float(value), 1.0)) * 100)}%"
+
+
+def player_load_gap(players: Any) -> dict[str, Any] | None:
+    if not isinstance(players, list) or len(players) < 2:
+        return None
+    first = players[0] if isinstance(players[0], dict) else {}
+    second = players[1] if isinstance(players[1], dict) else {}
+    first_distance = float(first.get("total_distance_m") or 0.0)
+    second_distance = float(second.get("total_distance_m") or 0.0)
+    first_speed = float(first.get("max_speed_mps") or 0.0)
+    second_speed = float(second.get("max_speed_mps") or 0.0)
+    max_distance = max(first_distance, second_distance)
+    max_speed = max(first_speed, second_speed)
+    if max_distance <= 0:
+        return None
+    return {
+        "first_name": str(first.get("name") or "球员 A"),
+        "second_name": str(second.get("name") or "球员 B"),
+        "first_distance": first_distance,
+        "second_distance": second_distance,
+        "first_speed": first_speed,
+        "second_speed": second_speed,
+        "distance_gap_ratio": abs(first_distance - second_distance) / max_distance,
+        "speed_gap_ratio": abs(first_speed - second_speed) / max_speed if max_speed > 0 else 0.0,
+    }
 
 
 def _empty_match_summary() -> dict[str, Any]:

@@ -13,6 +13,7 @@ class MobileReportCoachingTest(unittest.TestCase):
                 "match": {
                     "total_distance_m": 66.91,
                     "max_speed_mps": 6.6,
+                    "raw_max_speed_mps": 18.62,
                     "avg_speed_mps": 1.87,
                     "active_time_sec": 17.9,
                     "distance_per_min": 112.14,
@@ -38,7 +39,9 @@ class MobileReportCoachingTest(unittest.TestCase):
         self.assertNotIn("训练强度偏低", weakness_titles)
         self.assertIn("short_sample_weakness", weakness_ids)
         self.assertIn("low_continuity_weakness", weakness_ids)
+        self.assertIn("tracking_noise_weakness", weakness_ids)
         self.assertEqual(len(coaching["strengths"]), 3)
+        self.assertEqual(len(coaching["weaknesses"]), 3)
         self.assertEqual(len(coaching["improvements"]), 3)
 
 
