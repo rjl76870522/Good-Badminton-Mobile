@@ -129,12 +129,21 @@ def generate_coaching(detection_summary: dict[str, Any]) -> dict[str, list[dict[
     avg_speed = float(match.get("avg_speed_mps") or 0.0)
     active_time = float(match.get("active_time_sec") or 0.0)
     distance_per_min = float(match.get("distance_per_min") or 0.0)
+    combined_distance_per_min = float(match.get("combined_distance_per_min") or 0.0)
     intensity = int(match.get("intensity_score") or 0)
     coverage_area = float(match.get("coverage_area_m2") or 0.0)
     span_x = float(match.get("court_span_x_m") or 0.0)
     span_y = float(match.get("court_span_y_m") or 0.0)
+    front_ratio = float(match.get("front_court_ratio") or 0.0)
+    back_ratio = float(match.get("back_court_ratio") or 0.0)
+    left_ratio = float(match.get("left_court_ratio") or 0.0)
+    right_ratio = float(match.get("right_court_ratio") or 0.0)
+    high_intensity_moves = int(match.get("high_intensity_moves") or 0)
+    dropped_jump_count = int(match.get("dropped_jump_count") or 0)
+    tracking_quality = int(match.get("tracking_quality_score") or 0)
     frames = int(detection_summary.get("frames_with_detections") or 0)
     shuttlecock_ratio = float(detection_summary.get("shuttlecock_ratio") or 0.0)
+    zone_bias = max(abs(front_ratio - back_ratio), abs(left_ratio - right_ratio))
 
     if distance <= 0 or frames <= 0:
         add_coaching_item(
@@ -153,37 +162,58 @@ def generate_coaching(detection_summary: dict[str, Any]) -> dict[str, list[dict[
         )
         return coaching
 
-    if max_speed >= 4.5:
-        add_coaching_item(
-            coaching,
-            "strengths",
-            entries,
-            "fast_start_strength",
-            f"检测最高移动速度 {format_metric(max_speed, 'm/s')}，具备明显爆发移动。",
-        )
     if distance_per_min >= 110 or intensity >= 65:
         add_coaching_item(
             coaching,
             "strengths",
             entries,
             "work_rate_strength",
-            f"单位时间移动约 {format_metric(distance_per_min, 'm/min')}，训练负荷较集中。",
+            (
+                f"强度分 {intensity}，单人平均单位时间移动约 {format_metric(distance_per_min, 'm/min')}；"
+                f"双人合计移动负荷约 {format_metric(combined_distance_per_min, 'm/min')}。"
+            ),
+            detail="这段视频的移动密度较高，说明回合中连续启动、追球和攻防转换比较明显。",
+            training_focus="后续复盘可以重点观察高强度移动后是否能马上回到合理中区，而不只是看最高速度。",
         )
-    if coverage_area >= 12 or span_x >= 3.5 or span_y >= 6.0:
+    if max_speed >= 4.8:
+        add_coaching_item(
+            coaching,
+            "strengths",
+            entries,
+            "fast_start_strength",
+            (
+                f"稳定最高速度 {format_metric(max_speed, 'm/s')}，"
+                f"高强度移动样本 {high_intensity_moves} 次。"
+            ),
+            detail="球员在短距离启动和抢点上有明显表现，说明这段回合不是低强度慢节奏。",
+            training_focus="保持分腿垫步后的第一步质量，同时注意启动后不要失去身体重心。",
+        )
+    if coverage_area >= 10 or span_x >= 3.3 or span_y >= 4.0:
         add_coaching_item(
             coaching,
             "strengths",
             entries,
             "court_coverage_strength",
-            f"轨迹覆盖约 {format_metric(coverage_area, 'm²')}，横向 {format_metric(span_x, 'm')}、纵向 {format_metric(span_y, 'm')}。",
+            (
+                f"覆盖面积约 {format_metric(coverage_area, 'm²')}，横向 {format_metric(span_x, 'm')}、"
+                f"纵向 {format_metric(span_y, 'm')}；前后场比例 {format_percent(front_ratio)} / {format_percent(back_ratio)}，"
+                f"左右场比例 {format_percent(left_ratio)} / {format_percent(right_ratio)}。"
+            ),
+            detail="轨迹已经覆盖到较大场地范围，说明回合中存在前后或左右调动。",
+            training_focus="结合轨迹图观察是否每次到位后都能回中，避免覆盖范围大但下一拍恢复慢。",
         )
-    if frames >= 120 and shuttlecock_ratio >= 0.5:
+    if frames >= 120 and shuttlecock_ratio >= 0.5 and tracking_quality >= 80:
         add_coaching_item(
             coaching,
             "strengths",
             entries,
             "stable_data_strength",
-            f"有效检测 {frames} 帧，羽毛球识别占比约 {round(shuttlecock_ratio * 100)}%。",
+            (
+                f"有效检测 {frames} 帧，羽毛球识别占比约 {format_percent(shuttlecock_ratio)}，"
+                f"轨迹质量分 {tracking_quality}。"
+            ),
+            detail="画面识别质量可用，本次报告中的热力图、轨迹和集锦有参考价值。",
+            training_focus="继续保持固定机位和完整球场画面，方便后续不同训练之间做对比。",
         )
 
     if max_speed >= 4.5 and (avg_speed < 1.5 or distance_per_min < 95):
@@ -194,6 +224,20 @@ def generate_coaching(detection_summary: dict[str, Any]) -> dict[str, list[dict[
             "low_continuity_weakness",
             f"最高速度 {format_metric(max_speed, 'm/s')}，但平均速度 {format_metric(avg_speed, 'm/s')}，爆发后连续衔接还有提升空间。",
         )
+    elif intensity >= 70 and max_speed >= 5.5 and active_time < 30:
+        add_coaching_item(
+            coaching,
+            "weaknesses",
+            entries,
+            "low_continuity_weakness",
+            (
+                f"稳定最高速度 {format_metric(max_speed, 'm/s')}，平均速度 {format_metric(avg_speed, 'm/s')}，"
+                f"高强度移动 {high_intensity_moves} 次。"
+            ),
+            title="高强度后的回中质量需复核",
+            detail="指标显示这段回合强度很高，但短片段无法直接判断连续多拍后的恢复质量，需要结合视频看每次冲刺后是否及时回中。",
+            training_focus="复盘时重点看高强度启动后的第一步恢复：击球后重心是否稳定、是否能立刻回到合理中区。",
+        )
     if coverage_area < 8 and active_time >= 8:
         add_coaching_item(
             coaching,
@@ -202,13 +246,44 @@ def generate_coaching(detection_summary: dict[str, Any]) -> dict[str, list[dict[
             "narrow_coverage_weakness",
             f"轨迹覆盖约 {format_metric(coverage_area, 'm²')}，可能集中在局部区域。",
         )
-    if intensity < 45 or active_time < 25:
+    if intensity < 45 and distance_per_min < 95:
         add_coaching_item(
             coaching,
             "weaknesses",
             entries,
             "low_intensity_weakness",
-            f"本次有效运动时长约 {format_metric(active_time, 's')}，强度分 {intensity}。",
+            (
+                f"强度分 {intensity}，单位时间移动约 {format_metric(distance_per_min, 'm/min')}，"
+                f"稳定最高速度 {format_metric(max_speed, 'm/s')}。"
+            ),
+            detail="这段片段的移动密度和速度都偏低，更像低负荷练习或非对抗片段。",
+            training_focus="先提高连续移动密度，再比较技术细节；正式复盘建议选连续对抗片段。",
+        )
+    elif active_time < 25:
+        add_coaching_item(
+            coaching,
+            "weaknesses",
+            entries,
+            "short_sample_weakness",
+            (
+                f"有效分析时长约 {format_metric(active_time, 's')}，但强度分 {intensity}；"
+                "它适合评价这一回合，不适合代表整场训练。"
+            ),
+            detail="当前片段强度不低，问题不是训练轻，而是样本时间短，结论更偏向单回合复盘。",
+            training_focus="如果要做训练趋势或体能判断，建议上传 30 秒以上连续固定机位片段；如果只看这一回合，就重点看启动和回中。",
+        )
+    if zone_bias >= 0.35 and coverage_area >= 8:
+        add_coaching_item(
+            coaching,
+            "weaknesses",
+            entries,
+            "movement_balance_weakness",
+            (
+                f"前后场比例 {format_percent(front_ratio)} / {format_percent(back_ratio)}，"
+                f"左右场比例 {format_percent(left_ratio)} / {format_percent(right_ratio)}。"
+            ),
+            detail="移动分布存在明显偏向，可能是该回合战术集中，也可能暴露出某个区域覆盖不足。",
+            training_focus="先结合视频画面判断对手是否持续压同一区域；若不是战术导致，再补相反区域的启动和回中。",
         )
     if shuttlecock_ratio < 0.45 and frames >= 60:
         add_coaching_item(
@@ -217,6 +292,16 @@ def generate_coaching(detection_summary: dict[str, Any]) -> dict[str, list[dict[
             entries,
             "low_shuttle_visibility_weakness",
             f"羽毛球识别占比约 {round(shuttlecock_ratio * 100)}%，球速和集锦判断会更不稳定。",
+        )
+    if tracking_quality and (tracking_quality < 80 or dropped_jump_count >= 80):
+        add_coaching_item(
+            coaching,
+            "weaknesses",
+            entries,
+            "tracking_noise_weakness",
+            f"轨迹质量分 {tracking_quality}，过滤跳点 {dropped_jump_count} 个。",
+            detail="球员关键点或脚点仍有抖动，部分速度和距离需要按稳定值解读。",
+            training_focus="优先检查画面是否完整、角点是否贴合外线、球员脚部是否被遮挡。",
         )
 
     if not coaching["strengths"]:
@@ -232,10 +317,21 @@ def generate_coaching(detection_summary: dict[str, Any]) -> dict[str, list[dict[
             coaching,
             "weaknesses",
             entries,
-            "low_continuity_weakness",
+            "movement_balance_weakness",
             "本次没有明显异常短板，下一阶段建议重点观察击球后回中是否稳定。",
+            title="下一阶段观察回中质量",
+            detail="数据上没有明显短板，比赛片段更适合继续看细节：到位后重心是否稳定、击球后是否及时回中。",
+            training_focus="复盘视频时逐拍暂停，观察每次击球后的第一步恢复方向和回中速度。",
         )
 
+    if has_item(coaching["weaknesses"], "movement_balance_weakness"):
+        add_coaching_item(
+            coaching,
+            "improvements",
+            entries,
+            "balanced_coverage_drill",
+            "根据前后场或左右场比例偏向，补齐相反区域的启动和回中。",
+        )
     if has_item(coaching["weaknesses"], "narrow_coverage_weakness"):
         add_coaching_item(
             coaching,
@@ -252,13 +348,23 @@ def generate_coaching(detection_summary: dict[str, Any]) -> dict[str, list[dict[
             "camera_setup_improvement",
             "先提升视频质量，再对球速和击球片段做判断。",
         )
-    if has_item(coaching["weaknesses"], "low_continuity_weakness") or max_speed >= 4.5:
+    if has_item(coaching["weaknesses"], "tracking_noise_weakness"):
+        add_coaching_item(
+            coaching,
+            "improvements",
+            entries,
+            "camera_setup_improvement",
+            "先减少轨迹跳点，再比较速度、距离和集锦。",
+        )
+    if has_item(coaching["weaknesses"], "low_continuity_weakness") or max_speed >= 4.8:
         add_coaching_item(
             coaching,
             "improvements",
             entries,
             "split_step_recovery_drill",
-            "把爆发速度转化成连续回合能力。",
+            "把爆发启动转化成连续回合能力。",
+            detail="高强度片段里，真正影响下一拍的是启动后的回位质量。",
+            training_focus="六点影子步每次到点后必须回中，30 秒训练、30 秒休息，4 组；不要只追求第一步快。",
         )
     if intensity < 60 or distance_per_min < 120:
         add_coaching_item(
@@ -274,7 +380,7 @@ def generate_coaching(detection_summary: dict[str, Any]) -> dict[str, list[dict[
             "improvements",
             entries,
             "rear_court_recovery_drill",
-            "防止冲到后场后下一拍回位慢。",
+            "高强度调动后重点保证后场到中区的恢复。",
         )
     if len(coaching["improvements"]) < 2:
         add_coaching_item(
@@ -297,6 +403,10 @@ def add_coaching_item(
     entries: dict[str, dict[str, Any]],
     entry_id: str,
     basis: str,
+    *,
+    title: str | None = None,
+    detail: str | None = None,
+    training_focus: str | None = None,
 ) -> None:
     if has_item(coaching[group], entry_id):
         return
@@ -306,10 +416,10 @@ def add_coaching_item(
     coaching[group].append(
         {
             "id": entry_id,
-            "title": entry.get("title") or entry_id,
-            "detail": entry.get("principle") or "",
+            "title": title or entry.get("title") or entry_id,
+            "detail": detail or entry.get("principle") or "",
             "basis": basis,
-            "training_focus": entry.get("training_focus") or "",
+            "training_focus": training_focus if training_focus is not None else entry.get("training_focus") or "",
             "source_ids": entry.get("source_ids") or [],
         }
     )
@@ -340,6 +450,10 @@ def format_metric(value: float, unit: str) -> str:
     else:
         text = f"{value:.2f}".rstrip("0").rstrip(".")
     return f"{text} {unit}"
+
+
+def format_percent(value: float) -> str:
+    return f"{round(max(0.0, min(float(value), 1.0)) * 100)}%"
 
 
 def _empty_match_summary() -> dict[str, Any]:

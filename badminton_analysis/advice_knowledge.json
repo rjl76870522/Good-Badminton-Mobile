@@ -80,6 +80,30 @@
       "source_ids": []
     },
     {
+      "id": "short_sample_weakness",
+      "category": "weakness",
+      "title": "样本时长偏短",
+      "principle": "短片段可以判断这一回合的速度和覆盖，但不适合直接代表整场或完整训练课。",
+      "training_focus": "正式复盘建议保留 30 秒到 3 分钟的连续固定机位片段；短片段则重点看启动、回中和单回合质量。",
+      "source_ids": []
+    },
+    {
+      "id": "movement_balance_weakness",
+      "category": "weakness",
+      "title": "移动分布不够均衡",
+      "principle": "前后场或左右场比例明显偏向一侧时，说明该片段主要集中在某类落点或某个区域。",
+      "training_focus": "先结合视频判断这是战术选择还是移动短板；如果不是战术安排，再补对应半场的连续覆盖训练。",
+      "source_ids": ["bwf-coach-l1"]
+    },
+    {
+      "id": "tracking_noise_weakness",
+      "category": "weakness",
+      "title": "轨迹稳定性仍需关注",
+      "principle": "轨迹跳点或识别质量偏低时，距离、速度和集锦判断会受到影响。",
+      "training_focus": "优先检查固定机位、完整球场、光线和角点；确认画面稳定后再比较训练表现。",
+      "source_ids": []
+    },
+    {
       "id": "low_shuttle_visibility_weakness",
       "category": "weakness",
       "title": "羽毛球识别稳定性不足",
@@ -126,6 +150,14 @@
       "principle": "覆盖不足时，应先用无球影子步建立完整场地路径，再叠加有球对抗。",
       "training_focus": "按左前、右前、左中、右中、左后、右后的六点顺序练习；每到一点后回中再去下一点。",
       "source_ids": ["badmintonskills-footwork-drills", "bwf-coach-l1"]
+    },
+    {
+      "id": "balanced_coverage_drill",
+      "category": "improvement",
+      "title": "前后场/左右场均衡覆盖",
+      "principle": "当轨迹偏向某个半场时，需要用固定路线训练补齐另一侧或另一端的启动和回中。",
+      "training_focus": "按前后场或左右场 2:2 组合练习：每次到点后回中，再去相反区域；每组 30 秒，做 4 组。",
+      "source_ids": ["bwf-coach-l1", "badmintonskills-footwork-drills"]
     },
     {
       "id": "camera_setup_improvement",
