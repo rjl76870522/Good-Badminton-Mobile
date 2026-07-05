@@ -141,7 +141,7 @@ class _HomePageState extends State<HomePage> {
             'assets/images/badminton_dashboard_bg.png',
             fit: BoxFit.cover,
             alignment: Alignment.topCenter,
-            opacity: const AlwaysStoppedAnimation(0.19),
+            opacity: const AlwaysStoppedAnimation(0.52),
           ),
           DecoratedBox(
             decoration: BoxDecoration(
@@ -149,9 +149,9 @@ class _HomePageState extends State<HomePage> {
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: [
-                  const Color(0xFFF7F9F4).withValues(alpha: 0.55),
+                  const Color(0xFFF7F9F4).withValues(alpha: 0.18),
+                  const Color(0xFFF7F9F4).withValues(alpha: 0.68),
                   const Color(0xFFF7F9F4).withValues(alpha: 0.92),
-                  const Color(0xFFF7F9F4),
                 ],
               ),
             ),
@@ -265,6 +265,21 @@ class _HeroCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(28),
         child: Stack(
           children: [
+            Positioned.fill(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(28),
+                child: Opacity(
+                  opacity: 0.23,
+                  child: Image.asset(
+                    'assets/images/badminton_dashboard_bg.png',
+                    fit: BoxFit.cover,
+                    alignment: Alignment.center,
+                    color: Colors.white,
+                    colorBlendMode: BlendMode.screen,
+                  ),
+                ),
+              ),
+            ),
             const Positioned(
               right: -12,
               top: -10,
