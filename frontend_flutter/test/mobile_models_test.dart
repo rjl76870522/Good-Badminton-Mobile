@@ -57,6 +57,16 @@ void main() {
       'schema_version': 'mobile-report-v1',
       'summary': {'total_distance_m': 18.4},
       'report_summary': '移动节奏较平稳。',
+      'players': [
+        {
+          'name': 'player_1',
+          'total_distance_m': 16.2,
+          'max_speed_mps': 4.7,
+          'coverage_area_m2': 20.1,
+          'tracking_quality_score': 92,
+        }
+      ],
+      'highlight_error': 'ffmpeg unavailable',
       'advice': ['旧建议'],
       'coaching': {
         'strengths': [
@@ -77,6 +87,9 @@ void main() {
           'end_sec': 9,
           'score': 67,
           'reason': 'fast movement',
+          'reason_zh': '球员出现快速启动。',
+          'tags': ['快速启动'],
+          'display_metrics': {'player_peak_mps': 5.9},
           'metrics': {'player_peak_mps': 5.9},
         }
       ],
@@ -96,6 +109,11 @@ void main() {
     expect(report.summary.primaryPlayerDistanceM, 0);
     expect(report.coaching.strengths.single.sourceIds, ['bwf-coach-l1']);
     expect(report.adviceSources.single.title, 'BWF Coach Manual');
+    expect(report.players.single.name, 'player_1');
+    expect(report.players.single.trackingQualityScore, 92);
+    expect(report.highlightError, 'ffmpeg unavailable');
+    expect(report.highlightSegments.single.reasonZh, '球员出现快速启动。');
+    expect(report.highlightSegments.single.tags, ['快速启动']);
   });
 
   test('history parses summary, thumbnail and media files', () {

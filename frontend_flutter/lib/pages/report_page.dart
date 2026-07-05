@@ -118,6 +118,15 @@ class _ReportPageState extends State<ReportPage> {
               ),
               const SizedBox(height: 12),
               _MovementQualityCard(summary: report.summary),
+              if (report.players.isNotEmpty) ...[
+                const SizedBox(height: 20),
+                Text(
+                  '球员表现',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                const SizedBox(height: 8),
+                ...report.players.map(_PlayerPerformanceCard.new),
+              ],
               const SizedBox(height: 20),
               Text(
                 '移动可视化',
@@ -144,6 +153,10 @@ class _ReportPageState extends State<ReportPage> {
                 relativeUrl: report.files.highlight,
                 available: _fileAvailability['highlight'] ?? false,
               ),
+              if (report.highlightError != null) ...[
+                const SizedBox(height: 8),
+                _HighlightWarning(message: report.highlightError!),
+              ],
               if (report.highlightSegments.isNotEmpty)
                 ...report.highlightSegments.map(_HighlightCard.new),
               _FileLink(
@@ -154,6 +167,107 @@ class _ReportPageState extends State<ReportPage> {
             ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _PlayerPerformanceCard extends StatelessWidget {
+  const _PlayerPerformanceCard(this.player);
+
+  final ReportPlayer player;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                CircleAvatar(
+                  backgroundColor:
+                      Theme.of(context).colorScheme.primaryContainer,
+                  child: const Icon(Icons.directions_run),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    player.name,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                  ),
+                ),
+                Text('${player.trackingQualityScore.round()} 分追踪质量'),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                _PlayerMetric(
+                  label: '跑动距离',
+                  value: '${player.totalDistanceM.toStringAsFixed(1)} m',
+                ),
+                _PlayerMetric(
+                  label: '最高速度',
+                  value: '${player.maxSpeedMps.toStringAsFixed(1)} m/s',
+                ),
+                _PlayerMetric(
+                  label: '覆盖面积',
+                  value: '${player.coverageAreaM2.toStringAsFixed(1)} m²',
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PlayerMetric extends StatelessWidget {
+  const _PlayerMetric({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: Theme.of(context).textTheme.bodySmall),
+        const SizedBox(height: 2),
+        Text(value, style: const TextStyle(fontWeight: FontWeight.w800)),
+      ],
+    );
+  }
+}
+
+class _HighlightWarning extends StatelessWidget {
+  const _HighlightWarning({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF4E5),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.info_outline, color: Color(0xFF9A6700)),
+          const SizedBox(width: 8),
+          Expanded(child: Text('精彩集锦暂不可用：$message')),
+        ],
       ),
     );
   }
@@ -722,10 +836,37 @@ class _HighlightCard extends StatelessWidget {
                   ),
                   if (segment.reason.isNotEmpty)
                     Text(
-                      segment.reason,
+                      segment.reasonZh.isNotEmpty
+                          ? segment.reasonZh
+                          : segment.reason,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
+                  if (segment.tags.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 5,
+                      runSpacing: 5,
+                      children: segment.tags
+                          .map(
+                            (tag) => Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 7,
+                                vertical: 3,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFE8F5E9),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Text(
+                                tag,
+                                style: const TextStyle(fontSize: 11),
+                              ),
+                            ),
+                          )
+                          .toList(growable: false),
+                    ),
+                  ],
                 ],
               ),
             ),

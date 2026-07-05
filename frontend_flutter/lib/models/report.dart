@@ -7,8 +7,10 @@ class AnalysisReport {
     required this.coaching,
     required this.files,
     required this.highlightSegments,
+    this.players = const [],
     this.reportSummary = '',
     this.adviceSources = const [],
+    this.highlightError,
     this.taskId,
   });
 
@@ -19,8 +21,10 @@ class AnalysisReport {
   final Coaching coaching;
   final ReportFiles files;
   final List<HighlightSegment> highlightSegments;
+  final List<ReportPlayer> players;
   final String reportSummary;
   final List<AdviceSource> adviceSources;
+  final String? highlightError;
   final String? taskId;
 
   bool get usesLegacyAdvice => coaching.isEmpty && advice.isNotEmpty;
@@ -47,10 +51,24 @@ class AnalysisReport {
               )
               .toList(growable: false)
           : const [],
+      players: _parsePlayers(json['players']),
       reportSummary: json['report_summary']?.toString() ?? '',
       adviceSources: _parseAdviceSources(json['advice_sources']),
+      highlightError: nullableString(json['highlight_error']),
       taskId: nullableString(json['task_id']),
     );
+  }
+
+  static List<ReportPlayer> _parsePlayers(dynamic value) {
+    if (value is! List) return const [];
+    return value
+        .whereType<Map>()
+        .map(
+          (item) => ReportPlayer.fromJson(
+            item.map((key, value) => MapEntry(key.toString(), value)),
+          ),
+        )
+        .toList(growable: false);
   }
 
   static List<AdviceSource> _parseAdviceSources(dynamic value) {
@@ -63,6 +81,38 @@ class AnalysisReport {
           ),
         )
         .toList(growable: false);
+  }
+}
+
+class ReportPlayer {
+  const ReportPlayer({
+    required this.name,
+    this.totalDistanceM = 0,
+    this.maxSpeedMps = 0,
+    this.avgSpeedMps = 0,
+    this.activeTimeSec = 0,
+    this.coverageAreaM2 = 0,
+    this.trackingQualityScore = 0,
+  });
+
+  final String name;
+  final double totalDistanceM;
+  final double maxSpeedMps;
+  final double avgSpeedMps;
+  final double activeTimeSec;
+  final double coverageAreaM2;
+  final double trackingQualityScore;
+
+  factory ReportPlayer.fromJson(Map<String, dynamic> json) {
+    return ReportPlayer(
+      name: json['name']?.toString() ?? '球员',
+      totalDistanceM: numberValue(json['total_distance_m']),
+      maxSpeedMps: numberValue(json['max_speed_mps']),
+      avgSpeedMps: numberValue(json['avg_speed_mps']),
+      activeTimeSec: numberValue(json['active_time_sec']),
+      coverageAreaM2: numberValue(json['coverage_area_m2']),
+      trackingQualityScore: numberValue(json['tracking_quality_score']),
+    );
   }
 }
 
@@ -293,6 +343,9 @@ class HighlightSegment {
     required this.score,
     required this.reason,
     required this.metrics,
+    this.reasonZh = '',
+    this.tags = const [],
+    this.displayMetrics = const {},
   });
 
   final double startSec;
@@ -300,6 +353,9 @@ class HighlightSegment {
   final int score;
   final String reason;
   final Map<String, double> metrics;
+  final String reasonZh;
+  final List<String> tags;
+  final Map<String, double> displayMetrics;
 
   factory HighlightSegment.fromJson(Map<String, dynamic> json) {
     final rawMetrics = mapValue(json['metrics']);
@@ -309,6 +365,15 @@ class HighlightSegment {
       score: integerValue(json['score']),
       reason: json['reason']?.toString() ?? '',
       metrics: rawMetrics.map(
+        (key, value) => MapEntry(key, numberValue(value)),
+      ),
+      reasonZh: json['reason_zh']?.toString() ?? '',
+      tags: json['tags'] is List
+          ? (json['tags'] as List)
+              .map((item) => item.toString())
+              .toList(growable: false)
+          : const [],
+      displayMetrics: mapValue(json['display_metrics']).map(
         (key, value) => MapEntry(key, numberValue(value)),
       ),
     );
