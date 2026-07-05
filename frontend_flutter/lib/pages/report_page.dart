@@ -103,6 +103,10 @@ class _ReportPageState extends State<ReportPage> {
               OutlinedButton(onPressed: _load, child: const Text('重新加载')),
             ],
             if (report != null) ...[
+              if (report.reportSummary.isNotEmpty) ...[
+                _ReportConclusion(text: report.reportSummary),
+                const SizedBox(height: 20),
+              ],
               Text(
                 '核心表现',
                 style: Theme.of(context).textTheme.titleLarge,
@@ -112,6 +116,8 @@ class _ReportPageState extends State<ReportPage> {
                 summary: report.summary,
                 highlightCount: report.highlightSegments.length,
               ),
+              const SizedBox(height: 12),
+              _MovementQualityCard(summary: report.summary),
               const SizedBox(height: 20),
               Text(
                 '移动可视化',
@@ -126,6 +132,10 @@ class _ReportPageState extends State<ReportPage> {
               ),
               const SizedBox(height: 20),
               _CoachingSection(report: report),
+              if (report.adviceSources.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                _AdviceSourcesCard(sources: report.adviceSources),
+              ],
               const SizedBox(height: 20),
               Text('精彩时刻', style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 8),
@@ -144,6 +154,49 @@ class _ReportPageState extends State<ReportPage> {
             ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _ReportConclusion extends StatelessWidget {
+  const _ReportConclusion({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: const Color(0xFFE8F5E9),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xFFC8E3CA)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            Icons.auto_awesome,
+            color: Theme.of(context).colorScheme.primary,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '本次分析结论',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                ),
+                const SizedBox(height: 5),
+                Text(text, style: const TextStyle(height: 1.6)),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -293,6 +346,103 @@ class _VisualizationSwitcher extends StatefulWidget {
 
   @override
   State<_VisualizationSwitcher> createState() => _VisualizationSwitcherState();
+}
+
+class _MovementQualityCard extends StatelessWidget {
+  const _MovementQualityCard({required this.summary});
+
+  final ReportSummary summary;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '稳定运动指标',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+            ),
+            const SizedBox(height: 14),
+            _QualityProgress(
+              label: '追踪质量',
+              value:
+                  (summary.trackingQualityScore / 100).clamp(0, 1).toDouble(),
+              trailing: '${summary.trackingQualityScore.round()} 分',
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: _QualityProgress(
+                    label: '前场活动',
+                    value: summary.frontCourtRatio.clamp(0, 1).toDouble(),
+                    trailing: '${(summary.frontCourtRatio * 100).round()}%',
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: _QualityProgress(
+                    label: '后场活动',
+                    value: summary.backCourtRatio.clamp(0, 1).toDouble(),
+                    trailing: '${(summary.backCourtRatio * 100).round()}%',
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: Text('稳定定位帧：${summary.stablePositionFrames}'),
+                ),
+                Expanded(
+                  child: Text('高强度移动：${summary.highIntensityMoves} 次'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _QualityProgress extends StatelessWidget {
+  const _QualityProgress({
+    required this.label,
+    required this.value,
+    required this.trailing,
+  });
+
+  final String label;
+  final double value;
+  final String trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(child: Text(label)),
+            Text(trailing, style: const TextStyle(fontWeight: FontWeight.w700)),
+          ],
+        ),
+        const SizedBox(height: 5),
+        LinearProgressIndicator(
+          value: value,
+          minHeight: 7,
+          borderRadius: BorderRadius.circular(7),
+        ),
+      ],
+    );
+  }
 }
 
 class _VisualizationSwitcherState extends State<_VisualizationSwitcher> {
@@ -499,6 +649,31 @@ class _CoachingGroup extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _AdviceSourcesCard extends StatelessWidget {
+  const _AdviceSourcesCard({required this.sources});
+
+  final List<AdviceSource> sources;
+
+  @override
+  Widget build(BuildContext context) {
+    return ExpansionTile(
+      tilePadding: const EdgeInsets.symmetric(horizontal: 4),
+      leading: const Icon(Icons.menu_book_outlined),
+      title: const Text('训练建议参考来源'),
+      subtitle: Text('${sources.length} 项资料'),
+      children: sources
+          .map(
+            (source) => ListTile(
+              dense: true,
+              title: Text(source.title.isEmpty ? source.id : source.title),
+              subtitle: source.url == null ? null : SelectableText(source.url!),
+            ),
+          )
+          .toList(growable: false),
     );
   }
 }

@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 
 import '../config/api_config.dart';
 import '../models/history_item.dart';
+import '../models/mobile_user.dart';
 import '../models/preview_frame.dart';
 import '../models/report.dart';
 import '../models/task_status.dart';
@@ -22,6 +23,26 @@ class ApiService {
         .get(ApiConfig.uri('/api/health'))
         .timeout(const Duration(seconds: 15));
     return _decodeMap(response);
+  }
+
+  Future<MobileUser> registerUser(String userId) async {
+    final response = await _client
+        .post(
+          ApiConfig.uri('/api/users/register'),
+          headers: {'content-type': 'application/json'},
+          body: jsonEncode({'user_id': userId}),
+        )
+        .timeout(const Duration(seconds: 20));
+    final payload = _decodeMap(response);
+    return MobileUser.fromJson(_nestedMap(payload, 'user'));
+  }
+
+  Future<MobileUser> getUser(String userId) async {
+    final response = await _client
+        .get(ApiConfig.uri('/api/users/$userId'))
+        .timeout(const Duration(seconds: 20));
+    final payload = _decodeMap(response);
+    return MobileUser.fromJson(_nestedMap(payload, 'user'));
   }
 
   Future<PreviewFrame> previewVideo(
@@ -189,6 +210,15 @@ class ApiService {
         .toList();
   }
 
+  Future<void> deleteTask(String taskId, {required String userId}) async {
+    final response = await _client
+        .delete(
+          ApiConfig.uri('/api/tasks/$taskId', {'user_id': userId}),
+        )
+        .timeout(const Duration(seconds: 20));
+    _decodeMap(response);
+  }
+
   Future<bool> fileExists(String? relativePath) async {
     final url = ApiConfig.absoluteFileUrl(relativePath);
     if (url == null) return false;
@@ -247,6 +277,18 @@ class ApiService {
     return decoded.map(
       (key, value) => MapEntry(key.toString(), value),
     );
+  }
+
+  Map<String, dynamic> _nestedMap(
+    Map<String, dynamic> payload,
+    String key,
+  ) {
+    final value = payload[key];
+    if (value is Map<String, dynamic>) return value;
+    if (value is Map) {
+      return value.map((key, value) => MapEntry(key.toString(), value));
+    }
+    throw ApiException('后端响应缺少 $key 数据');
   }
 }
 

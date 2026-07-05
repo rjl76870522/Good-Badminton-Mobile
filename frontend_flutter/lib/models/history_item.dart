@@ -10,6 +10,10 @@ class HistoryItem {
     required this.files,
     this.thumbnail,
     this.reportUrl,
+    this.reportSummary = '',
+    this.highlightSegments = const [],
+    this.createdAt,
+    this.updatedAt,
     this.progress = 0,
     this.stage = '',
     this.error,
@@ -23,6 +27,10 @@ class HistoryItem {
   final ReportFiles files;
   final String? thumbnail;
   final String? reportUrl;
+  final String reportSummary;
+  final List<HighlightSegment> highlightSegments;
+  final double? createdAt;
+  final double? updatedAt;
   final double progress;
   final String stage;
   final String? error;
@@ -41,6 +49,21 @@ class HistoryItem {
       files: ReportFiles.fromJson(mapValue(json['files'])),
       thumbnail: nullableString(json['thumbnail']),
       reportUrl: nullableString(json['report_url']),
+      reportSummary: json['report_summary']?.toString() ?? '',
+      highlightSegments: json['highlight_segments'] is List
+          ? (json['highlight_segments'] as List)
+              .whereType<Map>()
+              .map(
+                (item) => HighlightSegment.fromJson(
+                  item.map((key, value) => MapEntry(key.toString(), value)),
+                ),
+              )
+              .toList(growable: false)
+          : const [],
+      createdAt:
+          json['created_at'] == null ? null : numberValue(json['created_at']),
+      updatedAt:
+          json['updated_at'] == null ? null : numberValue(json['updated_at']),
       progress: numberValue(json['progress']),
       stage: json['stage']?.toString() ?? '',
       error: nullableString(json['error']),

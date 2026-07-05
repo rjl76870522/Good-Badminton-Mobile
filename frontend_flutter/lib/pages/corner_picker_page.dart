@@ -98,6 +98,16 @@ class _CornerPickerPageState extends State<CornerPickerPage>
                     '可双指缩放预览图；坐标会自动换算为原视频像素。',
                     style: TextStyle(color: Colors.white60),
                   ),
+                  if (widget.preview.sceneWarning != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      widget.preview.sceneWarning!,
+                      style: const TextStyle(
+                        color: Color(0xFFFFCC80),
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),

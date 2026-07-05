@@ -136,6 +136,30 @@ void main() {
       service.close();
     }
   });
+
+  test('user registration and lookup parse nested user payload', () async {
+    final service = ApiService(client: _UserClient());
+    try {
+      final registered = await service.registerUser('guest_test');
+      final loaded = await service.getUser('guest_test');
+      expect(registered.userId, 'guest_test');
+      expect(loaded.createdAt, 123);
+    } finally {
+      service.close();
+    }
+  });
+
+  test('delete task includes stable user id', () async {
+    final client = _DeleteTaskClient();
+    final service = ApiService(client: client);
+    try {
+      await service.deleteTask('task-1', userId: 'guest_test');
+      expect(client.request?.method, 'DELETE');
+      expect(client.request?.url.queryParameters['user_id'], 'guest_test');
+    } finally {
+      service.close();
+    }
+  });
 }
 
 class _SuccessfulUploadClient extends http.BaseClient {
@@ -215,6 +239,35 @@ class _PreviewClient extends http.BaseClient {
         'fps': 30,
         'total_frames': 900,
       },
+    });
+    return http.StreamedResponse(Stream.value(utf8.encode(body)), 200);
+  }
+}
+
+class _UserClient extends http.BaseClient {
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    final body = jsonEncode({
+      'user': {
+        'user_id': 'guest_test',
+        'created_at': 123,
+        'updated_at': 124,
+      },
+    });
+    return http.StreamedResponse(Stream.value(utf8.encode(body)), 200);
+  }
+}
+
+class _DeleteTaskClient extends http.BaseClient {
+  http.BaseRequest? request;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    this.request = request;
+    final body = jsonEncode({
+      'ok': true,
+      'task_id': 'task-1',
+      'deleted_paths': [],
     });
     return http.StreamedResponse(Stream.value(utf8.encode(body)), 200);
   }

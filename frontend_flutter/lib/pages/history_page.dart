@@ -71,6 +71,48 @@ class _HistoryPageState extends State<HistoryPage> {
     if (mounted) await _load();
   }
 
+  Future<void> _deleteTask(HistoryItem task) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('删除训练记录？'),
+        content: Text(
+          '将删除“${task.videoName.isEmpty ? task.taskId : task.videoName}”'
+          '及后端生成的相关文件，此操作无法撤销。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      final userId = await _userStorage.getOrCreateUserId();
+      await _api.deleteTask(task.taskId, userId: userId);
+      if (!mounted) return;
+      setState(() {
+        _tasks = _tasks
+            .where((item) => item.taskId != task.taskId)
+            .toList(growable: false);
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('训练记录已删除')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('删除失败：$error')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -119,6 +161,7 @@ class _HistoryPageState extends State<HistoryPage> {
                   task: task,
                   onTap: () => _openTask(task),
                   onRetry: task.isFailed ? () => _retryTask(task) : null,
+                  onDelete: () => _deleteTask(task),
                 ),
               ),
             ),
@@ -133,11 +176,13 @@ class _HistoryCard extends StatelessWidget {
   const _HistoryCard({
     required this.task,
     required this.onTap,
+    required this.onDelete,
     this.onRetry,
   });
 
   final HistoryItem task;
   final VoidCallback onTap;
+  final VoidCallback onDelete;
   final VoidCallback? onRetry;
 
   @override
@@ -172,6 +217,11 @@ class _HistoryCard extends StatelessWidget {
                         ),
                       ),
                       Chip(label: Text(_statusLabel(task.status))),
+                      IconButton(
+                        tooltip: '删除记录',
+                        onPressed: onDelete,
+                        icon: const Icon(Icons.delete_outline),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 8),
@@ -194,6 +244,15 @@ class _HistoryCard extends StatelessWidget {
                       ),
                     ],
                   ),
+                  if (task.reportSummary.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      task.reportSummary,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
                   if (onRetry != null) ...[
                     const SizedBox(height: 10),
                     OutlinedButton.icon(

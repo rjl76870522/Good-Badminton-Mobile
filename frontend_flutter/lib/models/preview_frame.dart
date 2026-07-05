@@ -24,6 +24,9 @@ class PreviewFrame {
     required this.autoCorners,
     required this.video,
     required this.quality,
+    this.score = 0,
+    this.sceneOk = true,
+    this.sceneWarning,
   });
 
   final String sourceUploadId;
@@ -34,6 +37,9 @@ class PreviewFrame {
   final List<CourtPoint> autoCorners;
   final PreviewVideoInfo video;
   final Map<String, double> quality;
+  final double score;
+  final bool sceneOk;
+  final String? sceneWarning;
 
   factory PreviewFrame.fromJson(Map<String, dynamic> json) {
     final sourceUploadId = json['source_upload_id']?.toString() ?? '';
@@ -56,6 +62,9 @@ class PreviewFrame {
       quality: quality.map(
         (key, value) => MapEntry(key, _number(value)),
       ),
+      score: _number(json['score']),
+      sceneOk: json['scene_ok'] is bool ? json['scene_ok'] as bool : true,
+      sceneWarning: _nullableString(json['scene_warning']),
     );
   }
 }
@@ -102,4 +111,9 @@ double _number(dynamic value) {
 int _integer(dynamic value) {
   if (value is num) return value.toInt();
   return int.tryParse(value?.toString() ?? '') ?? 0;
+}
+
+String? _nullableString(dynamic value) {
+  final text = value?.toString();
+  return text == null || text.isEmpty || text == 'null' ? null : text;
 }

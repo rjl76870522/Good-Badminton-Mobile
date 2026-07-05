@@ -15,6 +15,9 @@ void main() {
       'frame_index': 86,
       'time_sec': 2.86,
       'selection_reason': 'auto_court_detected',
+      'score': 0.91,
+      'scene_ok': false,
+      'scene_warning': '球场区域偏暗',
       'auto_corners': [
         [100, 200],
         [900, 200],
@@ -34,6 +37,9 @@ void main() {
     expect(preview.sourceUploadId, 'source-1');
     expect(preview.autoCorners, hasLength(4));
     expect(preview.video.width, 1000);
+    expect(preview.score, 0.91);
+    expect(preview.sceneOk, isFalse);
+    expect(preview.sceneWarning, '球场区域偏暗');
   });
 
   test('corner mapping preserves original video pixels', () {
@@ -50,6 +56,7 @@ void main() {
     final report = AnalysisReport.fromJson({
       'schema_version': 'mobile-report-v1',
       'summary': {'total_distance_m': 18.4},
+      'report_summary': '移动节奏较平稳。',
       'advice': ['旧建议'],
       'coaching': {
         'strengths': [
@@ -58,6 +65,8 @@ void main() {
             'basis': '峰值速度高',
             'detail': '抢点表现好',
             'training_focus': '保持分腿垫步',
+            'id': 'fast_start_strength',
+            'source_ids': ['bwf-coach-l1'],
           }
         ],
       },
@@ -71,11 +80,22 @@ void main() {
           'metrics': {'player_peak_mps': 5.9},
         }
       ],
+      'advice_sources': [
+        {
+          'id': 'bwf-coach-l1',
+          'title': 'BWF Coach Manual',
+          'url': 'https://example.com/manual.pdf',
+        }
+      ],
     });
 
     expect(report.coaching.strengths.single.title, '启动快');
     expect(report.usesLegacyAdvice, isFalse);
     expect(report.highlightSegments.single.score, 67);
+    expect(report.reportSummary, '移动节奏较平稳。');
+    expect(report.summary.primaryPlayerDistanceM, 0);
+    expect(report.coaching.strengths.single.sourceIds, ['bwf-coach-l1']);
+    expect(report.adviceSources.single.title, 'BWF Coach Manual');
   });
 
   test('history parses summary, thumbnail and media files', () {
@@ -85,6 +105,16 @@ void main() {
       'status': 'completed',
       'video_name': 'match.mp4',
       'summary': {'total_distance_m': 22.59, 'intensity_score': 38},
+      'report_summary': '本次训练强度中等。',
+      'highlight_segments': [
+        {
+          'start_sec': 2,
+          'end_sec': 5,
+          'score': 70,
+          'reason': 'fast',
+          'metrics': {},
+        }
+      ],
       'thumbnail': '/outputs/heatmap.png',
       'files': {'analysis_video': '/outputs/detect.mp4'},
     });
@@ -92,5 +122,7 @@ void main() {
     expect(item.summary.totalDistanceM, 22.59);
     expect(item.thumbnail, '/outputs/heatmap.png');
     expect(item.files.analysisVideo, '/outputs/detect.mp4');
+    expect(item.reportSummary, '本次训练强度中等。');
+    expect(item.highlightSegments, hasLength(1));
   });
 }

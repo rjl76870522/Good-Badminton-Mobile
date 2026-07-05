@@ -7,6 +7,8 @@ class AnalysisReport {
     required this.coaching,
     required this.files,
     required this.highlightSegments,
+    this.reportSummary = '',
+    this.adviceSources = const [],
     this.taskId,
   });
 
@@ -17,6 +19,8 @@ class AnalysisReport {
   final Coaching coaching;
   final ReportFiles files;
   final List<HighlightSegment> highlightSegments;
+  final String reportSummary;
+  final List<AdviceSource> adviceSources;
   final String? taskId;
 
   bool get usesLegacyAdvice => coaching.isEmpty && advice.isNotEmpty;
@@ -43,8 +47,22 @@ class AnalysisReport {
               )
               .toList(growable: false)
           : const [],
+      reportSummary: json['report_summary']?.toString() ?? '',
+      adviceSources: _parseAdviceSources(json['advice_sources']),
       taskId: nullableString(json['task_id']),
     );
+  }
+
+  static List<AdviceSource> _parseAdviceSources(dynamic value) {
+    if (value is! List) return const [];
+    return value
+        .whereType<Map>()
+        .map(
+          (item) => AdviceSource.fromJson(
+            item.map((key, value) => MapEntry(key.toString(), value)),
+          ),
+        )
+        .toList(growable: false);
   }
 }
 
@@ -88,6 +106,17 @@ class ReportSummary {
     this.courtSpanXM = 0,
     this.courtSpanYM = 0,
     this.shuttlecockRatio = 0,
+    this.primaryPlayerDistanceM = 0,
+    this.rawMaxSpeedMps = 0,
+    this.combinedDistancePerMin = 0,
+    this.frontCourtRatio = 0,
+    this.backCourtRatio = 0,
+    this.leftCourtRatio = 0,
+    this.rightCourtRatio = 0,
+    this.highIntensityMoves = 0,
+    this.stablePositionFrames = 0,
+    this.droppedJumpCount = 0,
+    this.trackingQualityScore = 0,
   });
 
   final double totalDistanceM;
@@ -102,6 +131,17 @@ class ReportSummary {
   final double courtSpanXM;
   final double courtSpanYM;
   final double shuttlecockRatio;
+  final double primaryPlayerDistanceM;
+  final double rawMaxSpeedMps;
+  final double combinedDistancePerMin;
+  final double frontCourtRatio;
+  final double backCourtRatio;
+  final double leftCourtRatio;
+  final double rightCourtRatio;
+  final int highIntensityMoves;
+  final int stablePositionFrames;
+  final int droppedJumpCount;
+  final double trackingQualityScore;
 
   factory ReportSummary.fromJson(Map<String, dynamic> json) {
     return ReportSummary(
@@ -117,6 +157,17 @@ class ReportSummary {
       courtSpanXM: numberValue(json['court_span_x_m']),
       courtSpanYM: numberValue(json['court_span_y_m']),
       shuttlecockRatio: numberValue(json['shuttlecock_ratio']),
+      primaryPlayerDistanceM: numberValue(json['primary_player_distance_m']),
+      rawMaxSpeedMps: numberValue(json['raw_max_speed_mps']),
+      combinedDistancePerMin: numberValue(json['combined_distance_per_min']),
+      frontCourtRatio: numberValue(json['front_court_ratio']),
+      backCourtRatio: numberValue(json['back_court_ratio']),
+      leftCourtRatio: numberValue(json['left_court_ratio']),
+      rightCourtRatio: numberValue(json['right_court_ratio']),
+      highIntensityMoves: integerValue(json['high_intensity_moves']),
+      stablePositionFrames: integerValue(json['stable_position_frames']),
+      droppedJumpCount: integerValue(json['dropped_jump_count']),
+      trackingQualityScore: numberValue(json['tracking_quality_score']),
     );
   }
 }
@@ -158,23 +209,56 @@ class Coaching {
 
 class CoachingItem {
   const CoachingItem({
+    this.id = '',
     required this.title,
     required this.basis,
     required this.detail,
     required this.trainingFocus,
+    this.sourceIds = const [],
   });
 
+  final String id;
   final String title;
   final String basis;
   final String detail;
   final String trainingFocus;
+  final List<String> sourceIds;
 
   factory CoachingItem.fromJson(Map<String, dynamic> json) {
     return CoachingItem(
+      id: json['id']?.toString() ?? '',
       title: json['title']?.toString() ?? '',
       basis: json['basis']?.toString() ?? '',
       detail: json['detail']?.toString() ?? '',
       trainingFocus: json['training_focus']?.toString() ?? '',
+      sourceIds: json['source_ids'] is List
+          ? (json['source_ids'] as List)
+              .map((item) => item.toString())
+              .toList(growable: false)
+          : const [],
+    );
+  }
+}
+
+class AdviceSource {
+  const AdviceSource({
+    required this.id,
+    required this.title,
+    this.url,
+    this.notes = '',
+  });
+
+  final String id;
+  final String title;
+  final String? url;
+  final String notes;
+
+  factory AdviceSource.fromJson(Map<String, dynamic> json) {
+    return AdviceSource(
+      id: json['id']?.toString() ?? '',
+      title: json['title']?.toString() ?? '',
+      url: nullableString(json['url']),
+      notes: json['notes']?.toString() ?? '',
     );
   }
 }
