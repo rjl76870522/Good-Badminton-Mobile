@@ -13,7 +13,7 @@ https://github.com/rjl76870522/Good-Badminton-Mobile
 当前稳定版：
 
 ```text
-stable-mobile-v2-full-20260705
+stable-mobile-v2-teammate-full-20260705
 ```
 
 仓库已经包含当前后端运行需要的轻量模型权重：
@@ -26,7 +26,7 @@ weights/yolo11s-ball.pt
 Android APK 不直接放在 Git 里，因为 GitHub 普通文件单个不能超过 100 MB。请到 Release 附件下载：
 
 ```text
-https://github.com/rjl76870522/Good-Badminton-Mobile/releases/tag/stable-mobile-v2-full-20260705
+https://github.com/rjl76870522/Good-Badminton-Mobile/releases/tag/stable-mobile-v2-teammate-full-20260705
 ```
 
 最短使用流程：
