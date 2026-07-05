@@ -66,7 +66,6 @@ class ReviewHomePage extends StatefulWidget {
 class _ReviewHomePageState extends State<ReviewHomePage> {
   final _baseUrlController = TextEditingController(text: defaultBaseUrl);
   final _userIdController = TextEditingController();
-  final _nicknameController = TextEditingController();
   final _cornersJsonController = TextEditingController();
 
   late ApiClient _api;
@@ -97,7 +96,6 @@ class _ReviewHomePageState extends State<ReviewHomePage> {
     _pollTimer?.cancel();
     _baseUrlController.dispose();
     _userIdController.dispose();
-    _nicknameController.dispose();
     _cornersJsonController.dispose();
     super.dispose();
   }
@@ -108,13 +106,11 @@ class _ReviewHomePageState extends State<ReviewHomePage> {
     final userId =
         prefs.getString('user_id') ??
         'guest_${DateTime.now().millisecondsSinceEpoch}';
-    final nickname = prefs.getString('nickname') ?? '羽毛球用户';
     _baseUrlController.text = baseUrl;
     _userIdController.text = userId;
-    _nicknameController.text = nickname;
     _api = ApiClient(baseUrl);
     await prefs.setString('user_id', userId);
-    await prefs.setString('nickname', nickname);
+    await prefs.remove('nickname');
     await _checkHealth();
     await _loadHistory();
   }
@@ -134,18 +130,6 @@ class _ReviewHomePageState extends State<ReviewHomePage> {
     });
     await _checkHealth();
     await _loadHistory();
-  }
-
-  Future<void> _saveProfile() async {
-    final prefs = await SharedPreferences.getInstance();
-    final nickname = _nicknameController.text.trim().isEmpty
-        ? '羽毛球用户'
-        : _nicknameController.text.trim();
-    await prefs.setString('nickname', nickname);
-    setState(() {
-      _nicknameController.text = nickname;
-      _message = '个人信息已保存。';
-    });
   }
 
   Future<void> _resetLocalUser() async {
@@ -171,10 +155,9 @@ class _ReviewHomePageState extends State<ReviewHomePage> {
     final prefs = await SharedPreferences.getInstance();
     final userId = 'guest_${DateTime.now().millisecondsSinceEpoch}';
     await prefs.setString('user_id', userId);
-    await prefs.setString('nickname', '羽毛球用户');
+    await prefs.remove('nickname');
     setState(() {
       _userIdController.text = userId;
-      _nicknameController.text = '羽毛球用户';
       _history = [];
       _task = null;
       _report = null;
@@ -521,7 +504,6 @@ class _ReviewHomePageState extends State<ReviewHomePage> {
         baseUrl: _api.baseUrl,
       ),
       _ProfilePage(
-        nicknameController: _nicknameController,
         userId: _sanitizeUserId(_userIdController.text),
         backendOk: _backendOk,
         baseUrl: _api.baseUrl,
@@ -533,7 +515,6 @@ class _ReviewHomePageState extends State<ReviewHomePage> {
                   item is Map && item['status']?.toString() == 'completed',
             )
             .length,
-        onSaveProfile: _saveProfile,
         onResetLocalUser: _resetLocalUser,
       ),
     ];
@@ -944,6 +925,7 @@ class _CornerPickerState extends State<_CornerPicker> {
     final hasAuto = widget.autoPoints.length == 4;
     final usingAuto =
         hasAuto && _sameCornerPoints(widget.points, widget.autoPoints);
+    final sceneWarning = preview['scene_warning']?.toString() ?? '';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -973,6 +955,13 @@ class _CornerPickerState extends State<_CornerPicker> {
             context,
           ).textTheme.bodySmall?.copyWith(color: Colors.black54),
         ),
+        if (sceneWarning.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          _CornerInfoBox(
+            icon: Icons.info_outline,
+            text: '$sceneWarning 如果画面黑屏或没有真实场景，可能是上传网络波动或视频文件异常，请重新提交视频。',
+          ),
+        ],
         const SizedBox(height: 10),
         ClipRRect(
           borderRadius: BorderRadius.circular(10),
@@ -1011,7 +1000,24 @@ class _CornerPickerState extends State<_CornerPicker> {
                       child: Stack(
                         fit: StackFit.expand,
                         children: [
-                          Image.network(imageUrl, fit: BoxFit.fill),
+                          Image.network(
+                            imageUrl,
+                            fit: BoxFit.fill,
+                            loadingBuilder: (context, child, progress) {
+                              if (progress == null) return child;
+                              return const _CornerInfoBox(
+                                icon: Icons.image_search_outlined,
+                                text: '正在加载预览图...',
+                                loading: true,
+                              );
+                            },
+                            errorBuilder: (context, error, stackTrace) {
+                              return const _CornerInfoBox(
+                                icon: Icons.wifi_off_outlined,
+                                text: '预览图加载失败，可能是网络波动。请重新生成角点预览帧，或重新提交视频。',
+                              );
+                            },
+                          ),
                           CustomPaint(
                             painter: _CornerOverlayPainter(
                               points: widget.points,
@@ -1690,25 +1696,21 @@ class _HighlightSegmentsPanel extends StatelessWidget {
 
 class _ProfilePage extends StatelessWidget {
   const _ProfilePage({
-    required this.nicknameController,
     required this.userId,
     required this.backendOk,
     required this.baseUrl,
     required this.historyItems,
     required this.historyCount,
     required this.completedCount,
-    required this.onSaveProfile,
     required this.onResetLocalUser,
   });
 
-  final TextEditingController nicknameController;
   final String userId;
   final bool backendOk;
   final String baseUrl;
   final List<dynamic> historyItems;
   final int historyCount;
   final int completedCount;
-  final Future<void> Function() onSaveProfile;
   final Future<void> Function() onResetLocalUser;
 
   @override
@@ -1723,29 +1725,11 @@ class _ProfilePage extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                nicknameController.text.trim().isEmpty
-                    ? '游客训练档案'
-                    : '${nicknameController.text.trim()} 的训练档案',
+                '游客训练档案',
                 style: Theme.of(context).textTheme.titleMedium,
               ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: nicknameController,
-                decoration: const InputDecoration(
-                  labelText: '昵称',
-                  hintText: '羽毛球用户',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: onSaveProfile,
-                  icon: const Icon(Icons.save_outlined),
-                  label: const Text('保存昵称'),
-                ),
-              ),
+              const SizedBox(height: 8),
+              const Text('当前版本使用游客 ID 区分训练记录，不需要手机号或密码。'),
             ],
           ),
         ),
@@ -1801,7 +1785,7 @@ class _ProfilePage extends StatelessWidget {
         const _Section(
           title: '隐私说明',
           child: Text(
-            '当前版本使用游客模式，不需要手机号和密码。App 会把游客 ID 和昵称保存在本机；上传的视频会发送到用户填写的后端服务器，用于生成训练报告、热力图、轨迹图和精彩集锦。清空本地用户只会更换本机游客身份，不会删除服务器已保存的历史文件。',
+            '当前版本使用游客模式，不需要手机号和密码。App 会把游客 ID 保存在本机；上传的视频会发送到用户填写的后端服务器，用于生成训练报告、热力图、轨迹图和精彩集锦。清空本地用户只会更换本机游客身份，不会删除服务器已保存的历史文件。',
           ),
         ),
       ],

@@ -7,7 +7,6 @@ from badminton_analysis.user_registry import (
     UserAlreadyExists,
     get_user,
     register_user,
-    update_user,
 )
 
 
@@ -15,12 +14,12 @@ class UserRegistryTest(unittest.TestCase):
     def test_register_user_rejects_duplicate_id(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "users.json"
-            first = register_user(path, user_id="jiale_01", nickname="Jiale")
+            first = register_user(path, user_id="jiale_01")
 
             self.assertEqual(first["user_id"], "jiale_01")
-            self.assertEqual(first["nickname"], "Jiale")
+            self.assertNotIn("nickname", first)
             with self.assertRaises(UserAlreadyExists):
-                register_user(path, user_id="jiale_01", nickname="Other")
+                register_user(path, user_id="jiale_01")
 
     def test_user_id_is_case_insensitive(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -39,15 +38,30 @@ class UserRegistryTest(unittest.TestCase):
                     with self.assertRaises(InvalidUserId):
                         register_user(path, user_id=user_id)
 
-    def test_update_registered_user_nickname(self):
+    def test_existing_nickname_data_is_not_exposed(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "users.json"
-            register_user(path, user_id="player01", nickname="Old")
+            path.write_text(
+                """
+                {
+                  "schema_version": "user-registry-v1",
+                  "users": {
+                    "player01": {
+                      "user_id": "player01",
+                      "nickname": "Old",
+                      "created_at": 1,
+                      "updated_at": 2
+                    }
+                  }
+                }
+                """,
+                encoding="utf-8",
+            )
 
-            updated = update_user(path, user_id="player01", nickname="New")
+            user = get_user(path, "player01")
 
-            self.assertEqual(updated["nickname"], "New")
-            self.assertEqual(get_user(path, "player01")["nickname"], "New")
+            self.assertEqual(user["user_id"], "player01")
+            self.assertNotIn("nickname", user)
 
 
 if __name__ == "__main__":

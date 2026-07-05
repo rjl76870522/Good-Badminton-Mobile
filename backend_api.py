@@ -33,7 +33,6 @@ from badminton_analysis.user_registry import (
     UserNotFound,
     get_user as registry_get_user,
     register_user as registry_register_user,
-    update_user as registry_update_user,
 )
 from webui.pipeline import prepare_court, run_analysis
 
@@ -53,6 +52,13 @@ MIN_VIDEO_DURATION_SEC = 5.0
 MAX_VIDEO_DURATION_SEC = 180.0
 MIN_DETECTION_RECORDS = 3
 PREVIEW_COURT_DETECT_CANDIDATES = 3
+MIN_PREVIEW_BRIGHTNESS = 40.0
+MIN_PREVIEW_NONBLACK_RATIO = 0.42
+MIN_PREVIEW_CENTER_NONBLACK_RATIO = 0.35
+MAX_PREVIEW_DARK_RATIO = 0.65
+MIN_PREVIEW_SHARPNESS = 12.0
+MIN_PREVIEW_COURT_AREA_RATIO = 0.025
+MAX_PREVIEW_COURT_AREA_RATIO = 0.92
 DEFAULT_TEMPLATE_CANDIDATES = [
     PROJECT_ROOT / "templates" / "badminton_template.png",
     PROJECT_ROOT / "templates" / "my_template.png",
@@ -86,11 +92,6 @@ USER_REGISTRY_LOCK = threading.Lock()
 
 class RegisterUserRequest(BaseModel):
     user_id: str
-    nickname: str | None = None
-
-
-class UpdateUserRequest(BaseModel):
-    nickname: str | None = None
 
 
 @app.get("/api/health")
@@ -114,7 +115,6 @@ def register_mobile_user(payload: RegisterUserRequest) -> dict[str, Any]:
             user = registry_register_user(
                 USER_REGISTRY_PATH,
                 user_id=payload.user_id,
-                nickname=payload.nickname,
             )
         except InvalidUserId:
             raise_api_error(
@@ -151,32 +151,6 @@ def get_mobile_user(user_id: str) -> dict[str, Any]:
             message="用户不存在。",
             hint="请先注册这个用户 ID，或继续使用游客模式。",
         )
-    return {"user": user}
-
-
-@app.patch("/api/users/{user_id}")
-def update_mobile_user(user_id: str, payload: UpdateUserRequest) -> dict[str, Any]:
-    with USER_REGISTRY_LOCK:
-        try:
-            user = registry_update_user(
-                USER_REGISTRY_PATH,
-                user_id=user_id,
-                nickname=payload.nickname,
-            )
-        except InvalidUserId:
-            raise_api_error(
-                status_code=400,
-                code="INVALID_USER_ID",
-                message="这个用户 ID 格式不能使用。",
-                hint=USER_ID_RULE_MESSAGE,
-            )
-        except UserNotFound:
-            raise_api_error(
-                status_code=404,
-                code="USER_NOT_FOUND",
-                message="用户不存在。",
-                hint="请先注册这个用户 ID，或继续使用游客模式。",
-            )
     return {"user": user}
 
 
@@ -714,8 +688,11 @@ def _select_preview_frame(video_path: Path, source_upload_id: str) -> dict[str, 
         raise_api_error(
             status_code=400,
             code="PREVIEW_FRAME_FAILED",
-            message="无法从视频中提取清晰的球场预览帧。",
-            hint="请换一段画面更亮、开头没有黑屏、能看到完整球场的视频。",
+            message="无法从视频中提取有效球场预览帧。",
+            hint=(
+                "可能是上传网络波动导致视频文件不完整，也可能是原视频黑屏、过暗或没有完整球场。"
+                "请重新提交视频，必要时换一段开头稳定、能看到完整球场的视频。"
+            ),
         )
 
     image_path = PREVIEW_FRAME_DIR / f"{source_upload_id}.jpg"
@@ -734,6 +711,8 @@ def _select_preview_frame(video_path: Path, source_upload_id: str) -> dict[str, 
         "time_sec": round(float(best["time_sec"]), 2),
         "score": round(float(best["score"]), 3),
         "selection_reason": best["reason"],
+        "scene_ok": best["usable"],
+        "scene_warning": best.get("scene_warning"),
         "quality": best.get("quality"),
         "auto_corners": best["auto_corners"],
         "video": {
@@ -777,14 +756,21 @@ def _score_preview_frame(
     edges = cv2.Canny(gray, 80, 180)
     edge_density = float(cv2.countNonZero(edges)) / max(edges.size, 1)
 
-    auto_corners = None
+    raw_auto_corners = None
     if detect_court:
-        auto_corners, _preview = auto_detect_preview(frame)
+        raw_auto_corners, _preview = auto_detect_preview(frame)
     h, w = frame.shape[:2]
+    auto_corners = None
     area_ratio = 0.0
-    if auto_corners:
-        pts_np = np.array(auto_corners, dtype=np.float32)
+    if raw_auto_corners:
+        pts_np = np.array(raw_auto_corners, dtype=np.float32)
         area_ratio = float(cv2.contourArea(pts_np)) / max(float(w * h), 1.0)
+        points_inside = all(0 <= x < w and 0 <= y < h for x, y in raw_auto_corners)
+        if (
+            points_inside
+            and MIN_PREVIEW_COURT_AREA_RATIO <= area_ratio <= MAX_PREVIEW_COURT_AREA_RATIO
+        ):
+            auto_corners = raw_auto_corners
 
     brightness_score = max(0.0, 1.0 - abs(brightness - 125.0) / 125.0)
     sharpness_score = min(sharpness / 600.0, 1.0)
@@ -794,11 +780,11 @@ def _score_preview_frame(
     dark_penalty = max(0.0, (dark_ratio - 0.35) * 2.0)
     court_bonus = 2.5 if auto_corners else 0.0
     usable = (
-        brightness >= 35.0
-        and nonblack_ratio >= 0.35
-        and center_nonblack_ratio >= 0.25
-        and dark_ratio <= 0.72
-        and sharpness >= 8.0
+        brightness >= MIN_PREVIEW_BRIGHTNESS
+        and nonblack_ratio >= MIN_PREVIEW_NONBLACK_RATIO
+        and center_nonblack_ratio >= MIN_PREVIEW_CENTER_NONBLACK_RATIO
+        and dark_ratio <= MAX_PREVIEW_DARK_RATIO
+        and sharpness >= MIN_PREVIEW_SHARPNESS
     )
     score = (
         court_bonus
@@ -811,8 +797,13 @@ def _score_preview_frame(
     )
 
     reason = "auto_court_detected" if auto_corners else "visual_quality_fallback"
+    scene_warning = None
     if not usable:
         reason = "rejected_dark_or_low_content"
+        scene_warning = "未检测到有效球场场景，请重新提交视频或换一段画面更稳定的视频。"
+    elif raw_auto_corners and not auto_corners:
+        reason = "rejected_invalid_auto_corners"
+        scene_warning = "自动角点质量较低，建议放大画面后手动点选四个外侧角点。"
     return {
         "frame": frame,
         "frame_index": frame_index,
@@ -821,6 +812,7 @@ def _score_preview_frame(
         "reason": reason,
         "auto_corners": [[int(x), int(y)] for x, y in auto_corners] if auto_corners else None,
         "usable": usable,
+        "scene_warning": scene_warning,
         "quality": {
             "brightness": round(brightness, 2),
             "dark_ratio": round(dark_ratio, 3),

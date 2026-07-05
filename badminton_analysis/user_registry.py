@@ -10,7 +10,6 @@ from typing import Any
 
 
 USER_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]{2,31}$")
-MAX_NICKNAME_LENGTH = 24
 
 
 class UserRegistryError(ValueError):
@@ -38,13 +37,6 @@ def normalize_user_id(user_id: str | None) -> str:
     return raw
 
 
-def clean_nickname(nickname: str | None) -> str:
-    value = (nickname or "羽毛球用户").strip()
-    if not value:
-        value = "羽毛球用户"
-    return value[:MAX_NICKNAME_LENGTH]
-
-
 def load_users(path: Path) -> dict[str, dict[str, Any]]:
     if not path.is_file():
         return {}
@@ -55,11 +47,20 @@ def load_users(path: Path) -> dict[str, dict[str, Any]]:
     users = data.get("users") if isinstance(data, dict) else None
     if not isinstance(users, dict):
         return {}
-    return {
-        str(user_id): user
-        for user_id, user in users.items()
-        if isinstance(user, dict)
-    }
+    cleaned: dict[str, dict[str, Any]] = {}
+    for user_id, user in users.items():
+        if not isinstance(user, dict):
+            continue
+        try:
+            normalized_id = normalize_user_id(str(user.get("user_id") or user_id))
+        except InvalidUserId:
+            continue
+        cleaned[normalized_id] = {
+            "user_id": normalized_id,
+            "created_at": _to_float(user.get("created_at")),
+            "updated_at": _to_float(user.get("updated_at")),
+        }
+    return cleaned
 
 
 def save_users(path: Path, users: dict[str, dict[str, Any]]) -> None:
@@ -80,7 +81,6 @@ def register_user(
     path: Path,
     *,
     user_id: str,
-    nickname: str | None = None,
 ) -> dict[str, Any]:
     normalized_id = normalize_user_id(user_id)
     users = load_users(path)
@@ -90,7 +90,6 @@ def register_user(
     now = time.time()
     user = {
         "user_id": normalized_id,
-        "nickname": clean_nickname(nickname),
         "created_at": now,
         "updated_at": now,
     }
@@ -108,22 +107,8 @@ def get_user(path: Path, user_id: str) -> dict[str, Any]:
     return user
 
 
-def update_user(
-    path: Path,
-    *,
-    user_id: str,
-    nickname: str | None = None,
-) -> dict[str, Any]:
-    normalized_id = normalize_user_id(user_id)
-    users = load_users(path)
-    user = users.get(normalized_id)
-    if user is None:
-        raise UserNotFound(f"user not found: {normalized_id}")
-
-    user = dict(user)
-    if nickname is not None:
-        user["nickname"] = clean_nickname(nickname)
-    user["updated_at"] = time.time()
-    users[normalized_id] = user
-    save_users(path, users)
-    return user
+def _to_float(value: Any) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0

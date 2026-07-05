@@ -104,7 +104,6 @@ https://xxxx.trycloudflare.com
 GET    /api/health
 POST   /api/users/register
 GET    /api/users/{user_id}
-PATCH  /api/users/{user_id}
 POST   /api/videos/preview-frame
 POST   /api/videos/upload
 GET    /api/tasks
@@ -127,8 +126,7 @@ POST /api/users/register
 Content-Type: application/json
 
 {
-  "user_id": "jiale01",
-  "nickname": "Jiale"
+  "user_id": "jiale01"
 }
 ```
 
@@ -138,7 +136,6 @@ Content-Type: application/json
 {
   "user": {
     "user_id": "jiale01",
-    "nickname": "Jiale",
     "created_at": 1780000000.0,
     "updated_at": 1780000000.0
   }
@@ -164,6 +161,8 @@ mobile_backend_data/users.json
 ```
 
 这不是正式账号系统，没有密码和手机号；适合当前比赛阶段的“轻账号/游客档案”。
+
+如果上传前的角点预览出现黑屏、没有真实场景或明显错误画面，App 会提示重新提交视频。常见原因是视频本身开头黑屏、画面过暗、没有完整球场，或公网/内网穿透上传时网络波动导致预览文件异常。
 
 ## 台式机服务器迁移
 
