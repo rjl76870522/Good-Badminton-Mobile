@@ -22,10 +22,19 @@ from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Query, 
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 from badminton_analysis.highlight import generate_highlight
 from badminton_analysis.mobile_report import build_mobile_report, load_advice_knowledge
 from badminton_analysis.court.mapper import auto_detect_preview
+from badminton_analysis.user_registry import (
+    InvalidUserId,
+    UserAlreadyExists,
+    UserNotFound,
+    get_user as registry_get_user,
+    register_user as registry_register_user,
+    update_user as registry_update_user,
+)
 from webui.pipeline import prepare_court, run_analysis
 
 
@@ -34,9 +43,11 @@ UPLOAD_DIR = PROJECT_ROOT / "mobile_backend_data" / "uploads"
 PREVIEW_UPLOAD_DIR = PROJECT_ROOT / "mobile_backend_data" / "preview_uploads"
 PREVIEW_FRAME_DIR = PROJECT_ROOT / "mobile_backend_data" / "preview_frames"
 TASK_DIR = PROJECT_ROOT / "mobile_backend_data" / "tasks"
+USER_REGISTRY_PATH = PROJECT_ROOT / "mobile_backend_data" / "users.json"
 OUTPUTS_DIR = PROJECT_ROOT / "outputs"
 FRONTEND_DIR = PROJECT_ROOT / "mobile_frontend"
 DEFAULT_USER_ID = "guest"
+USER_ID_RULE_MESSAGE = "用户 ID 需要 3-32 位，只能使用小写英文字母、数字、下划线或短横线，且必须以字母或数字开头。"
 MAX_UPLOAD_BYTES = 500 * 1024 * 1024
 MIN_VIDEO_DURATION_SEC = 5.0
 MAX_VIDEO_DURATION_SEC = 180.0
@@ -70,6 +81,16 @@ if FRONTEND_DIR.is_dir():
 TASKS: dict[str, dict[str, Any]] = {}
 TASKS_LOCK = threading.Lock()
 ANALYSIS_LOCK = threading.Lock()
+USER_REGISTRY_LOCK = threading.Lock()
+
+
+class RegisterUserRequest(BaseModel):
+    user_id: str
+    nickname: str | None = None
+
+
+class UpdateUserRequest(BaseModel):
+    nickname: str | None = None
 
 
 @app.get("/api/health")
@@ -84,6 +105,79 @@ def health() -> dict[str, Any]:
 @app.get("/", include_in_schema=False)
 def index() -> RedirectResponse:
     return RedirectResponse(url="/app/")
+
+
+@app.post("/api/users/register")
+def register_mobile_user(payload: RegisterUserRequest) -> dict[str, Any]:
+    with USER_REGISTRY_LOCK:
+        try:
+            user = registry_register_user(
+                USER_REGISTRY_PATH,
+                user_id=payload.user_id,
+                nickname=payload.nickname,
+            )
+        except InvalidUserId:
+            raise_api_error(
+                status_code=400,
+                code="INVALID_USER_ID",
+                message="这个用户 ID 格式不能使用。",
+                hint=USER_ID_RULE_MESSAGE,
+            )
+        except UserAlreadyExists:
+            raise_api_error(
+                status_code=409,
+                code="USER_ID_TAKEN",
+                message="这个用户 ID 已经被注册。",
+                hint="请换一个 ID，或使用本机已保存的游客身份继续查看历史记录。",
+            )
+    return {"user": user}
+
+
+@app.get("/api/users/{user_id}")
+def get_mobile_user(user_id: str) -> dict[str, Any]:
+    try:
+        user = registry_get_user(USER_REGISTRY_PATH, user_id)
+    except InvalidUserId:
+        raise_api_error(
+            status_code=400,
+            code="INVALID_USER_ID",
+            message="这个用户 ID 格式不能使用。",
+            hint=USER_ID_RULE_MESSAGE,
+        )
+    except UserNotFound:
+        raise_api_error(
+            status_code=404,
+            code="USER_NOT_FOUND",
+            message="用户不存在。",
+            hint="请先注册这个用户 ID，或继续使用游客模式。",
+        )
+    return {"user": user}
+
+
+@app.patch("/api/users/{user_id}")
+def update_mobile_user(user_id: str, payload: UpdateUserRequest) -> dict[str, Any]:
+    with USER_REGISTRY_LOCK:
+        try:
+            user = registry_update_user(
+                USER_REGISTRY_PATH,
+                user_id=user_id,
+                nickname=payload.nickname,
+            )
+        except InvalidUserId:
+            raise_api_error(
+                status_code=400,
+                code="INVALID_USER_ID",
+                message="这个用户 ID 格式不能使用。",
+                hint=USER_ID_RULE_MESSAGE,
+            )
+        except UserNotFound:
+            raise_api_error(
+                status_code=404,
+                code="USER_NOT_FOUND",
+                message="用户不存在。",
+                hint="请先注册这个用户 ID，或继续使用游客模式。",
+            )
+    return {"user": user}
 
 
 @app.post("/api/videos/upload")

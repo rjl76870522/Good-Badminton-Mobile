@@ -102,6 +102,9 @@ https://xxxx.trycloudflare.com
 
 ```text
 GET    /api/health
+POST   /api/users/register
+GET    /api/users/{user_id}
+PATCH  /api/users/{user_id}
 POST   /api/videos/preview-frame
 POST   /api/videos/upload
 GET    /api/tasks
@@ -114,6 +117,53 @@ GET    /api/demo/sample
 ```
 
 前端只需要更换 Base URL，接口路径不变。
+
+### 注册 ID 唯一性
+
+当前 App 仍然兼容游客模式；如果前端要做“注册 ID 不能重复”，调用这个接口：
+
+```http
+POST /api/users/register
+Content-Type: application/json
+
+{
+  "user_id": "jiale01",
+  "nickname": "Jiale"
+}
+```
+
+成功返回：
+
+```json
+{
+  "user": {
+    "user_id": "jiale01",
+    "nickname": "Jiale",
+    "created_at": 1780000000.0,
+    "updated_at": 1780000000.0
+  }
+}
+```
+
+重复注册同一个 ID 返回 `409`：
+
+```json
+{
+  "detail": {
+    "code": "USER_ID_TAKEN",
+    "message": "这个用户 ID 已经被注册。",
+    "hint": "请换一个 ID，或使用本机已保存的游客身份继续查看历史记录。"
+  }
+}
+```
+
+ID 规则：`3-32` 位，只能使用小写英文字母、数字、下划线 `_` 或短横线 `-`，并且必须以字母或数字开头。注册表临时保存在：
+
+```text
+mobile_backend_data/users.json
+```
+
+这不是正式账号系统，没有密码和手机号；适合当前比赛阶段的“轻账号/游客档案”。
 
 ## 台式机服务器迁移
 
@@ -190,6 +240,34 @@ start_mobile_public.bat
 - 固定域名 + HTTPS
 - 或 Cloudflare 正式 tunnel 配置
 - 或学校/实验室服务器公网 IP + 反向代理
+
+固定域名不能只靠代码完成，需要先有：
+
+- 一个域名，例如 `your-domain.com`
+- Cloudflare 账号，并把域名 DNS 接入 Cloudflare
+- 台式机服务器能长期运行 `backend_api.py:8001`
+
+准备好以后可以走 Cloudflare Named Tunnel：
+
+```bat
+cloudflared tunnel login
+cloudflared tunnel create good-badminton
+cloudflared tunnel route dns good-badminton api.your-domain.com
+cloudflared tunnel run good-badminton
+```
+
+模板文件：
+
+```text
+deploy/cloudflared-config.example.yml
+deploy/start_named_tunnel.example.bat
+```
+
+上线后 App 的后端地址固定填写：
+
+```text
+https://api.your-domain.com
+```
 
 ### 5. App 配置
 
