@@ -1,6 +1,7 @@
 ﻿import argparse
 import os
 
+from badminton_analysis.batch import batch_analyze, find_videos, generate_summary, generate_html_report
 from badminton_analysis.system import BadmintonAnalysisSystem, load_runtime_dependencies
 
 
@@ -8,6 +9,8 @@ from badminton_analysis.system import BadmintonAnalysisSystem, load_runtime_depe
 def main():
     parser = argparse.ArgumentParser(description='羽毛球比赛视频分析系统')
     parser.add_argument('--video-path', default='videos/demo.mp4', type=str, help='输入视频文件路径')
+    parser.add_argument('--input-dir', default=None, type=str, help='批量模式：分析目录下所有视频文件')
+    parser.add_argument('--batch-template', default=None, type=str, help='批量模式共用球场模板图（不提供则逐个弹窗选择）')
     parser.add_argument('--template-path', default='templates/demo.png', type=str, help='球场模板图像路径；不提供时会弹出文件选择框')
     parser.add_argument('--output-dir', default=None, type=str, help='输出目录，默认 outputs/<视频文件名>')
     parser.add_argument('--ball-model', default='weights/yolo11s-ball.pt', type=str, help='YOLO 羽毛球检测模型路径')
@@ -28,6 +31,55 @@ def main():
     parser.add_argument('--language', default='zh', choices=['zh', 'en'], help='选择界面语言 (zh/en)')
     args = parser.parse_args()
 
+    # ── 批量模式 ──────────────────────────────────────────
+    if args.input_dir:
+        print(f"\n📹 批量模式：扫描目录 {args.input_dir} ...")
+        videos = find_videos(args.input_dir)
+        if not videos:
+            print(f"目录中没有找到视频文件: {args.input_dir}")
+            return
+
+        print(f"找到 {len(videos)} 个视频文件")
+        for v in videos:
+            print(f"  - {os.path.basename(v)}")
+
+        template = args.batch_template or args.template_path
+
+        summary = batch_analyze(
+            videos,
+            template_path=template,
+            language=args.language,
+            skeletons=args.skeletons,
+            player_trajectories=args.player_trajectories,
+            court_trajectory=args.court_trajectory,
+            shuttlecock_trajectory=args.shuttlecock_trajectory,
+            player_stats=args.player_stats,
+            performance_stats=args.performance_stats,
+            save_images=args.save_images,
+            ball_model=args.ball_model,
+            pose_mode=args.pose_mode,
+            pose_family=args.pose_family,
+            yolo_pose_model=args.yolo_pose_model,
+            show_pose_roi=args.pose_roi,
+            audio=args.audio,
+            visualize_positions=args.visualize_positions == 'true',
+        )
+
+        # 生成汇总报告
+        out_dir = args.output_dir or "."
+        json_path = generate_summary(summary, out_dir)
+        html_path = generate_html_report(summary, out_dir)
+
+        print(f"\n{'='*50}")
+        print(f"✅ 批量分析完成！")
+        print(f"   总计: {summary['total_videos']}  完成: {summary['completed']}"
+              f"  跳过: {summary['skipped']}  失败: {summary['failed']}")
+        print(f"   汇总 JSON: {json_path}")
+        print(f"   HTML 报告: {html_path}")
+        print(f"{'='*50}")
+        return
+
+    # ── 单视频模式 ────────────────────────────────────────
     load_runtime_dependencies()
 
     if args.language == 'en':

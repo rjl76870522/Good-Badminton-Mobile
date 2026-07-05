@@ -5,6 +5,7 @@ import cv2
 import gradio as gr
 import numpy as np
 
+from badminton_analysis.batch import batch_analyze, find_videos, generate_summary
 from webui.pipeline import imread_safe, prepare_court, run_analysis
 
 _MAX_VIDEO_BYTES = 2 * 1024 * 1024 * 1024  # 2 GB
@@ -140,6 +141,72 @@ def run_full_analysis(video_file, template_file, corners,
     return output_video, viz_images or None, metadata_content, detections_file
 
 
+def run_batch_analysis(video_files, template_file, language, audio,
+                       pose_family, pose_mode, yolo_pose_model, ball_model,
+                       progress=gr.Progress(track_tqdm=False)):
+    """批量分析多个视频。"""
+    if not video_files:
+        raise gr.Error("Please upload at least one video file.")
+    if not template_file:
+        raise gr.Error("Please upload a court template image.")
+
+    # 取实际文件路径（Gradio 可能返回 list[dict] 或 list[str]）
+    video_paths = []
+    for item in video_files:
+        if isinstance(item, str):
+            video_paths.append(item)
+        elif isinstance(item, dict):
+            video_paths.append(item.get("name") or item.get("path", ""))
+        else:
+            video_paths.append(str(item))
+
+    video_paths = [p for p in video_paths if p and os.path.isfile(p)]
+    if not video_paths:
+        raise gr.Error("No valid video files found.")
+
+    def progress_cb(current, total, video_name):
+        progress(current / total, desc=f"[{current}/{total}] 正在分析: {video_name}")
+
+    summary = batch_analyze(
+        video_paths,
+        template_path=template_file,
+        progress_callback=progress_cb,
+        language=language,
+        audio=audio,
+        pose_family=pose_family,
+        pose_mode=pose_mode,
+        yolo_pose_model=yolo_pose_model or "weights/yolo11n-pose.pt",
+        ball_model=ball_model or "weights/yolo11s-ball.pt",
+        skeletons="true",
+        player_trajectories="true",
+        court_trajectory="true",
+        shuttlecock_trajectory="true",
+        player_stats="true",
+        performance_stats=False,
+        save_images=False,
+        show_pose_roi="true",
+        visualize_positions=True,
+    )
+
+    json_path = generate_summary(summary, ".")
+
+    # 收集所有输出视频
+    output_videos = []
+    for r in summary["results"]:
+        if r["output_dir"]:
+            detect_video = os.path.join(r["output_dir"], f"detect_{r['video_name']}.mp4")
+            if os.path.isfile(detect_video):
+                output_videos.append(detect_video)
+
+    summary_text = (
+        f"✅ 完成: {summary['completed']}  |  "
+        f"⏭️ 跳过: {summary['skipped']}  |  "
+        f"❌ 失败: {summary['failed']}"
+    )
+
+    return json_path, output_videos, summary_text
+
+
 _UI_TEXT = {
     "zh": {
         "title": "# Good Badminton — AI 羽毛球分析系统",
@@ -178,6 +245,16 @@ _UI_TEXT = {
         "auto_fail": "自动检测失败 — 请手动点击 4 个角点。",
         "manual_ok": "已应用手动角点（{} 个点）。",
         "manual_fail": "失败。",
+        # Batch tab
+        "batch_tab": "批量处理",
+        "batch_videos": "比赛视频（可多选）",
+        "batch_template": "共用球场模板",
+        "batch_settings": "### 批量设置",
+        "batch_run": "开始批量分析",
+        "batch_summary": "批量汇总",
+        "batch_status": "处理状态",
+        "batch_outputs": "输出视频",
+        "batch_json": "汇总 JSON",
     },
     "en": {
         "title": "# Good Badminton — AI Badminton Analysis",
@@ -216,6 +293,16 @@ _UI_TEXT = {
         "auto_fail": "Auto-detection failed — click 4 corners manually.",
         "manual_ok": "Manual corners applied ({} points).",
         "manual_fail": "Failed.",
+        # Batch tab
+        "batch_tab": "Batch Process",
+        "batch_videos": "Match Videos (select multiple)",
+        "batch_template": "Shared Court Template",
+        "batch_settings": "### Batch Settings",
+        "batch_run": "Start Batch Analysis",
+        "batch_summary": "Batch Summary",
+        "batch_status": "Batch Status",
+        "batch_outputs": "Output Videos",
+        "batch_json": "Summary JSON",
     },
 }
 
@@ -224,6 +311,7 @@ def _switch_language(lang):
     t = _UI_TEXT.get(lang, _UI_TEXT["zh"])
     return [
         gr.update(value=t["title"]),
+        # Single tab
         gr.update(value=t["inputs"]),
         gr.update(label=t["video"]),
         gr.update(label=t["template"]),
@@ -253,6 +341,20 @@ def _switch_language(lang):
         gr.update(label=t["out_gallery"]),
         gr.update(label=t["out_metadata"]),
         gr.update(label=t["out_detections"]),
+        # Batch tab
+        gr.update(value=t["batch_settings"]),
+        gr.update(label=t["batch_videos"]),
+        gr.update(label=t["batch_template"]),
+        gr.update(label=t["pose_family"]),
+        gr.update(label=t["pose_mode"]),
+        gr.update(label=t["audio"]),
+        gr.update(label=t["yolo_pose_path"]),
+        gr.update(label=t["ball_path"]),
+        gr.update(value=t["batch_run"]),
+        gr.update(label=t["batch_status"]),
+        gr.update(label=t["batch_outputs"]),
+        gr.update(label=t["batch_json"]),
+        gr.update(label=t["language"]),
     ]
 
 
@@ -264,90 +366,165 @@ def build_ui():
     ) as demo:
         md_title = gr.Markdown(t["title"])
 
-        corners_state = gr.State(value=None)
-        click_corners_state = gr.State(value=[])
+        language = gr.Radio(
+            choices=[("中文", "zh"), ("English", "en")],
+            value="zh", label=t["language"],
+        )
 
-        with gr.Row():
-            with gr.Column(scale=1):
-                md_inputs = gr.Markdown(t["inputs"])
-                video_input = gr.File(label=t["video"], file_types=["video"])
-                template_input = gr.File(label=t["template"], file_types=["image"])
+        with gr.Tabs():
+            # ═══════════════════════════════════════
+            #  单视频分析 Tab
+            # ═══════════════════════════════════════
+            with gr.TabItem("单视频分析", id="single"):
+                corners_state = gr.State(value=None)
+                click_corners_state = gr.State(value=[])
 
-                md_settings = gr.Markdown(t["settings"])
-                pose_family = gr.Dropdown(
-                    choices=["yolo-pose", "rtmpose", "rtmo"],
-                    value="yolo-pose", label=t["pose_family"],
+                with gr.Row():
+                    with gr.Column(scale=1):
+                        md_inputs = gr.Markdown(t["inputs"])
+                        video_input = gr.File(label=t["video"], file_types=["video"])
+                        template_input = gr.File(label=t["template"], file_types=["image"])
+
+                        md_settings = gr.Markdown(t["settings"])
+                        pose_family = gr.Dropdown(
+                            choices=["yolo-pose", "rtmpose", "rtmo"],
+                            value="yolo-pose", label=t["pose_family"],
+                        )
+                        pose_mode = gr.Dropdown(
+                            choices=["lightweight", "balanced", "performance"],
+                            value="balanced", label=t["pose_mode"],
+                        )
+                        audio = gr.Checkbox(value=True, label=t["audio"])
+
+                        with gr.Accordion(t["advanced"], open=False) as adv_accordion:
+                            show_skeletons = gr.Checkbox(value=True, label=t["skeletons"])
+                            show_player_trajectories = gr.Checkbox(value=True, label=t["player_traj"])
+                            show_court_trajectory = gr.Checkbox(value=True, label=t["court_traj"])
+                            show_shuttlecock_trajectory = gr.Checkbox(value=True, label=t["shuttle_traj"])
+                            show_player_stats = gr.Checkbox(value=True, label=t["player_stats"])
+                            show_pose_roi = gr.Checkbox(value=True, label=t["pose_roi"])
+                            visualize_positions = gr.Checkbox(value=True, label=t["viz_positions"])
+                            yolo_pose_model = gr.Textbox(value="weights/yolo11n-pose.pt", label=t["yolo_pose_path"])
+                            ball_model = gr.Textbox(value="weights/yolo11s-ball.pt", label=t["ball_path"])
+
+                    with gr.Column(scale=2):
+                        md_step1 = gr.Markdown(t["step1"])
+                        detect_btn = gr.Button(t["detect_btn"], variant="primary")
+                        court_image = gr.Image(label=t["court_preview"], interactive=False, type="numpy")
+                        corner_status = gr.Textbox(label=t["corner_status"], interactive=False, value=t["corner_none"])
+                        apply_btn = gr.Button(t["apply_btn"], variant="secondary")
+
+                        md_step2 = gr.Markdown(t["step2"])
+                        run_btn = gr.Button(t["run_btn"], variant="primary")
+
+                        md_results = gr.Markdown(t["results"])
+                        output_video = gr.Video(label=t["out_video"])
+                        output_gallery = gr.Gallery(label=t["out_gallery"], columns=2, height="auto")
+                        output_metadata = gr.JSON(label=t["out_metadata"])
+                        output_detections = gr.File(label=t["out_detections"])
+
+                single_lang_outputs = [
+                    md_inputs, video_input, template_input,
+                    md_settings, pose_family, pose_mode, audio, adv_accordion,
+                    show_skeletons, show_player_trajectories, show_court_trajectory,
+                    show_shuttlecock_trajectory, show_player_stats, show_pose_roi,
+                    visualize_positions, yolo_pose_model, ball_model,
+                    md_step1, detect_btn, court_image, corner_status, apply_btn,
+                    md_step2, run_btn, md_results,
+                    output_video, output_gallery, output_metadata, output_detections,
+                ]
+
+                detect_btn.click(
+                    fn=detect_court,
+                    inputs=[template_input],
+                    outputs=[court_image, corners_state],
+                ).then(
+                    fn=lambda c, lang: _UI_TEXT.get(lang, _UI_TEXT["zh"])["auto_ok"].format(len(c)) if c
+                       else _UI_TEXT.get(lang, _UI_TEXT["zh"])["auto_fail"],
+                    inputs=[corners_state, language],
+                    outputs=[corner_status],
                 )
-                pose_mode = gr.Dropdown(
-                    choices=["lightweight", "balanced", "performance"],
-                    value="balanced", label=t["pose_mode"],
+
+                court_image.select(
+                    fn=on_court_image_select,
+                    inputs=[click_corners_state, template_input],
+                    outputs=[court_image, click_corners_state, corners_state, corner_status],
                 )
-                language = gr.Radio(
-                    choices=[("中文", "zh"), ("English", "en")],
-                    value="zh", label=t["language"],
+
+                apply_btn.click(
+                    fn=apply_manual_corners,
+                    inputs=[template_input, click_corners_state],
+                    outputs=[court_image, corners_state],
+                ).then(
+                    fn=lambda c, lang: _UI_TEXT.get(lang, _UI_TEXT["zh"])["manual_ok"].format(len(c)) if c
+                       else _UI_TEXT.get(lang, _UI_TEXT["zh"])["manual_fail"],
+                    inputs=[corners_state, language],
+                    outputs=[corner_status],
                 )
-                audio = gr.Checkbox(value=True, label=t["audio"])
 
-                with gr.Accordion(t["advanced"], open=False) as adv_accordion:
-                    show_skeletons = gr.Checkbox(value=True, label=t["skeletons"])
-                    show_player_trajectories = gr.Checkbox(value=True, label=t["player_traj"])
-                    show_court_trajectory = gr.Checkbox(value=True, label=t["court_traj"])
-                    show_shuttlecock_trajectory = gr.Checkbox(value=True, label=t["shuttle_traj"])
-                    show_player_stats = gr.Checkbox(value=True, label=t["player_stats"])
-                    show_pose_roi = gr.Checkbox(value=True, label=t["pose_roi"])
-                    visualize_positions = gr.Checkbox(value=True, label=t["viz_positions"])
-                    yolo_pose_model = gr.Textbox(value="weights/yolo11n-pose.pt", label=t["yolo_pose_path"])
-                    ball_model = gr.Textbox(value="weights/yolo11s-ball.pt", label=t["ball_path"])
+                run_btn.click(
+                    fn=run_full_analysis,
+                    inputs=[
+                        video_input, template_input, corners_state,
+                        pose_family, pose_mode, language, audio,
+                        show_skeletons, show_player_trajectories,
+                        show_court_trajectory, show_shuttlecock_trajectory,
+                        show_player_stats, show_pose_roi, visualize_positions,
+                        yolo_pose_model, ball_model,
+                    ],
+                    outputs=[output_video, output_gallery, output_metadata, output_detections],
+                )
 
-            with gr.Column(scale=2):
-                md_step1 = gr.Markdown(t["step1"])
-                detect_btn = gr.Button(t["detect_btn"], variant="primary")
-                court_image = gr.Image(label=t["court_preview"], interactive=False, type="numpy")
-                corner_status = gr.Textbox(label=t["corner_status"], interactive=False, value=t["corner_none"])
-                apply_btn = gr.Button(t["apply_btn"], variant="secondary")
+            # ═══════════════════════════════════════
+            #  批量分析 Tab
+            # ═══════════════════════════════════════
+            with gr.TabItem(t["batch_tab"], id="batch"):
+                with gr.Row():
+                    with gr.Column(scale=1):
+                        batch_md_settings = gr.Markdown(t["batch_settings"])
+                        batch_videos = gr.File(label=t["batch_videos"], file_types=["video"], file_count="multiple")
+                        batch_template_input = gr.File(label=t["batch_template"], file_types=["image"])
+                        batch_pose_family = gr.Dropdown(
+                            choices=["yolo-pose", "rtmpose", "rtmo"],
+                            value="yolo-pose", label=t["pose_family"],
+                        )
+                        batch_pose_mode = gr.Dropdown(
+                            choices=["lightweight", "balanced", "performance"],
+                            value="balanced", label=t["pose_mode"],
+                        )
+                        batch_audio = gr.Checkbox(value=True, label=t["audio"])
+                        batch_yolo_pose_model = gr.Textbox(value="weights/yolo11n-pose.pt", label=t["yolo_pose_path"])
+                        batch_ball_model = gr.Textbox(value="weights/yolo11s-ball.pt", label=t["ball_path"])
 
-                md_step2 = gr.Markdown(t["step2"])
-                run_btn = gr.Button(t["run_btn"], variant="primary")
+                    with gr.Column(scale=2):
+                        batch_run_btn = gr.Button(t["batch_run"], variant="primary")
+                        batch_status = gr.Textbox(label=t["batch_status"], interactive=False)
+                        batch_outputs = gr.File(label=t["batch_outputs"], file_count="multiple")
+                        batch_json = gr.File(label=t["batch_json"])
 
-                md_results = gr.Markdown(t["results"])
-                output_video = gr.Video(label=t["out_video"])
-                output_gallery = gr.Gallery(label=t["out_gallery"], columns=2, height="auto")
-                output_metadata = gr.JSON(label=t["out_metadata"])
-                output_detections = gr.File(label=t["out_detections"])
+                batch_lang_outputs = [
+                    batch_md_settings, batch_videos, batch_template_input,
+                    batch_pose_family, batch_pose_mode, batch_audio,
+                    batch_yolo_pose_model, batch_ball_model,
+                    batch_run_btn, batch_status,
+                    batch_outputs, batch_json,
+                ]
 
-        lang_outputs = [
-            md_title, md_inputs, video_input, template_input,
-            md_settings, pose_family, pose_mode, audio, adv_accordion,
-            show_skeletons, show_player_trajectories, show_court_trajectory,
-            show_shuttlecock_trajectory, show_player_stats, show_pose_roi,
-            visualize_positions, yolo_pose_model, ball_model,
-            md_step1, detect_btn, court_image, corner_status, apply_btn,
-            md_step2, run_btn, md_results,
-            output_video, output_gallery, output_metadata, output_detections,
-        ]
+                batch_run_btn.click(
+                    fn=run_batch_analysis,
+                    inputs=[
+                        batch_videos, batch_template_input, language, batch_audio,
+                        batch_pose_family, batch_pose_mode,
+                        batch_yolo_pose_model, batch_ball_model,
+                    ],
+                    outputs=[batch_json, batch_outputs, batch_status],
+                )
+
+        # ── 语言切换：更新所有 Tab 的文本 ──
+        lang_outputs = [md_title] + single_lang_outputs + batch_lang_outputs + [language]
         language.change(fn=_switch_language, inputs=[language], outputs=lang_outputs)
 
-        detect_btn.click(
-            fn=detect_court,
-            inputs=[template_input],
-            outputs=[court_image, corners_state],
-        ).then(
-            fn=lambda c, lang: _UI_TEXT.get(lang, _UI_TEXT["zh"])["auto_ok"].format(len(c)) if c
-               else _UI_TEXT.get(lang, _UI_TEXT["zh"])["auto_fail"],
-            inputs=[corners_state, language],
-            outputs=[corner_status],
-        )
-
-        court_image.select(
-            fn=on_court_image_select,
-            inputs=[click_corners_state, template_input],
-            outputs=[court_image, click_corners_state, corners_state, corner_status],
-        )
-
-        apply_btn.click(
-            fn=apply_manual_corners,
-            inputs=[template_input, click_corners_state],
-            outputs=[court_image, corners_state],
+    return demo
         ).then(
             fn=lambda c, lang: _UI_TEXT.get(lang, _UI_TEXT["zh"])["manual_ok"].format(len(c)) if c
                else _UI_TEXT.get(lang, _UI_TEXT["zh"])["manual_fail"],
@@ -373,4 +550,17 @@ def build_ui():
 
 if __name__ == "__main__":
     demo = build_ui()
-    demo.queue(default_concurrency_limit=1).launch(theme=gr.themes.Soft())
+    try:
+        demo.queue(default_concurrency_limit=1).launch(
+            theme=gr.themes.Soft(), ssr_mode=False, inbrowser=True,
+            server_name="localhost"
+        )
+    except Exception as e:
+        if "startup-events" in str(e):
+            print("\nServer is running at: http://localhost:7860")
+            print("Open this URL in your browser.\n")
+            import time
+            while True:
+                time.sleep(3600)
+        else:
+            raise

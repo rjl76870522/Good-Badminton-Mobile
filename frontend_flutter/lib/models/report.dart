@@ -1,0 +1,255 @@
+class AnalysisReport {
+  const AnalysisReport({
+    required this.schemaVersion,
+    required this.video,
+    required this.summary,
+    required this.advice,
+    required this.coaching,
+    required this.files,
+    required this.highlightSegments,
+    this.taskId,
+  });
+
+  final String schemaVersion;
+  final ReportVideo video;
+  final ReportSummary summary;
+  final List<String> advice;
+  final Coaching coaching;
+  final ReportFiles files;
+  final List<HighlightSegment> highlightSegments;
+  final String? taskId;
+
+  bool get usesLegacyAdvice => coaching.isEmpty && advice.isNotEmpty;
+
+  factory AnalysisReport.fromJson(Map<String, dynamic> json) {
+    final adviceJson = json['advice'];
+    final segments = json['highlight_segments'];
+    return AnalysisReport(
+      schemaVersion: json['schema_version']?.toString() ?? '',
+      video: ReportVideo.fromJson(mapValue(json['video'])),
+      summary: ReportSummary.fromJson(mapValue(json['summary'])),
+      advice: adviceJson is List
+          ? adviceJson.map((item) => item.toString()).toList(growable: false)
+          : const [],
+      coaching: Coaching.fromJson(mapValue(json['coaching'])),
+      files: ReportFiles.fromJson(mapValue(json['files'])),
+      highlightSegments: segments is List
+          ? segments
+              .whereType<Map>()
+              .map(
+                (item) => HighlightSegment.fromJson(
+                  item.map((key, value) => MapEntry(key.toString(), value)),
+                ),
+              )
+              .toList(growable: false)
+          : const [],
+      taskId: nullableString(json['task_id']),
+    );
+  }
+}
+
+class ReportVideo {
+  const ReportVideo({
+    this.name = '',
+    this.durationSec = 0,
+    this.fps = 0,
+    this.width = 0,
+    this.height = 0,
+  });
+
+  final String name;
+  final double durationSec;
+  final double fps;
+  final int width;
+  final int height;
+
+  factory ReportVideo.fromJson(Map<String, dynamic> json) {
+    return ReportVideo(
+      name: json['name']?.toString() ?? '',
+      durationSec: numberValue(json['duration_sec']),
+      fps: numberValue(json['fps']),
+      width: integerValue(json['width']),
+      height: integerValue(json['height']),
+    );
+  }
+}
+
+class ReportSummary {
+  const ReportSummary({
+    this.totalDistanceM = 0,
+    this.maxSpeedMps = 0,
+    this.avgSpeedMps = 0,
+    this.intensityScore = 0,
+    this.detectedFrames = 0,
+    this.shuttlecockFrames = 0,
+    this.activeTimeSec = 0,
+    this.distancePerMin = 0,
+    this.coverageAreaM2 = 0,
+    this.courtSpanXM = 0,
+    this.courtSpanYM = 0,
+    this.shuttlecockRatio = 0,
+  });
+
+  final double totalDistanceM;
+  final double maxSpeedMps;
+  final double avgSpeedMps;
+  final int intensityScore;
+  final int detectedFrames;
+  final int shuttlecockFrames;
+  final double activeTimeSec;
+  final double distancePerMin;
+  final double coverageAreaM2;
+  final double courtSpanXM;
+  final double courtSpanYM;
+  final double shuttlecockRatio;
+
+  factory ReportSummary.fromJson(Map<String, dynamic> json) {
+    return ReportSummary(
+      totalDistanceM: numberValue(json['total_distance_m']),
+      maxSpeedMps: numberValue(json['max_speed_mps']),
+      avgSpeedMps: numberValue(json['avg_speed_mps']),
+      intensityScore: integerValue(json['intensity_score']),
+      detectedFrames: integerValue(json['detected_frames']),
+      shuttlecockFrames: integerValue(json['shuttlecock_frames']),
+      activeTimeSec: numberValue(json['active_time_sec']),
+      distancePerMin: numberValue(json['distance_per_min']),
+      coverageAreaM2: numberValue(json['coverage_area_m2']),
+      courtSpanXM: numberValue(json['court_span_x_m']),
+      courtSpanYM: numberValue(json['court_span_y_m']),
+      shuttlecockRatio: numberValue(json['shuttlecock_ratio']),
+    );
+  }
+}
+
+class Coaching {
+  const Coaching({
+    this.strengths = const [],
+    this.weaknesses = const [],
+    this.improvements = const [],
+  });
+
+  final List<CoachingItem> strengths;
+  final List<CoachingItem> weaknesses;
+  final List<CoachingItem> improvements;
+
+  bool get isEmpty =>
+      strengths.isEmpty && weaknesses.isEmpty && improvements.isEmpty;
+
+  factory Coaching.fromJson(Map<String, dynamic> json) {
+    List<CoachingItem> parse(dynamic value) {
+      if (value is! List) return const [];
+      return value
+          .whereType<Map>()
+          .map(
+            (item) => CoachingItem.fromJson(
+              item.map((key, value) => MapEntry(key.toString(), value)),
+            ),
+          )
+          .toList(growable: false);
+    }
+
+    return Coaching(
+      strengths: parse(json['strengths']),
+      weaknesses: parse(json['weaknesses']),
+      improvements: parse(json['improvements']),
+    );
+  }
+}
+
+class CoachingItem {
+  const CoachingItem({
+    required this.title,
+    required this.basis,
+    required this.detail,
+    required this.trainingFocus,
+  });
+
+  final String title;
+  final String basis;
+  final String detail;
+  final String trainingFocus;
+
+  factory CoachingItem.fromJson(Map<String, dynamic> json) {
+    return CoachingItem(
+      title: json['title']?.toString() ?? '',
+      basis: json['basis']?.toString() ?? '',
+      detail: json['detail']?.toString() ?? '',
+      trainingFocus: json['training_focus']?.toString() ?? '',
+    );
+  }
+}
+
+class ReportFiles {
+  const ReportFiles({
+    this.analysisVideo,
+    this.heatmap,
+    this.trajectory,
+    this.highlight,
+  });
+
+  final String? analysisVideo;
+  final String? heatmap;
+  final String? trajectory;
+  final String? highlight;
+
+  factory ReportFiles.fromJson(Map<String, dynamic> json) {
+    return ReportFiles(
+      analysisVideo: nullableString(json['analysis_video']),
+      heatmap: nullableString(json['heatmap']),
+      trajectory: nullableString(json['trajectory']),
+      highlight: nullableString(json['highlight']),
+    );
+  }
+}
+
+class HighlightSegment {
+  const HighlightSegment({
+    required this.startSec,
+    required this.endSec,
+    required this.score,
+    required this.reason,
+    required this.metrics,
+  });
+
+  final double startSec;
+  final double endSec;
+  final int score;
+  final String reason;
+  final Map<String, double> metrics;
+
+  factory HighlightSegment.fromJson(Map<String, dynamic> json) {
+    final rawMetrics = mapValue(json['metrics']);
+    return HighlightSegment(
+      startSec: numberValue(json['start_sec']),
+      endSec: numberValue(json['end_sec']),
+      score: integerValue(json['score']),
+      reason: json['reason']?.toString() ?? '',
+      metrics: rawMetrics.map(
+        (key, value) => MapEntry(key, numberValue(value)),
+      ),
+    );
+  }
+}
+
+Map<String, dynamic> mapValue(dynamic value) {
+  if (value is Map<String, dynamic>) return value;
+  if (value is Map) {
+    return value.map((key, item) => MapEntry(key.toString(), item));
+  }
+  return const {};
+}
+
+double numberValue(dynamic value) {
+  if (value is num) return value.toDouble();
+  return double.tryParse(value?.toString() ?? '') ?? 0;
+}
+
+int integerValue(dynamic value) {
+  if (value is num) return value.toInt();
+  return int.tryParse(value?.toString() ?? '') ?? 0;
+}
+
+String? nullableString(dynamic value) {
+  final text = value?.toString();
+  return text == null || text.isEmpty || text == 'null' ? null : text;
+}

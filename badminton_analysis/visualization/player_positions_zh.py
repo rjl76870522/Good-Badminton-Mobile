@@ -78,9 +78,9 @@ class PlayerPositionVisualizer:
         # Heatmap grid parameters
         self.heatmap_grid_size = (30, 60)  # Grid size (width grid count, length grid count)
         
-        # Color settings - 调整为在深色背景中更醒目的颜色
-        self.upper_color = '#ff6363'  # Upper court player color (亮红色，在深色背景中更醒目)
-        self.lower_color = '#63c6ff'  # Lower court player color (亮蓝色，在深色背景中更醒目)
+        # Color settings - 调整颜色使其更醒目
+        self.upper_color = '#ff4444'  # 亮红色
+        self.lower_color = '#4488ff'  # 亮蓝色
         
         # 场地线条颜色 - 深色主题
         self.court_line_color = '#bbbbbb'  # 浅灰色，在深色背景中清晰可见
@@ -503,9 +503,9 @@ class PlayerPositionVisualizer:
         """Generate heatmap"""
         plt.figure(figsize=(10, 16), facecolor='#1a1a1a')  # 设置深色背景
         
-        # 在深色背景中创建更好的颜色映射 - 从透明到鲜明的颜色
-        upper_cmap = LinearSegmentedColormap.from_list("upper_cmap", [(0, 0, 0, 0), self.upper_color])
-        lower_cmap = LinearSegmentedColormap.from_list("lower_cmap", [(0, 0, 0, 0), self.lower_color])
+        # 深色背景下的颜色映射：从暗色到亮色，确保低密度区可见
+        upper_cmap = LinearSegmentedColormap.from_list("upper_cmap", ['#220000', '#660000', '#cc2222', self.upper_color])
+        lower_cmap = LinearSegmentedColormap.from_list("lower_cmap", ['#000022', '#000066', '#2255cc', self.lower_color])
         
         # Create court background
         self._draw_court()
@@ -517,12 +517,26 @@ class PlayerPositionVisualizer:
                 y=upper_df['court_y'],
                 cmap=upper_cmap,
                 fill=True,
-                alpha=1,           # 最大不透明度
-                levels=12,        # 减少等高线数量，增加对比度
-                thresh=0.01,      # 降低阈值，显示更多低密度区域
-                bw_adjust=1     # 进一步减小带宽，使峰值更突出
+                alpha=1.0,
+                levels=10,
+                thresh=0.002,
+                bw_adjust=0.35
             )
-        
+            sns.kdeplot(
+                x=upper_df['court_x'],
+                y=upper_df['court_y'],
+                colors=[self.upper_color],
+                fill=False,
+                alpha=0.6,
+                levels=6,
+                thresh=0.005,
+                bw_adjust=0.35,
+                linewidths=1.5
+            )
+            plt.scatter(upper_df['court_x'], upper_df['court_y'],
+                       alpha=0.2, s=6, color=self.upper_color, marker='o',
+                       edgecolors='none')
+
         # Draw lower court heatmap if data available
         if not lower_df.empty:
             sns.kdeplot(
@@ -530,11 +544,25 @@ class PlayerPositionVisualizer:
                 y=lower_df['court_y'],
                 cmap=lower_cmap,
                 fill=True,
-                alpha=1,           # 最大不透明度
-                levels=12,        # 减少等高线数量，增加对比度
-                thresh=0.01,      # 降低阈值，显示更多低密度区域
-                bw_adjust=1     # 进一步减小带宽，使峰值更突出
+                alpha=1.0,
+                levels=10,
+                thresh=0.002,
+                bw_adjust=0.35
             )
+            sns.kdeplot(
+                x=lower_df['court_x'],
+                y=lower_df['court_y'],
+                colors=[self.lower_color],
+                fill=False,
+                alpha=0.6,
+                levels=6,
+                thresh=0.005,
+                bw_adjust=0.35,
+                linewidths=1.5
+            )
+            plt.scatter(lower_df['court_x'], lower_df['court_y'],
+                       alpha=0.2, s=6, color=self.lower_color, marker='^',
+                       edgecolors='none')
         
         # 添加统计信息
         rally_id = None
@@ -681,22 +709,24 @@ class PlayerPositionVisualizer:
                 # Group by rally and plot with different colors
                 for rally_id, rally_data in upper_df.groupby('rally_id'):
                     plt.scatter(
-                        rally_data['court_x'], 
+                        rally_data['court_x'],
                         rally_data['court_y'],
-                        alpha=0.7,
-                        s=30,
+                        alpha=0.8,
+                        s=35,
                         marker='o',  # circle marker
                         color=self.upper_color,
+                        edgecolors='none',
                         label=f'上场球员 回合 {int(rally_id)}' if rally_id == upper_df['rally_id'].iloc[0] else "_nolegend_"
                     )
             else:
                 plt.scatter(
-                    upper_df['court_x'], 
+                    upper_df['court_x'],
                     upper_df['court_y'],
-                    alpha=0.7,
-                    s=30,
+                    alpha=0.8,
+                    s=35,
                     marker='o',
                     color=self.upper_color,
+                    edgecolors='none',
                     label='上场球员'
                 )
             
@@ -707,22 +737,24 @@ class PlayerPositionVisualizer:
                 # Group by rally and plot with different colors
                 for rally_id, rally_data in lower_df.groupby('rally_id'):
                     plt.scatter(
-                        rally_data['court_x'], 
+                        rally_data['court_x'],
                         rally_data['court_y'],
-                        alpha=0.7,
-                        s=30,
+                        alpha=0.8,
+                        s=35,
                         marker='^',  # triangle marker
                         color=self.lower_color,
+                        edgecolors='none',
                         label=f'下场球员 回合 {int(rally_id)}' if rally_id == lower_df['rally_id'].iloc[0] else "_nolegend_"
                     )
             else:
                 plt.scatter(
-                    lower_df['court_x'], 
+                    lower_df['court_x'],
                     lower_df['court_y'],
-                    alpha=0.7,
-                    s=30,
-                    marker='^',  # triangle marker
+                    alpha=0.8,
+                    s=35,
+                    marker='^',
                     color=self.lower_color,
+                    edgecolors='none',
                     label='下场球员'
                 )
         

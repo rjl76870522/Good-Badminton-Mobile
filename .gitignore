@@ -4,6 +4,7 @@ __pycache__/
 *.pyo
 *.pyd
 .pytest_cache/
+.pytest_tmp/
 .mypy_cache/
 .ruff_cache/
 .venv/
@@ -15,6 +16,21 @@ env/
 results/
 outputs/
 *.log
+mobile_backend_data/
+deliverables/
+bilibilivideo/
+apk/
+server/uploads/
+*.apk
+*.zip
+
+# Keep only the small repository demo videos.
+videos/*
+!videos/demo.mp4
+!videos/demo1.mp4
+
+# Accidental dependency marker / local scratch file.
+=4.0.0
 
 # Model weights are intentionally not published
 weights/*
