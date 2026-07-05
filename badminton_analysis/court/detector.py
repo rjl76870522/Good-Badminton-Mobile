@@ -187,6 +187,56 @@ def _dedupe_lines(lines, orientation, max_count):
     return selected
 
 
+def _order_quad_points(points):
+    pts = np.array(points, dtype=np.float32).reshape(-1, 2)
+    if pts.shape[0] != 4:
+        return None
+    sums = pts.sum(axis=1)
+    diffs = pts[:, 1] - pts[:, 0]
+    ordered = np.array(
+        [
+            pts[np.argmin(sums)],
+            pts[np.argmin(diffs)],
+            pts[np.argmax(sums)],
+            pts[np.argmax(diffs)],
+        ],
+        dtype=np.float32,
+    )
+    if len(np.unique(ordered.astype(np.int32), axis=0)) != 4:
+        return None
+    return ordered
+
+
+def _build_green_court_mask(image, *, fallback_bottom_roi=True):
+    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+    h, s, v = cv2.split(hsv)
+    median_v = float(np.median(v))
+    image_area = image.shape[0] * image.shape[1]
+
+    green_primary = ((h >= 35) & (h <= 95) & (s >= 25) & (v >= max(25, median_v * 0.45)))
+    green_cool = ((h >= 90) & (h <= 120) & (s >= 20) & (v >= max(25, median_v * 0.45)))
+    green_mask = (green_primary | green_cool).astype(np.uint8) * 255
+    green_mask = cv2.morphologyEx(green_mask, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8), iterations=1)
+    green_mask = cv2.morphologyEx(green_mask, cv2.MORPH_CLOSE, np.ones((25, 25), np.uint8), iterations=2)
+
+    count, labels, stats, _centroids = cv2.connectedComponentsWithStats(green_mask)
+    candidates = [
+        idx
+        for idx in range(1, count)
+        if stats[idx, cv2.CC_STAT_AREA] > image_area * 0.045
+    ]
+    if candidates:
+        court_idx = max(candidates, key=lambda idx: stats[idx, cv2.CC_STAT_AREA])
+        return ((labels == court_idx).astype(np.uint8)) * 255
+
+    if not fallback_bottom_roi:
+        return green_mask
+
+    fallback = np.zeros_like(green_mask)
+    fallback[int(image.shape[0] * 0.30):, :] = 255
+    return fallback
+
+
 def _enhance_for_detection(image):
     """Return a list of pre-processed image variants for robust detection."""
     variants = [image]  # original
@@ -222,45 +272,15 @@ def build_court_line_mask(image):
     h, s, v = cv2.split(hsv)
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     median_v = np.median(v)
-
-    # Adaptive thresholds based on brightness
-    v_low = max(25, median_v * 0.5)
-    s_high = min(30, median_v * 0.6)
-
-    # Multi-level green detection
-    green_masks = []
-    # Standard green
-    green_masks.append(((h >= 35) & (h <= 95) & (s >= 25) & (v >= v_low)).astype(np.uint8) * 255)
-    # Blue-green (cool lighting)
-    green_masks.append(((h >= 90) & (h <= 120) & (s >= 20) & (v >= v_low)).astype(np.uint8) * 255)
-
-    green_mask = green_masks[0]
-    if green_masks[1].sum() > green_masks[0].sum():
-        green_mask = green_masks[1]
-
-    green_mask = cv2.morphologyEx(green_mask, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8), iterations=1)
-    green_mask = cv2.morphologyEx(green_mask, cv2.MORPH_CLOSE, np.ones((25, 25), np.uint8), iterations=2)
-
-    count, labels, stats, _centroids = cv2.connectedComponentsWithStats(green_mask)
-    if count > 1:
-        image_area = image.shape[0] * image.shape[1]
-        candidates = [idx for idx in range(1, count) if stats[idx, cv2.CC_STAT_AREA] > image_area * 0.06]
-        if candidates:
-            court_idx = max(candidates, key=lambda idx: stats[idx, cv2.CC_STAT_AREA])
-            green_mask = ((labels == court_idx).astype(np.uint8)) * 255
-
-    # If green detection is weak, expand to include any large non-sky region
-    green_ratio = cv2.countNonZero(green_mask) / (image.shape[0] * image.shape[1])
-    if green_ratio < 0.10:
-        # Fallback: just use the bottom 70% of the frame as court roi
-        green_mask = np.zeros_like(green_mask)
-        green_mask[int(image.shape[0] * 0.3):, :] = 255
+    green_mask = _build_green_court_mask(image)
 
     court_roi = cv2.dilate(green_mask, cv2.getStructuringElement(cv2.MORPH_RECT, (17, 17)), iterations=1)
 
-    # Adaptive white/yellow line thresholds
-    v_white = max(100, median_v * 1.8) if median_v > 30 else 100
-    white_mask = (((s <= 100) & (v >= v_white)).astype(np.uint8)) * 255
+    # White court lines can be less bright than the global frame median on
+    # broadcast footage. Keep saturation strict and cap the value threshold so
+    # visible bottom lines are not lost.
+    v_white = max(105, min(145, median_v * 0.85))
+    white_mask = (((s <= 90) & (v >= v_white)).astype(np.uint8)) * 255
     white_mask = cv2.bitwise_and(white_mask, court_roi)
 
     # Adaptive Canny
@@ -279,20 +299,12 @@ def build_reference_line_mask(image):
     hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
     h, s, v = cv2.split(hsv)
 
-    green_mask = (((h >= 35) & (h <= 95) & (s >= 30) & (v >= 45)).astype(np.uint8)) * 255
-    green_mask = cv2.morphologyEx(green_mask, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8), iterations=1)
-    green_mask = cv2.morphologyEx(green_mask, cv2.MORPH_CLOSE, np.ones((25, 25), np.uint8), iterations=2)
-
-    count, labels, stats, _centroids = cv2.connectedComponentsWithStats(green_mask)
-    if count > 1:
-        image_area = image.shape[0] * image.shape[1]
-        candidates = [idx for idx in range(1, count) if stats[idx, cv2.CC_STAT_AREA] > image_area * 0.08]
-        if candidates:
-            court_idx = max(candidates, key=lambda idx: stats[idx, cv2.CC_STAT_AREA])
-            green_mask = ((labels == court_idx).astype(np.uint8)) * 255
+    green_mask = _build_green_court_mask(image, fallback_bottom_roi=False)
 
     court_roi = cv2.dilate(green_mask, cv2.getStructuringElement(cv2.MORPH_RECT, (13, 13)), iterations=1)
-    white_mask = (((s <= 90) & (v >= 145)).astype(np.uint8)) * 255
+    median_v = np.median(v)
+    v_white = max(110, min(150, median_v * 0.90))
+    white_mask = (((s <= 90) & (v >= v_white)).astype(np.uint8)) * 255
     yellow_mask = (((h >= 12) & (h <= 42) & (s >= 45) & (v >= 120)).astype(np.uint8)) * 255
     line_mask = cv2.bitwise_and(cv2.bitwise_or(white_mask, yellow_mask), court_roi)
     line_mask = cv2.morphologyEx(line_mask, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_RECT, (5, 3)), iterations=1)
@@ -475,6 +487,74 @@ def _score_court_quad(corners, image_shape, lines, line_mask, horizontal_lines, 
     }
     return total_score, details
 
+
+def _detect_surface_court_corners(image, court_reference, line_support):
+    height, width = image.shape[:2]
+    mask = _build_green_court_mask(image, fallback_bottom_roi=False)
+    contours, _hierarchy = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return None, None
+
+    image_area = width * height
+    candidates = []
+    for contour in sorted(contours, key=cv2.contourArea, reverse=True)[:4]:
+        contour_area = float(cv2.contourArea(contour))
+        if contour_area < image_area * 0.10:
+            continue
+
+        perimeter = cv2.arcLength(contour, True)
+        quad = None
+        for epsilon_ratio in (0.018, 0.024, 0.032, 0.045):
+            approx = cv2.approxPolyDP(contour, epsilon_ratio * perimeter, True)
+            if len(approx) == 4:
+                quad = approx.reshape(4, 2)
+                break
+        if quad is None:
+            hull = cv2.convexHull(contour)
+            rect = cv2.boxPoints(cv2.minAreaRect(hull))
+            quad = rect.reshape(4, 2)
+
+        ordered = _order_quad_points(quad)
+        if ordered is None:
+            continue
+
+        area = _polygon_area(ordered)
+        if not (image_area * 0.12 <= area <= image_area * 0.62):
+            continue
+        if not _is_convex_quad(ordered):
+            continue
+
+        top_left, top_right, bottom_right, bottom_left = ordered
+        top_width = float(np.linalg.norm(top_right - top_left))
+        bottom_width = float(np.linalg.norm(bottom_right - bottom_left))
+        left_height = float(np.linalg.norm(bottom_left - top_left))
+        right_height = float(np.linalg.norm(bottom_right - top_right))
+        if min(top_width, bottom_width, left_height, right_height) < min(width, height) * 0.12:
+            continue
+        if bottom_width < top_width * 0.75:
+            continue
+        center = np.mean(ordered, axis=0)
+        if not (width * 0.22 <= center[0] <= width * 0.78 and height * 0.42 <= center[1] <= height * 0.88):
+            continue
+
+        reference_score, reference_details = court_reference.score_line_support(
+            ordered,
+            line_support,
+            image.shape,
+        )
+        if reference_score < 0.10:
+            continue
+
+        score = contour_area / image_area + reference_score
+        candidates.append((score, ordered, reference_details))
+
+    if not candidates:
+        return None, None
+
+    _score, corners, details = max(candidates, key=lambda item: item[0])
+    return corners, details
+
+
 def auto_detect_court_corners(image):
     """Auto-detect with multi-stage preprocessing for robustness."""
     court_reference = BadmintonCourtReference()
@@ -533,6 +613,28 @@ def auto_detect_court_corners(image):
                             }
 
     if best_result is None:
+        mask = build_court_line_mask(image)
+        reference_mask = build_reference_line_mask(image)
+        line_support = court_reference.prepare_line_support(reference_mask, image.shape)
+        surface_corners, surface_details = _detect_surface_court_corners(
+            image,
+            court_reference,
+            line_support,
+        )
+        if surface_corners is not None:
+            horizontal_lines, side_lines, _mask = detect_court_line_segments(image)
+            debug = {
+                "horizontal": horizontal_lines,
+                "side": side_lines,
+                "score": None,
+                "details": {
+                    "surface_fallback": True,
+                    **(surface_details or {}),
+                },
+            }
+            corners = [(int(round(p[0])), int(round(p[1]))) for p in surface_corners]
+            return corners, mask, debug
+
         debug = {"horizontal": [], "side": [], "score": None, "details": None}
         return None, np.zeros(image.shape[:2], dtype=np.uint8), debug
 
