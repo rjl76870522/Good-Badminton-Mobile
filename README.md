@@ -2,6 +2,41 @@
 
 当前版本是比赛/移动端闭环版本：Android Flutter App + Windows FastAPI 后端 + Good-Badminton 算法 + Cloudflare 临时公网访问。
 
+## 同学快速下载使用
+
+项目仓库：
+
+```text
+https://github.com/rjl76870522/Good-Badminton-Mobile
+```
+
+当前稳定版：
+
+```text
+stable-mobile-v2-full-20260705
+```
+
+仓库已经包含当前后端运行需要的轻量模型权重：
+
+```text
+weights/yolo11n-pose.pt
+weights/yolo11s-ball.pt
+```
+
+Android APK 不直接放在 Git 里，因为 GitHub 普通文件单个不能超过 100 MB。请到 Release 附件下载：
+
+```text
+https://github.com/rjl76870522/Good-Badminton-Mobile/releases/tag/stable-mobile-v2-full-20260705
+```
+
+最短使用流程：
+
+1. 下载或 clone 仓库到 Windows 电脑。
+2. 配好 conda 环境和 FFmpeg。
+3. 运行 `start_mobile_backend.bat`，本机后端地址是 `http://127.0.0.1:8001`。
+4. 需要手机公网访问时，再运行 `start_public_tunnel.bat` 或 `start_mobile_public.bat`，复制 `https://*.trycloudflare.com`。
+5. 手机上安装 Release 附件里的 APK，App 后端地址填写上一步得到的根地址。
+
 ## 当前稳定能力
 
 - Android App 名称：`AI羽毛球`
