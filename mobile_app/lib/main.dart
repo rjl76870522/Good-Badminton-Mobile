@@ -83,6 +83,7 @@ class _ReviewHomePageState extends State<ReviewHomePage> {
   String? _message;
   Timer? _pollTimer;
   int _pollNetworkFailures = 0;
+  int _taskRunId = 0;
 
   @override
   void initState() {
@@ -154,6 +155,8 @@ class _ReviewHomePageState extends State<ReviewHomePage> {
 
     final prefs = await SharedPreferences.getInstance();
     final userId = 'guest_${DateTime.now().millisecondsSinceEpoch}';
+    _pollTimer?.cancel();
+    _taskRunId++;
     await prefs.setString('user_id', userId);
     await prefs.remove('nickname');
     setState(() {
@@ -296,12 +299,15 @@ class _ReviewHomePageState extends State<ReviewHomePage> {
           )
         : null;
     final sourceUploadId = _previewFrame?['source_upload_id']?.toString();
+    _pollTimer?.cancel();
+    final runId = ++_taskRunId;
 
     setState(() {
       _busy = true;
       _message = null;
       _pollNetworkFailures = 0;
       _task = {'status': 'uploading', 'progress': 0.0, 'stage': 'uploading'};
+      _report = null;
       _tabIndex = 2;
     });
 
@@ -314,8 +320,18 @@ class _ReviewHomePageState extends State<ReviewHomePage> {
         cornersJson: cornersJson,
       );
       final taskId = upload['task_id'] as String;
-      await _pollTask(taskId);
+      if (!_isCurrentTaskRun(runId)) return;
+      setState(() {
+        _task = {
+          'task_id': taskId,
+          'status': 'queued',
+          'progress': 0.0,
+          'stage': 'queued',
+        };
+      });
+      await _pollTask(taskId, runId: runId);
     } catch (error) {
+      if (!_isCurrentTaskRun(runId)) return;
       setState(() {
         _message = _friendlyErrorMessage(error);
         _busy = false;
@@ -323,16 +339,22 @@ class _ReviewHomePageState extends State<ReviewHomePage> {
     }
   }
 
-  Future<void> _pollTask(String taskId) async {
+  bool _isCurrentTaskRun(int runId) {
+    return mounted && _taskRunId == runId;
+  }
+
+  Future<void> _pollTask(String taskId, {required int runId}) async {
     _pollTimer?.cancel();
     try {
       final task = await _api.get('/api/tasks/$taskId');
+      if (!_isCurrentTaskRun(runId)) return;
       _pollNetworkFailures = 0;
       setState(() => _task = task);
 
       final status = task['status'];
       if (status == 'completed') {
         final report = await _api.get('/api/tasks/$taskId/report');
+        if (!_isCurrentTaskRun(runId)) return;
         setState(() {
           _report = report;
           _busy = false;
@@ -350,15 +372,22 @@ class _ReviewHomePageState extends State<ReviewHomePage> {
         return;
       }
 
-      _pollTimer = Timer(const Duration(seconds: 3), () => _pollTask(taskId));
+      _pollTimer = Timer(
+        const Duration(seconds: 3),
+        () => _pollTask(taskId, runId: runId),
+      );
     } catch (error) {
+      if (!_isCurrentTaskRun(runId)) return;
       if (_shouldRetryPolling(error)) {
         _pollNetworkFailures += 1;
         setState(() {
           _message = '网络连接短暂中断，正在自动重试（第 $_pollNetworkFailures 次）。';
           _busy = true;
         });
-        _pollTimer = Timer(const Duration(seconds: 3), () => _pollTask(taskId));
+        _pollTimer = Timer(
+          const Duration(seconds: 3),
+          () => _pollTask(taskId, runId: runId),
+        );
         return;
       }
       setState(() {
@@ -409,6 +438,8 @@ class _ReviewHomePageState extends State<ReviewHomePage> {
       setState(() {
         _message = '已删除历史记录。';
         if (_task?['task_id']?.toString() == taskId) {
+          _pollTimer?.cancel();
+          _taskRunId++;
           _task = null;
           _report = null;
         }
@@ -421,29 +452,45 @@ class _ReviewHomePageState extends State<ReviewHomePage> {
   }
 
   Future<void> _openTask(String taskId) async {
+    _pollTimer?.cancel();
+    final runId = ++_taskRunId;
     setState(() {
       _tabIndex = 2;
       _message = null;
       _pollNetworkFailures = 0;
+      _busy = false;
+      _report = null;
+      _task = {
+        'task_id': taskId,
+        'status': 'loading',
+        'progress': 0.0,
+        'stage': 'loading',
+      };
     });
     try {
       final task = await _api.get('/api/tasks/$taskId');
+      if (!_isCurrentTaskRun(runId)) return;
       setState(() => _task = task);
       if (task['status'] == 'completed') {
         final report = await _api.get('/api/tasks/$taskId/report');
+        if (!_isCurrentTaskRun(runId)) return;
         setState(() => _report = report);
       } else if (task['status'] == 'failed') {
         setState(() => _message = task['error']?.toString() ?? '该任务失败。');
       } else {
-        await _pollTask(taskId);
+        await _pollTask(taskId, runId: runId);
       }
     } catch (error) {
+      if (!_isCurrentTaskRun(runId)) return;
       if (_shouldRetryPolling(error)) {
         setState(() {
           _message = '网络连接短暂中断，正在重新获取任务。';
           _busy = true;
         });
-        _pollTimer = Timer(const Duration(seconds: 3), () => _pollTask(taskId));
+        _pollTimer = Timer(
+          const Duration(seconds: 3),
+          () => _pollTask(taskId, runId: runId),
+        );
         return;
       }
       setState(() => _message = _friendlyErrorMessage(error));
@@ -451,8 +498,18 @@ class _ReviewHomePageState extends State<ReviewHomePage> {
   }
 
   Future<void> _loadDemo() async {
+    _pollTimer?.cancel();
+    final runId = ++_taskRunId;
+    setState(() {
+      _busy = false;
+      _report = null;
+      _task = {'status': 'loading', 'progress': 0.0, 'stage': 'loading'};
+      _tabIndex = 2;
+      _message = null;
+    });
     try {
       final data = await _api.get('/api/demo/sample');
+      if (!_isCurrentTaskRun(runId)) return;
       setState(() {
         _report = data['report'] as Map<String, dynamic>?;
         _task = data['task'] as Map<String, dynamic>?;
@@ -460,6 +517,7 @@ class _ReviewHomePageState extends State<ReviewHomePage> {
         _message = null;
       });
     } catch (error) {
+      if (!_isCurrentTaskRun(runId)) return;
       setState(() => _message = _friendlyErrorMessage(error));
     }
   }
@@ -1364,11 +1422,12 @@ class _ReportPage extends StatelessWidget {
         _localReportSummary(summary: summary, video: video);
     final highlightSegments =
         report?['highlight_segments'] as List<dynamic>? ?? [];
+    final hasReport = report != null;
 
     return ListView(
       padding: const EdgeInsets.all(18),
       children: [
-        if (!_isEmptySummary(summary)) ...[
+        if (hasReport && !_isEmptySummary(summary)) ...[
           _Section(title: '本次总结', child: Text(reportSummary)),
           const SizedBox(height: 16),
         ],
@@ -1396,108 +1455,124 @@ class _ReportPage extends StatelessWidget {
           const SizedBox(height: 16),
           _MessageBox(message: message!),
         ],
-        const SizedBox(height: 16),
-        _Section(
-          title: '核心指标',
-          child: _MetricGrid(
-            metrics: [
-              _Metric(
-                label: '总距离',
-                value: '${_value(summary['total_distance_m'])} m',
-                note: '两名球员稳定轨迹距离合计，不是单个球员距离。',
-              ),
-              _Metric(
-                label: '最高速度',
-                value: '${_value(summary['max_speed_mps'])} m/s',
-                note: '取稳定速度样本的高位值，减少单帧误检影响。',
-              ),
-              _Metric(
-                label: '平均速度',
-                value: '${_value(summary['avg_speed_mps'])} m/s',
-                note: '按每名球员有效时长加权后的平均移动速度，不把两人速度相加。',
-              ),
-              _Metric(
-                label: '训练强度',
-                value: _value(summary['intensity_score']),
-                note: '综合单位时间移动强度、最高稳定速度和有效时长的 0-100 分。',
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-        _Section(
-          title: '进阶指标',
-          child: _MetricGrid(
-            metrics: [
-              _Metric(
-                label: '有效分析时长',
-                value: '${_value(_effectiveDuration(summary, video))} s',
-                note: '真正检测到稳定球员轨迹的时间。短视频结果波动会更大。',
-              ),
-              _Metric(
-                label: '场地覆盖面积',
-                value: '${_value(summary['coverage_area_m2'])} m²',
-                note: '按轨迹横向跨度和纵向跨度估算，用于判断覆盖范围。',
-              ),
-              _Metric(
-                label: '前后场比例',
-                value:
-                    '${_percent(summary['front_court_ratio'])} / ${_percent(summary['back_court_ratio'])}',
-                note: '前场与后场停留比例，帮助判断训练落点是否均衡。',
-              ),
-              _Metric(
-                label: '左右场比例',
-                value:
-                    '${_percent(summary['left_court_ratio'])} / ${_percent(summary['right_court_ratio'])}',
-                note: '左半场与右半场覆盖比例，帮助发现偏侧训练。',
-              ),
-              _Metric(
-                label: '高强度移动次数',
-                value: _value(summary['high_intensity_moves']),
-                note: '速度超过阈值的移动样本数量，可代表启动和冲刺频次。',
-              ),
-              _Metric(
-                label: '羽毛球识别占比',
-                value: _percent(summary['shuttlecock_ratio']),
-                note: '球识别越稳定，球速和精彩集锦判断越可靠。',
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-        _VideoPanel(
-          title: '精彩集锦',
-          url: _optionalUrl(baseUrl, files['highlight']),
-        ),
-        if (highlightSegments.isNotEmpty) ...[
+        if (!hasReport) ...[
           const SizedBox(height: 16),
           _Section(
-            title: '集锦入选理由',
-            child: _HighlightSegmentsPanel(segments: highlightSegments),
+            title: '报告内容',
+            child: Text(
+              status == 'failed'
+                  ? '本次任务没有可用报告，请根据错误提示重新上传。'
+                  : '新视频正在分析或报告正在加载，旧报告内容已清空。',
+            ),
           ),
         ],
-        const SizedBox(height: 16),
-        _VideoPanel(
-          title: '分析视频',
-          url: _optionalUrl(baseUrl, files['analysis_video']),
-        ),
-        const SizedBox(height: 16),
-        _ImagePanel(title: '热力图', url: _optionalUrl(baseUrl, files['heatmap'])),
-        const SizedBox(height: 16),
-        _ImagePanel(
-          title: '轨迹图',
-          url: _optionalUrl(baseUrl, files['trajectory']),
-        ),
-        const SizedBox(height: 16),
-        _Section(
-          title: '训练建议',
-          child: _CoachingPanel(
-            coaching: coaching,
-            legacyAdvice: advice,
-            summary: summary,
-            video: video,
+        if (hasReport) ...[
+          const SizedBox(height: 16),
+          _Section(
+            title: '核心指标',
+            child: _MetricGrid(
+              metrics: [
+                _Metric(
+                  label: '总距离',
+                  value: '${_value(summary['total_distance_m'])} m',
+                  note: '两名球员稳定轨迹距离合计，不是单个球员距离。',
+                ),
+                _Metric(
+                  label: '最高速度',
+                  value: '${_value(summary['max_speed_mps'])} m/s',
+                  note: '取稳定速度样本的高位值，减少单帧误检影响。',
+                ),
+                _Metric(
+                  label: '平均速度',
+                  value: '${_value(summary['avg_speed_mps'])} m/s',
+                  note: '按每名球员有效时长加权后的平均移动速度，不把两人速度相加。',
+                ),
+                _Metric(
+                  label: '训练强度',
+                  value: _value(summary['intensity_score']),
+                  note: '综合单位时间移动强度、最高稳定速度和有效时长的 0-100 分。',
+                ),
+              ],
+            ),
           ),
-        ),
+          const SizedBox(height: 16),
+          _Section(
+            title: '进阶指标',
+            child: _MetricGrid(
+              metrics: [
+                _Metric(
+                  label: '有效分析时长',
+                  value: '${_value(_effectiveDuration(summary, video))} s',
+                  note: '真正检测到稳定球员轨迹的时间。短视频结果波动会更大。',
+                ),
+                _Metric(
+                  label: '场地覆盖面积',
+                  value: '${_value(summary['coverage_area_m2'])} m²',
+                  note: '按轨迹横向跨度和纵向跨度估算，用于判断覆盖范围。',
+                ),
+                _Metric(
+                  label: '前后场比例',
+                  value:
+                      '${_percent(summary['front_court_ratio'])} / ${_percent(summary['back_court_ratio'])}',
+                  note: '前场与后场停留比例，帮助判断训练落点是否均衡。',
+                ),
+                _Metric(
+                  label: '左右场比例',
+                  value:
+                      '${_percent(summary['left_court_ratio'])} / ${_percent(summary['right_court_ratio'])}',
+                  note: '左半场与右半场覆盖比例，帮助发现偏侧训练。',
+                ),
+                _Metric(
+                  label: '高强度移动次数',
+                  value: _value(summary['high_intensity_moves']),
+                  note: '速度超过阈值的移动样本数量，可代表启动和冲刺频次。',
+                ),
+                _Metric(
+                  label: '羽毛球识别占比',
+                  value: _percent(summary['shuttlecock_ratio']),
+                  note: '球识别越稳定，球速和精彩集锦判断越可靠。',
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          _VideoPanel(
+            title: '精彩集锦',
+            url: _optionalUrl(baseUrl, files['highlight']),
+          ),
+          if (highlightSegments.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            _Section(
+              title: '集锦入选理由',
+              child: _HighlightSegmentsPanel(segments: highlightSegments),
+            ),
+          ],
+          const SizedBox(height: 16),
+          _VideoPanel(
+            title: '分析视频',
+            url: _optionalUrl(baseUrl, files['analysis_video']),
+          ),
+          const SizedBox(height: 16),
+          _ImagePanel(
+            title: '热力图',
+            url: _optionalUrl(baseUrl, files['heatmap']),
+          ),
+          const SizedBox(height: 16),
+          _ImagePanel(
+            title: '轨迹图',
+            url: _optionalUrl(baseUrl, files['trajectory']),
+          ),
+          const SizedBox(height: 16),
+          _Section(
+            title: '训练建议',
+            child: _CoachingPanel(
+              coaching: coaching,
+              legacyAdvice: advice,
+              summary: summary,
+              video: video,
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -1724,10 +1799,7 @@ class _ProfilePage extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                '游客训练档案',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
+              Text('游客训练档案', style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(height: 8),
               const Text('当前版本使用游客 ID 区分训练记录，不需要手机号或密码。'),
             ],
