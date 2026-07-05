@@ -104,27 +104,46 @@ class _TaskStatusPageState extends State<TaskStatusPage>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      Container(
-                        width: 82,
-                        height: 82,
-                        decoration: BoxDecoration(
-                          color: _statusColor(context, task)
-                              .withValues(alpha: 0.10),
-                          shape: BoxShape.circle,
-                        ),
+                      SizedBox(
+                        width: 112,
+                        height: 112,
                         child: task.isRunning
-                            ? RotationTransition(
-                                turns: _motionController,
+                            ? AnimatedBuilder(
+                                animation: _motionController,
+                                builder: (context, _) => Stack(
+                                  alignment: Alignment.center,
+                                  children: [
+                                    _PulseRing(
+                                      progress: _motionController.value,
+                                      color: _statusColor(context, task),
+                                    ),
+                                    _PulseRing(
+                                      progress:
+                                          (_motionController.value + 0.5) % 1,
+                                      color: _statusColor(context, task),
+                                    ),
+                                    RotationTransition(
+                                      turns: _motionController,
+                                      child: Icon(
+                                        Icons.sports_tennis,
+                                        size: 42,
+                                        color: _statusColor(context, task),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              )
+                            : Container(
+                                decoration: BoxDecoration(
+                                  color: _statusColor(context, task)
+                                      .withValues(alpha: 0.10),
+                                  shape: BoxShape.circle,
+                                ),
                                 child: Icon(
-                                  Icons.sports_tennis,
+                                  _statusIcon(task),
                                   size: 42,
                                   color: _statusColor(context, task),
                                 ),
-                              )
-                            : Icon(
-                                _statusIcon(task),
-                                size: 42,
-                                color: _statusColor(context, task),
                               ),
                       ),
                       const SizedBox(height: 14),
@@ -140,6 +159,9 @@ class _TaskStatusPageState extends State<TaskStatusPage>
                       Row(
                         children: [
                           Chip(
+                            backgroundColor: _statusColor(context, task)
+                                .withValues(alpha: 0.12),
+                            side: BorderSide.none,
                             avatar: Icon(
                               _statusIcon(task),
                               size: 18,
@@ -253,9 +275,10 @@ class _TaskStatusPageState extends State<TaskStatusPage>
 
   Color _statusColor(BuildContext context, TaskStatus task) {
     return switch (task.status) {
-      'completed' => Colors.green.shade700,
-      'failed' => Theme.of(context).colorScheme.error,
+      'completed' => const Color(0xFF2E7D32),
+      'failed' => const Color(0xFFB65C62),
       'processing' => Theme.of(context).colorScheme.primary,
+      'queued' => const Color(0xFF607D9B),
       _ => Theme.of(context).colorScheme.secondary,
     };
   }
@@ -287,5 +310,29 @@ class _TaskStatusPageState extends State<TaskStatusPage>
     if (task.progress < 0.55) return '[2/4] 正在追踪球员轨迹…';
     if (task.progress < 0.82) return '[3/4] 正在识别羽毛球运动…';
     return '[4/4] 正在生成复盘报告…';
+  }
+}
+
+class _PulseRing extends StatelessWidget {
+  const _PulseRing({required this.progress, required this.color});
+
+  final double progress;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final size = 58 + (progress * 48);
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: color.withValues(alpha: 0.12 * (1 - progress)),
+        border: Border.all(
+          color: color.withValues(alpha: 0.34 * (1 - progress)),
+          width: 1.4,
+        ),
+      ),
+    );
   }
 }

@@ -19,10 +19,12 @@ class _MainShellPageState extends State<MainShellPage> {
     return Scaffold(
       body: IndexedStack(
         index: _selectedIndex,
-        children: const [
-          HomePage(),
-          HistoryPage(),
-          ProfilePage(),
+        children: [
+          HomePage(
+            onSelectTab: (index) => setState(() => _selectedIndex = index),
+          ),
+          const HistoryPage(),
+          const ProfilePage(),
         ],
       ),
       bottomNavigationBar: SafeArea(

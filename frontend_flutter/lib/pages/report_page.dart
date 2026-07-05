@@ -108,7 +108,10 @@ class _ReportPageState extends State<ReportPage> {
                 style: Theme.of(context).textTheme.titleLarge,
               ),
               const SizedBox(height: 8),
-              _SummaryCard(summary: report.summary),
+              _SummaryCard(
+                summary: report.summary,
+                highlightCount: report.highlightSegments.length,
+              ),
               const SizedBox(height: 20),
               Text(
                 '移动可视化',
@@ -147,88 +150,130 @@ class _ReportPageState extends State<ReportPage> {
 }
 
 class _SummaryCard extends StatelessWidget {
-  const _SummaryCard({required this.summary});
+  const _SummaryCard({
+    required this.summary,
+    required this.highlightCount,
+  });
 
   final ReportSummary summary;
+  final int highlightCount;
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final width = (constraints.maxWidth - 10) / 2;
-            return Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: [
-                _MetricTile(
-                  width: width,
-                  label: '总距离',
-                  value: '${summary.totalDistanceM.toStringAsFixed(2)} m',
-                  icon: Icons.route_outlined,
+    return Column(
+      children: [
+        SizedBox(
+          height: 210,
+          child: Row(
+            children: [
+              Expanded(
+                flex: 6,
+                child: _BentoMetric(
+                  label: '最高瞬时速度',
+                  value: summary.maxSpeedMps,
+                  decimals: 2,
+                  suffix: ' m/s',
+                  icon: Icons.north_east_rounded,
+                  emphasized: true,
                 ),
-                _MetricTile(
-                  width: width,
-                  label: '最大速度',
-                  value: '${summary.maxSpeedMps.toStringAsFixed(2)} m/s',
-                  icon: Icons.speed,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                flex: 5,
+                child: Column(
+                  children: [
+                    Expanded(
+                      child: _BentoMetric(
+                        label: '总跑动距离',
+                        value: summary.totalDistanceM,
+                        decimals: 2,
+                        suffix: ' m',
+                        icon: Icons.route_outlined,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Expanded(
+                      child: _BentoMetric(
+                        label: '精彩片段',
+                        value: highlightCount.toDouble(),
+                        decimals: 0,
+                        suffix: ' 个',
+                        icon: Icons.movie_filter_outlined,
+                      ),
+                    ),
+                  ],
                 ),
-                _MetricTile(
-                  width: width,
-                  label: '平均速度',
-                  value: '${summary.avgSpeedMps.toStringAsFixed(2)} m/s',
-                  icon: Icons.timeline,
-                ),
-                _MetricTile(
-                  width: width,
-                  label: '强度评分',
-                  value: '${summary.intensityScore}',
-                  icon: Icons.local_fire_department_outlined,
-                ),
-                _MetricTile(
-                  width: width,
-                  label: '检测帧数',
-                  value: '${summary.detectedFrames}',
-                  icon: Icons.filter_frames_outlined,
-                ),
-                _MetricTile(
-                  width: width,
-                  label: '羽毛球帧数',
-                  value: '${summary.shuttlecockFrames}',
-                  icon: Icons.sports_tennis,
-                ),
-                _MetricTile(
-                  width: width,
-                  label: '有效时长',
-                  value: '${summary.activeTimeSec.toStringAsFixed(1)} s',
-                  icon: Icons.timer_outlined,
-                ),
-                _MetricTile(
-                  width: width,
-                  label: '每分钟距离',
-                  value: '${summary.distancePerMin.toStringAsFixed(1)} m',
-                  icon: Icons.directions_run,
-                ),
-                _MetricTile(
-                  width: width,
-                  label: '覆盖面积',
-                  value: '${summary.coverageAreaM2.toStringAsFixed(1)} m²',
-                  icon: Icons.grid_on_outlined,
-                ),
-                _MetricTile(
-                  width: width,
-                  label: '羽毛球识别占比',
-                  value:
-                      '${(summary.shuttlecockRatio * 100).toStringAsFixed(0)}%',
-                  icon: Icons.track_changes,
-                ),
-              ],
-            );
-          },
+              ),
+            ],
+          ),
         ),
-      ),
+        const SizedBox(height: 10),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final width = (constraints.maxWidth - 10) / 2;
+                return Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    _MetricTile(
+                      width: width,
+                      label: '平均速度',
+                      value: '${summary.avgSpeedMps.toStringAsFixed(2)} m/s',
+                      icon: Icons.timeline,
+                    ),
+                    _MetricTile(
+                      width: width,
+                      label: '强度评分',
+                      value: '${summary.intensityScore}',
+                      icon: Icons.local_fire_department_outlined,
+                    ),
+                    _MetricTile(
+                      width: width,
+                      label: '检测帧数',
+                      value: '${summary.detectedFrames}',
+                      icon: Icons.filter_frames_outlined,
+                    ),
+                    _MetricTile(
+                      width: width,
+                      label: '羽毛球帧数',
+                      value: '${summary.shuttlecockFrames}',
+                      icon: Icons.sports_tennis,
+                    ),
+                    _MetricTile(
+                      width: width,
+                      label: '有效时长',
+                      value: '${summary.activeTimeSec.toStringAsFixed(1)} s',
+                      icon: Icons.timer_outlined,
+                    ),
+                    _MetricTile(
+                      width: width,
+                      label: '每分钟距离',
+                      value: '${summary.distancePerMin.toStringAsFixed(1)} m',
+                      icon: Icons.directions_run,
+                    ),
+                    _MetricTile(
+                      width: width,
+                      label: '覆盖面积',
+                      value: '${summary.coverageAreaM2.toStringAsFixed(1)} m²',
+                      icon: Icons.grid_on_outlined,
+                    ),
+                    _MetricTile(
+                      width: width,
+                      label: '羽毛球识别占比',
+                      value:
+                          '${(summary.shuttlecockRatio * 100).toStringAsFixed(0)}%',
+                      icon: Icons.track_changes,
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -314,18 +359,23 @@ class _VisualizationSwitcherState extends State<_VisualizationSwitcher> {
                               style: TextStyle(color: Colors.white70),
                             ),
                           )
-                        : Image.network(
-                            url,
-                            fit: BoxFit.contain,
-                            errorBuilder: (_, error, __) => Center(
-                              child: Text(
-                                '图片加载失败：$error',
-                                style: const TextStyle(color: Colors.white70),
-                              ),
+                        : GestureDetector(
+                            onTap: () => _showImagePreview(
+                              context,
+                              url,
+                              isHeatmap ? '热力图' : '球员轨迹',
                             ),
+                            child: _FadeNetworkImage(url: url),
                           ),
               ),
             ),
+            if (url != null && available) ...[
+              const SizedBox(height: 8),
+              const Text(
+                '点击图片全屏查看，支持双指缩放',
+                style: TextStyle(fontSize: 12, color: Colors.black54),
+              ),
+            ],
           ],
         ),
       ),
@@ -423,13 +473,24 @@ class _CoachingGroup extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(item.title,
-                            style:
-                                const TextStyle(fontWeight: FontWeight.bold)),
-                        if (item.basis.isNotEmpty) Text('依据：${item.basis}'),
-                        if (item.detail.isNotEmpty) Text(item.detail),
+                        Text(
+                          item.title,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            height: 1.6,
+                          ),
+                        ),
+                        if (item.basis.isNotEmpty)
+                          Text('依据：${item.basis}',
+                              style: const TextStyle(height: 1.6)),
+                        if (item.detail.isNotEmpty)
+                          Text(item.detail,
+                              style: const TextStyle(height: 1.6)),
                         if (item.trainingFocus.isNotEmpty)
-                          Text('训练重点：${item.trainingFocus}'),
+                          Text(
+                            '训练重点：${item.trainingFocus}',
+                            style: const TextStyle(height: 1.6),
+                          ),
                       ],
                     ),
                   ),
@@ -549,6 +610,183 @@ class _MetricTile extends StatelessWidget {
       ),
     );
   }
+}
+
+class _BentoMetric extends StatelessWidget {
+  const _BentoMetric({
+    required this.label,
+    required this.value,
+    required this.decimals,
+    required this.suffix,
+    required this.icon,
+    this.emphasized = false,
+  });
+
+  final String label;
+  final double value;
+  final int decimals;
+  final String suffix;
+  final IconData icon;
+  final bool emphasized;
+
+  @override
+  Widget build(BuildContext context) {
+    final primary = Theme.of(context).colorScheme.primary;
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(emphasized ? 20 : 14),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: emphasized
+              ? const [Color(0xFF1B5E20), Color(0xFF43A047)]
+              : const [Color(0xFFFFFFFF), Color(0xFFF1F7EE)],
+        ),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: emphasized ? Colors.transparent : const Color(0xFFE0E5DD),
+          width: 0.8,
+        ),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x11000000),
+            blurRadius: 14,
+            offset: Offset(0, 7),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Icon(icon, color: emphasized ? Colors.white : primary),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  color: emphasized ? Colors.white70 : Colors.black54,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 4),
+              _AnimatedNumberText(
+                value: value,
+                decimals: decimals,
+                suffix: suffix,
+                color: emphasized ? Colors.white : Colors.black87,
+                fontSize: emphasized ? 32 : 22,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AnimatedNumberText extends StatelessWidget {
+  const _AnimatedNumberText({
+    required this.value,
+    required this.decimals,
+    required this.suffix,
+    required this.color,
+    required this.fontSize,
+  });
+
+  final double value;
+  final int decimals;
+  final String suffix;
+  final Color color;
+  final double fontSize;
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: value),
+      duration: const Duration(milliseconds: 650),
+      curve: Curves.easeOutCubic,
+      builder: (context, animatedValue, _) => Text(
+        '${animatedValue.toStringAsFixed(decimals)}$suffix',
+        maxLines: 1,
+        style: TextStyle(
+          color: color,
+          fontSize: fontSize,
+          fontWeight: FontWeight.w900,
+          letterSpacing: -0.8,
+        ),
+      ),
+    );
+  }
+}
+
+class _FadeNetworkImage extends StatelessWidget {
+  const _FadeNetworkImage({required this.url});
+
+  final String url;
+
+  @override
+  Widget build(BuildContext context) {
+    return Image.network(
+      url,
+      fit: BoxFit.contain,
+      frameBuilder: (context, child, frame, synchronous) {
+        if (synchronous) return child;
+        return AnimatedOpacity(
+          opacity: frame == null ? 0 : 1,
+          duration: const Duration(milliseconds: 380),
+          child: child,
+        );
+      },
+      loadingBuilder: (context, child, progress) {
+        if (progress == null) return child;
+        return const Center(child: CircularProgressIndicator());
+      },
+      errorBuilder: (_, error, __) => Center(
+        child: Text(
+          '图片加载失败：$error',
+          style: const TextStyle(color: Colors.white70),
+        ),
+      ),
+    );
+  }
+}
+
+Future<void> _showImagePreview(
+  BuildContext context,
+  String url,
+  String title,
+) {
+  return showDialog<void>(
+    context: context,
+    barrierColor: Colors.black87,
+    builder: (context) => Dialog.fullscreen(
+      backgroundColor: const Color(0xFF07100A),
+      child: SafeArea(
+        child: Column(
+          children: [
+            ListTile(
+              title: Text(title, style: const TextStyle(color: Colors.white)),
+              trailing: IconButton(
+                tooltip: '关闭',
+                onPressed: () => Navigator.of(context).pop(),
+                icon: const Icon(Icons.close, color: Colors.white),
+              ),
+            ),
+            Expanded(
+              child: InteractiveViewer(
+                minScale: 0.8,
+                maxScale: 5,
+                child: Center(child: _FadeNetworkImage(url: url)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 class _FileLink extends StatelessWidget {

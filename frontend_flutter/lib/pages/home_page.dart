@@ -9,7 +9,9 @@ import 'task_status_page.dart';
 import 'upload_page.dart';
 
 class HomePage extends StatefulWidget {
-  const HomePage({super.key});
+  const HomePage({super.key, this.onSelectTab});
+
+  final ValueChanged<int>? onSelectTab;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -114,24 +116,9 @@ class _HomePageState extends State<HomePage> {
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
       floatingActionButton: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 20),
-        child: SizedBox(
-          width: double.infinity,
-          height: 58,
-          child: FloatingActionButton.extended(
-            heroTag: 'upload-video-fab',
-            onPressed: _openUpload,
-            elevation: 8,
-            backgroundColor: colorScheme.primary,
-            foregroundColor: colorScheme.onPrimary,
-            icon: const Icon(Icons.auto_awesome),
-            label: const Text(
-              '开始上传视频',
-              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
-            ),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(30),
-            ),
-          ),
+        child: _UploadActionButton(
+          color: colorScheme.primary,
+          onPressed: _openUpload,
         ),
       ),
       body: Stack(
@@ -180,33 +167,43 @@ class _HomePageState extends State<HomePage> {
                 ),
               ],
               const SizedBox(height: 14),
+              Text(
+                '快捷入口',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+              ),
+              const SizedBox(height: 10),
               Row(
                 children: [
                   Expanded(
-                    flex: 6,
-                    child: _BentoActionCard(
-                      height: 156,
-                      icon: Icons.video_camera_back_outlined,
-                      title: '智能分析',
-                      subtitle: '上传比赛视频\n生成跑动报告',
-                      color: const Color(0xFFE2F3E3),
-                      onTap: _openUpload,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    flex: 5,
-                    child: _BentoActionCard(
-                      height: 156,
+                    child: _QuickAccessCard(
                       icon: Icons.science_outlined,
-                      title: 'Demo',
-                      subtitle: '预览完整\n分析报告',
+                      label: 'Demo',
                       color: const Color(0xFFFFF4D9),
                       onTap: () => Navigator.of(context).push(
                         MaterialPageRoute(
                           builder: (_) => const ReportPage.demo(),
                         ),
                       ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _QuickAccessCard(
+                      icon: Icons.insights_outlined,
+                      label: '历史记录',
+                      color: const Color(0xFFE2F3E3),
+                      onTap: () => widget.onSelectTab?.call(1),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _QuickAccessCard(
+                      icon: Icons.person_outline_rounded,
+                      label: '训练档案',
+                      color: const Color(0xFFE8EEF7),
+                      onTap: () => widget.onSelectTab?.call(2),
                     ),
                   ),
                 ],
@@ -371,9 +368,25 @@ class _ConnectionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Card(
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 280),
+      decoration: BoxDecoration(
+        color: connected ? const Color(0xFFF0F8EF) : Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: connected ? const Color(0xFFB8DDBB) : const Color(0xFFE0E5DD),
+          width: 0.8,
+        ),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x10000000),
+            blurRadius: 16,
+            offset: Offset(0, 7),
+          ),
+        ],
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(14),
         child: Column(
           children: [
             Row(
@@ -398,9 +411,36 @@ class _ConnectionCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                TextButton(
-                  onPressed: checking ? null : onCheck,
-                  child: Text(checking ? '连接中' : '测试连接'),
+                const SizedBox(width: 8),
+                Tooltip(
+                  message: '测试连接',
+                  child: Material(
+                    color: connected
+                        ? const Color(0xFF2E7D32)
+                        : scheme.surfaceContainerHighest,
+                    shape: const CircleBorder(),
+                    child: InkWell(
+                      customBorder: const CircleBorder(),
+                      onTap: checking ? null : onCheck,
+                      child: SizedBox(
+                        width: 44,
+                        height: 44,
+                        child: checking
+                            ? const Padding(
+                                padding: EdgeInsets.all(12),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.5,
+                                ),
+                              )
+                            : Icon(
+                                Icons.power_settings_new_rounded,
+                                color: connected
+                                    ? Colors.white
+                                    : scheme.onSurfaceVariant,
+                              ),
+                      ),
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -511,20 +551,16 @@ class _ActiveTaskCard extends StatelessWidget {
   }
 }
 
-class _BentoActionCard extends StatelessWidget {
-  const _BentoActionCard({
-    required this.height,
+class _QuickAccessCard extends StatelessWidget {
+  const _QuickAccessCard({
     required this.icon,
-    required this.title,
-    required this.subtitle,
+    required this.label,
     required this.color,
     required this.onTap,
   });
 
-  final double height;
   final IconData icon;
-  final String title;
-  final String subtitle;
+  final String label;
   final Color color;
   final VoidCallback onTap;
 
@@ -532,38 +568,97 @@ class _BentoActionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: color,
-      borderRadius: BorderRadius.circular(24),
+      borderRadius: BorderRadius.circular(22),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(22),
         child: Container(
-          height: height,
-          padding: const EdgeInsets.all(17),
+          height: 110,
+          padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(24),
+            borderRadius: BorderRadius.circular(22),
             border: Border.all(color: Colors.white.withValues(alpha: 0.8)),
           ),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(
                 icon,
-                size: 31,
+                size: 30,
                 color: Theme.of(context).colorScheme.primary,
               ),
-              const Spacer(),
+              const SizedBox(height: 10),
               Text(
-                title,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                label,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
                       fontWeight: FontWeight.w800,
                     ),
               ),
-              const SizedBox(height: 3),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _UploadActionButton extends StatefulWidget {
+  const _UploadActionButton({
+    required this.color,
+    required this.onPressed,
+  });
+
+  final Color color;
+  final VoidCallback onPressed;
+
+  @override
+  State<_UploadActionButton> createState() => _UploadActionButtonState();
+}
+
+class _UploadActionButtonState extends State<_UploadActionButton> {
+  var _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedScale(
+      scale: _pressed ? 0.965 : 1,
+      duration: const Duration(milliseconds: 120),
+      child: GestureDetector(
+        onTapDown: (_) => setState(() => _pressed = true),
+        onTapCancel: () => setState(() => _pressed = false),
+        onTapUp: (_) {
+          setState(() => _pressed = false);
+          widget.onPressed();
+        },
+        child: Container(
+          width: double.infinity,
+          height: 60,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(32),
+            gradient: LinearGradient(
+              colors: [widget.color, const Color(0xFF43A047)],
+            ),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x452E7D32),
+                blurRadius: 20,
+                offset: Offset(0, 9),
+              ),
+            ],
+          ),
+          child: const Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.auto_awesome, color: Colors.white),
+              SizedBox(width: 10),
               Text(
-                subtitle,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      height: 1.3,
-                    ),
+                '开始上传视频',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
             ],
           ),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../config/api_config.dart';
 import '../models/preview_frame.dart';
@@ -37,6 +38,7 @@ class _CornerPickerPageState extends State<CornerPickerPage>
 
   void _addPoint(TapDownDetails details, Size displaySize) {
     if (_points.length >= 4) return;
+    HapticFeedback.selectionClick();
     setState(() {
       _points.add(
         CornerMapper.displayToVideo(
