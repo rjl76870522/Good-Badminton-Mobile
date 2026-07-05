@@ -32,10 +32,20 @@ https://github.com/rjl76870522/Good-Badminton-Mobile/releases/tag/stable-mobile-
 最短使用流程：
 
 1. 下载或 clone 仓库到 Windows 电脑。
-2. 配好 conda 环境和 FFmpeg。
+2. 在项目根目录创建后端环境：
+
+```bat
+conda env create -f environment.yml
+conda activate badminton
+```
+
 3. 运行 `start_mobile_backend.bat`，本机后端地址是 `http://127.0.0.1:8001`。
 4. 需要手机公网访问时，再运行 `start_public_tunnel.bat` 或 `start_mobile_public.bat`，复制 `https://*.trycloudflare.com`。
 5. 手机上安装 Release 附件里的 APK，App 后端地址填写上一步得到的根地址。
+
+仓库包含：后端源码、算法源码、Flutter App 源码、iOS/Android 工程、Gradle Wrapper、运行脚本、测试、模板图、字体、轻量模型权重。
+
+仓库不包含：分析输出、上传历史、测试视频、本机缓存、虚拟环境、Flutter/Gradle 构建产物、Cloudflare 日志、本机 Android SDK 路径。
 
 ## 当前稳定能力
 
