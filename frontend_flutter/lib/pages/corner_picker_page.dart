@@ -13,9 +13,14 @@ class CornerPickerPage extends StatefulWidget {
   State<CornerPickerPage> createState() => _CornerPickerPageState();
 }
 
-class _CornerPickerPageState extends State<CornerPickerPage> {
+class _CornerPickerPageState extends State<CornerPickerPage>
+    with SingleTickerProviderStateMixin {
   static const _labels = ['左上角', '右上角', '右下角', '左下角'];
   late List<CourtPoint> _points;
+  late final AnimationController _pulseController = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1200),
+  )..repeat(reverse: true);
 
   @override
   void initState() {
@@ -48,27 +53,49 @@ class _CornerPickerPageState extends State<CornerPickerPage> {
   }
 
   @override
+  void dispose() {
+    _pulseController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final imageUrl = ApiConfig.absoluteFileUrl(widget.preview.imageUrl)!;
     final nextLabel =
         _points.length < 4 ? '请点击：${_labels[_points.length]}' : '四个角点已设置';
     return Scaffold(
-      appBar: AppBar(title: const Text('设置球场角点')),
+      backgroundColor: const Color(0xFF0D1711),
+      appBar: AppBar(
+        title: const Text('球场智能校准'),
+        backgroundColor: const Color(0xFF0D1711),
+        foregroundColor: Colors.white,
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           Card(
-            color: Theme.of(context).colorScheme.primaryContainer,
+            color: const Color(0xFF193624),
             child: Padding(
               padding: const EdgeInsets.all(14),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(nextLabel,
-                      style: Theme.of(context).textTheme.titleMedium),
+                  Text(
+                    nextLabel,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800,
+                        ),
+                  ),
                   const SizedBox(height: 4),
-                  const Text('顺序：左上角 → 右上角 → 右下角 → 左下角'),
-                  const Text('可双指缩放预览图；坐标会自动换算为原视频像素。'),
+                  const Text(
+                    '顺序：左上角 → 右上角 → 右下角 → 左下角',
+                    style: TextStyle(color: Colors.white70),
+                  ),
+                  const Text(
+                    '可双指缩放预览图；坐标会自动换算为原视频像素。',
+                    style: TextStyle(color: Colors.white60),
+                  ),
                 ],
               ),
             ),
@@ -83,31 +110,50 @@ class _CornerPickerPageState extends State<CornerPickerPage> {
               builder: (context, constraints) {
                 final size = Size(constraints.maxWidth, constraints.maxHeight);
                 return ClipRRect(
-                  borderRadius: BorderRadius.circular(14),
-                  child: InteractiveViewer(
-                    minScale: 1,
-                    maxScale: 4,
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTapDown: (details) => _addPoint(details, size),
-                      child: Stack(
-                        fit: StackFit.expand,
-                        children: [
-                          Image.network(
-                            imageUrl,
-                            fit: BoxFit.fill,
-                            errorBuilder: (_, error, __) => ColoredBox(
-                              color: Colors.black12,
-                              child: Center(child: Text('预览图加载失败：$error')),
+                  borderRadius: BorderRadius.circular(22),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                        color: const Color(0xFF66BB6A),
+                        width: 1.5,
+                      ),
+                      borderRadius: BorderRadius.circular(22),
+                    ),
+                    child: InteractiveViewer(
+                      minScale: 1,
+                      maxScale: 4,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTapDown: (details) => _addPoint(details, size),
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            Image.network(
+                              imageUrl,
+                              fit: BoxFit.fill,
+                              errorBuilder: (_, error, __) => ColoredBox(
+                                color: Colors.black38,
+                                child: Center(
+                                  child: Text(
+                                    '预览图加载失败：$error',
+                                    style:
+                                        const TextStyle(color: Colors.white70),
+                                  ),
+                                ),
+                              ),
                             ),
-                          ),
-                          CustomPaint(
-                            painter: _CornerPainter(
-                              points: _points,
-                              videoSize: _videoSize,
+                            AnimatedBuilder(
+                              animation: _pulseController,
+                              builder: (context, _) => CustomPaint(
+                                painter: _CornerPainter(
+                                  points: _points,
+                                  videoSize: _videoSize,
+                                  pulse: _pulseController.value,
+                                ),
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -116,24 +162,37 @@ class _CornerPickerPageState extends State<CornerPickerPage> {
             ),
           ),
           const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              OutlinedButton.icon(
-                onPressed:
-                    _points.isEmpty ? null : () => setState(() => _points = []),
-                icon: const Icon(Icons.refresh),
-                label: const Text('重新选择'),
+          Card(
+            color: const Color(0xCC1A261F),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.white,
+                    ),
+                    onPressed: _points.isEmpty
+                        ? null
+                        : () => setState(() => _points = []),
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('重新选择'),
+                  ),
+                  OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFFA5D6A7),
+                    ),
+                    onPressed: widget.preview.autoCorners.length == 4
+                        ? _useAutoCorners
+                        : null,
+                    icon: const Icon(Icons.auto_fix_high),
+                    label: const Text('自动检测'),
+                  ),
+                ],
               ),
-              OutlinedButton.icon(
-                onPressed: widget.preview.autoCorners.length == 4
-                    ? _useAutoCorners
-                    : null,
-                icon: const Icon(Icons.auto_fix_high),
-                label: const Text('使用自动角点'),
-              ),
-            ],
+            ),
           ),
           const SizedBox(height: 12),
           if (_points.isNotEmpty)
@@ -142,6 +201,7 @@ class _CornerPickerPageState extends State<CornerPickerPage> {
               (index) => Text(
                 '${_labels[index]}：'
                 '(${_points[index].x.round()}, ${_points[index].y.round()})',
+                style: const TextStyle(color: Colors.white70),
               ),
             ),
           const SizedBox(height: 20),
@@ -154,6 +214,7 @@ class _CornerPickerPageState extends State<CornerPickerPage> {
           ),
           const SizedBox(height: 8),
           TextButton(
+            style: TextButton.styleFrom(foregroundColor: Colors.white70),
             onPressed: () => Navigator.of(context).pop(<CourtPoint>[]),
             child: const Text('跳过手动角点'),
           ),
@@ -164,10 +225,15 @@ class _CornerPickerPageState extends State<CornerPickerPage> {
 }
 
 class _CornerPainter extends CustomPainter {
-  const _CornerPainter({required this.points, required this.videoSize});
+  const _CornerPainter({
+    required this.points,
+    required this.videoSize,
+    required this.pulse,
+  });
 
   final List<CourtPoint> points;
   final Size videoSize;
+  final double pulse;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -194,6 +260,11 @@ class _CornerPainter extends CustomPainter {
     }
     final fillPaint = Paint()..color = Colors.redAccent;
     for (var index = 0; index < offsets.length; index++) {
+      canvas.drawCircle(
+        offsets[index],
+        13 + pulse * 7,
+        Paint()..color = Colors.redAccent.withValues(alpha: 0.22 * (1 - pulse)),
+      );
       canvas.drawCircle(offsets[index], 8, fillPaint);
       final text = TextPainter(
         text: TextSpan(
@@ -215,6 +286,8 @@ class _CornerPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _CornerPainter oldDelegate) {
-    return oldDelegate.points != points || oldDelegate.videoSize != videoSize;
+    return oldDelegate.points != points ||
+        oldDelegate.videoSize != videoSize ||
+        oldDelegate.pulse != pulse;
   }
 }

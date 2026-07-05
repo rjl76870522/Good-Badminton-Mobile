@@ -9,8 +9,12 @@ void main() {
     await tester.pumpWidget(const GoodBadmintonApp());
 
     expect(find.text('Good-Badminton'), findsOneWidget);
-    expect(find.text('测试后端连接'), findsOneWidget);
-    expect(find.text('上传视频'), findsOneWidget);
-    expect(find.text('查看 Demo 报告'), findsOneWidget);
+    expect(find.text('羽毛球 AI 视觉分析'), findsOneWidget);
+    expect(find.text('测试连接'), findsOneWidget);
+    expect(find.text('开始上传视频'), findsOneWidget);
+    expect(find.text('Demo'), findsOneWidget);
+    expect(find.text('首页'), findsOneWidget);
+    expect(find.text('历史记录'), findsOneWidget);
+    expect(find.text('训练档案'), findsOneWidget);
   });
 }

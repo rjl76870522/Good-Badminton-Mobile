@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'pages/home_page.dart';
+import 'pages/main_shell_page.dart';
 
 void main() {
   runApp(const GoodBadmintonApp());
@@ -27,11 +27,12 @@ class GoodBadmintonApp extends StatelessWidget {
           surfaceTintColor: Colors.transparent,
         ),
         cardTheme: CardThemeData(
-          elevation: 0,
+          elevation: 2,
+          shadowColor: const Color(0x182E7D32),
           color: Colors.white,
           margin: EdgeInsets.zero,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(24),
             side: BorderSide(color: colorScheme.outlineVariant),
           ),
         ),
@@ -39,7 +40,7 @@ class GoodBadmintonApp extends StatelessWidget {
           style: FilledButton.styleFrom(
             minimumSize: const Size.fromHeight(52),
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(24),
             ),
           ),
         ),
@@ -47,7 +48,7 @@ class GoodBadmintonApp extends StatelessWidget {
           style: OutlinedButton.styleFrom(
             minimumSize: const Size.fromHeight(52),
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(24),
             ),
           ),
         ),
@@ -55,11 +56,11 @@ class GoodBadmintonApp extends StatelessWidget {
           filled: true,
           fillColor: Colors.white,
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(20),
           ),
         ),
       ),
-      home: const HomePage(),
+      home: const MainShellPage(),
     );
   }
 }

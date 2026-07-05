@@ -84,7 +84,9 @@ class _ReportPageState extends State<ReportPage> {
   Widget build(BuildContext context) {
     final report = _report;
     return Scaffold(
-      appBar: AppBar(title: Text(widget.loadDemo ? 'Demo 报告' : '分析报告')),
+      appBar: AppBar(
+        title: Text(widget.loadDemo ? 'Demo 训练复盘' : '训练复盘报告'),
+      ),
       body: RefreshIndicator(
         onRefresh: _load,
         child: ListView(
@@ -102,15 +104,27 @@ class _ReportPageState extends State<ReportPage> {
             ],
             if (report != null) ...[
               Text(
-                '基础数据',
+                '核心表现',
                 style: Theme.of(context).textTheme.titleLarge,
               ),
               const SizedBox(height: 8),
               _SummaryCard(summary: report.summary),
               const SizedBox(height: 20),
+              Text(
+                '移动可视化',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              const SizedBox(height: 8),
+              _VisualizationSwitcher(
+                heatmapUrl: report.files.heatmap,
+                trajectoryUrl: report.files.trajectory,
+                heatmapAvailable: _fileAvailability['heatmap'] ?? false,
+                trajectoryAvailable: _fileAvailability['trajectory'] ?? false,
+              ),
+              const SizedBox(height: 20),
               _CoachingSection(report: report),
               const SizedBox(height: 20),
-              Text('分析结果', style: Theme.of(context).textTheme.titleLarge),
+              Text('精彩时刻', style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 8),
               _FileLink(
                 title: '精彩集锦',
@@ -123,16 +137,6 @@ class _ReportPageState extends State<ReportPage> {
                 title: '分析视频',
                 relativeUrl: report.files.analysisVideo,
                 available: _fileAvailability['analysis_video'] ?? false,
-              ),
-              _NetworkImageResult(
-                title: '热力图',
-                relativeUrl: report.files.heatmap,
-                available: _fileAvailability['heatmap'] ?? false,
-              ),
-              _NetworkImageResult(
-                title: '轨迹图',
-                relativeUrl: report.files.trajectory,
-                available: _fileAvailability['trajectory'] ?? false,
               ),
             ],
           ],
@@ -229,6 +233,106 @@ class _SummaryCard extends StatelessWidget {
   }
 }
 
+class _VisualizationSwitcher extends StatefulWidget {
+  const _VisualizationSwitcher({
+    required this.heatmapUrl,
+    required this.trajectoryUrl,
+    required this.heatmapAvailable,
+    required this.trajectoryAvailable,
+  });
+
+  final String? heatmapUrl;
+  final String? trajectoryUrl;
+  final bool heatmapAvailable;
+  final bool trajectoryAvailable;
+
+  @override
+  State<_VisualizationSwitcher> createState() => _VisualizationSwitcherState();
+}
+
+class _VisualizationSwitcherState extends State<_VisualizationSwitcher> {
+  var _selected = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final isHeatmap = _selected == 0;
+    final relativeUrl = isHeatmap ? widget.heatmapUrl : widget.trajectoryUrl;
+    final available =
+        isHeatmap ? widget.heatmapAvailable : widget.trajectoryAvailable;
+    final url = ApiConfig.absoluteFileUrl(relativeUrl);
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          children: [
+            SizedBox(
+              width: double.infinity,
+              child: SegmentedButton<int>(
+                segments: const [
+                  ButtonSegment(
+                    value: 0,
+                    icon: Icon(Icons.local_fire_department_outlined),
+                    label: Text('热力图'),
+                  ),
+                  ButtonSegment(
+                    value: 1,
+                    icon: Icon(Icons.route_outlined),
+                    label: Text('球员轨迹'),
+                  ),
+                ],
+                selected: {_selected},
+                showSelectedIcon: false,
+                onSelectionChanged: (selection) {
+                  setState(() => _selected = selection.first);
+                },
+              ),
+            ),
+            const SizedBox(height: 12),
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 280),
+              child: Container(
+                key: ValueKey(_selected),
+                width: double.infinity,
+                constraints: const BoxConstraints(minHeight: 210),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF123C24),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: url == null
+                    ? const Center(
+                        child: Text(
+                          '暂无可视化文件',
+                          style: TextStyle(color: Colors.white70),
+                        ),
+                      )
+                    : !available
+                        ? const Center(
+                            child: Text(
+                              '文件未生成或已失效',
+                              style: TextStyle(color: Colors.white70),
+                            ),
+                          )
+                        : Image.network(
+                            url,
+                            fit: BoxFit.contain,
+                            errorBuilder: (_, error, __) => Center(
+                              child: Text(
+                                '图片加载失败：$error',
+                                style: const TextStyle(color: Colors.white70),
+                              ),
+                            ),
+                          ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _CoachingSection extends StatelessWidget {
   const _CoachingSection({required this.report});
 
@@ -296,6 +400,7 @@ class _CoachingGroup extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Card(
+        color: const Color(0xFFE8F5E9),
         child: Padding(
           padding: const EdgeInsets.all(14),
           child: Column(
@@ -347,16 +452,47 @@ class _HighlightCard extends StatelessWidget {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Row(
           children: [
-            Text('精彩片段 · ${segment.score} 分',
-                style: Theme.of(context).textTheme.titleSmall),
-            Text(
-              '时间段：${segment.startSec.toStringAsFixed(1)}s - '
-              '${segment.endSec.toStringAsFixed(1)}s',
+            Container(
+              width: 72,
+              height: 58,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF1B5E20), Color(0xFF66BB6A)],
+                ),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: const Icon(
+                Icons.play_arrow_rounded,
+                color: Colors.white,
+                size: 34,
+              ),
             ),
-            if (segment.reason.isNotEmpty) Text('入选原因：${segment.reason}'),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '精彩片段 · ${segment.score} 分',
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                  ),
+                  Text(
+                    '${segment.startSec.toStringAsFixed(1)}s - '
+                    '${segment.endSec.toStringAsFixed(1)}s',
+                  ),
+                  if (segment.reason.isNotEmpty)
+                    Text(
+                      segment.reason,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -383,8 +519,18 @@ class _MetricTile extends StatelessWidget {
       width: width,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(14),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: label == '总距离' || label == '最大速度'
+              ? const [Color(0xFFE8F5E9), Color(0xFFF7FBF4)]
+              : [
+                  Theme.of(context).colorScheme.surfaceContainerLow,
+                  Colors.white,
+                ],
+        ),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE0E5DD)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -393,55 +539,11 @@ class _MetricTile extends StatelessWidget {
           const SizedBox(height: 8),
           Text(label, style: Theme.of(context).textTheme.bodySmall),
           const SizedBox(height: 2),
-          Text(value, style: Theme.of(context).textTheme.titleMedium),
-        ],
-      ),
-    );
-  }
-}
-
-class _NetworkImageResult extends StatelessWidget {
-  const _NetworkImageResult({
-    required this.title,
-    required this.relativeUrl,
-    required this.available,
-  });
-
-  final String title;
-  final String? relativeUrl;
-  final bool available;
-
-  @override
-  Widget build(BuildContext context) {
-    final url = ApiConfig.absoluteFileUrl(relativeUrl);
-    if (url == null) {
-      return ListTile(
-        contentPadding: EdgeInsets.zero,
-        title: Text(title),
-        subtitle: const Text('暂无文件'),
-      );
-    }
-    if (!available) {
-      return ListTile(
-        contentPadding: EdgeInsets.zero,
-        title: Text(title),
-        subtitle: const Text('文件未生成或已失效'),
-        leading: const Icon(Icons.broken_image_outlined),
-      );
-    }
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 6),
-          SelectableText(url),
-          const SizedBox(height: 8),
-          Image.network(
-            url,
-            fit: BoxFit.contain,
-            errorBuilder: (_, error, __) => Text('图片加载失败：$error'),
+          Text(
+            value,
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
           ),
         ],
       ),

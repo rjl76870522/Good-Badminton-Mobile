@@ -17,7 +17,8 @@ class TaskStatusPage extends StatefulWidget {
   State<TaskStatusPage> createState() => _TaskStatusPageState();
 }
 
-class _TaskStatusPageState extends State<TaskStatusPage> {
+class _TaskStatusPageState extends State<TaskStatusPage>
+    with SingleTickerProviderStateMixin {
   final ApiService _api = ApiService();
   final TaskStorage _storage = TaskStorage();
   Timer? _timer;
@@ -26,6 +27,10 @@ class _TaskStatusPageState extends State<TaskStatusPage> {
   bool _temporaryNetworkIssue = false;
   bool _loading = true;
   bool _requestInFlight = false;
+  late final AnimationController _motionController = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1800),
+  )..repeat();
 
   @override
   void initState() {
@@ -73,6 +78,7 @@ class _TaskStatusPageState extends State<TaskStatusPage> {
   @override
   void dispose() {
     _timer?.cancel();
+    _motionController.dispose();
     _api.close();
     super.dispose();
   }
@@ -94,10 +100,43 @@ class _TaskStatusPageState extends State<TaskStatusPage> {
             if (task != null) ...[
               Card(
                 child: Padding(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(20),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
+                      Container(
+                        width: 82,
+                        height: 82,
+                        decoration: BoxDecoration(
+                          color: _statusColor(context, task)
+                              .withValues(alpha: 0.10),
+                          shape: BoxShape.circle,
+                        ),
+                        child: task.isRunning
+                            ? RotationTransition(
+                                turns: _motionController,
+                                child: Icon(
+                                  Icons.sports_tennis,
+                                  size: 42,
+                                  color: _statusColor(context, task),
+                                ),
+                              )
+                            : Icon(
+                                _statusIcon(task),
+                                size: 42,
+                                color: _statusColor(context, task),
+                              ),
+                      ),
+                      const SizedBox(height: 14),
+                      Text(
+                        _stageMessage(task),
+                        textAlign: TextAlign.center,
+                        style:
+                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                ),
+                      ),
+                      const SizedBox(height: 12),
                       Row(
                         children: [
                           Chip(
@@ -122,9 +161,18 @@ class _TaskStatusPageState extends State<TaskStatusPage> {
                         borderRadius: BorderRadius.circular(8),
                       ),
                       const SizedBox(height: 14),
-                      Text('当前阶段：${task.stage.isEmpty ? '等待更新' : task.stage}'),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          '当前阶段：'
+                          '${task.stage.isEmpty ? '等待更新' : task.stage}',
+                        ),
+                      ),
                       const SizedBox(height: 4),
-                      Text('视频：${task.videoName}'),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text('视频：${task.videoName}'),
+                      ),
                     ],
                   ),
                 ),
@@ -210,5 +258,34 @@ class _TaskStatusPageState extends State<TaskStatusPage> {
       'processing' => Theme.of(context).colorScheme.primary,
       _ => Theme.of(context).colorScheme.secondary,
     };
+  }
+
+  String _stageMessage(TaskStatus task) {
+    if (task.status == 'queued') return '[1/4] 正在准备分析资源…';
+    if (task.isCompleted) return '分析完成，训练报告已生成';
+    if (task.isFailed) return '分析未完成，请查看错误信息';
+    final stage = task.stage.toLowerCase();
+    if (stage.contains('court') ||
+        stage.contains('template') ||
+        stage.contains('preview')) {
+      return '[1/4] 正在检测球场角点…';
+    }
+    if (stage.contains('pose') ||
+        stage.contains('player') ||
+        stage.contains('track')) {
+      return '[2/4] 正在追踪球员轨迹…';
+    }
+    if (stage.contains('shuttle') || stage.contains('ball')) {
+      return '[3/4] 正在识别羽毛球运动…';
+    }
+    if (stage.contains('report') ||
+        stage.contains('visual') ||
+        stage.contains('finish')) {
+      return '[4/4] 正在生成复盘报告…';
+    }
+    if (task.progress < 0.25) return '[1/4] 正在检测球场角点…';
+    if (task.progress < 0.55) return '[2/4] 正在追踪球员轨迹…';
+    if (task.progress < 0.82) return '[3/4] 正在识别羽毛球运动…';
+    return '[4/4] 正在生成复盘报告…';
   }
 }
