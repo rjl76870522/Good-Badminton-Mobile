@@ -241,7 +241,7 @@ class _HeroCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       height: 202,
-      padding: const EdgeInsets.all(22),
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(28),
         gradient: const LinearGradient(
@@ -263,85 +263,95 @@ class _HeroCard extends StatelessWidget {
         child: Stack(
           children: [
             Positioned.fill(
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(28),
-                child: Opacity(
-                  opacity: 0.23,
-                  child: Image.asset(
-                    'assets/images/badminton_dashboard_bg.png',
-                    fit: BoxFit.cover,
-                    alignment: Alignment.center,
-                    color: Colors.white,
-                    colorBlendMode: BlendMode.screen,
+              child: Opacity(
+                opacity: 0.16,
+                child: Image.asset(
+                  'assets/images/badminton_dashboard_bg.png',
+                  fit: BoxFit.cover,
+                  alignment: Alignment.center,
+                  color: Colors.white,
+                  colorBlendMode: BlendMode.screen,
+                ),
+              ),
+            ),
+            const Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                    colors: [
+                      Color(0x5C0B4217),
+                      Color(0x0D2E7D32),
+                    ],
                   ),
                 ),
               ),
             ),
-            const Positioned(
-              right: -12,
-              top: -10,
-              child: Icon(
-                Icons.sports_tennis,
-                size: 132,
-                color: Color(0x22FFFFFF),
-              ),
-            ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.17),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: const Text(
-                    'AI SPORTS VISION',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 11,
-                      letterSpacing: 1.2,
-                      fontWeight: FontWeight.w700,
+            Padding(
+              padding: const EdgeInsets.all(22),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.16),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.12),
+                      ),
                     ),
-                  ),
-                ),
-                const Spacer(),
-                const Text(
-                  '羽毛球 AI 视觉分析',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 25,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  '上传比赛视频，一键生成数字化跑动报告',
-                  style: TextStyle(
-                    color: Color(0xE6FFFFFF),
-                    fontSize: 14,
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Row(
-                  children: [
-                    Text(
-                      '开始分析',
+                    child: const Text(
+                      'AI SPORTS VISION',
                       style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.95),
+                        color: Colors.white,
+                        fontSize: 11,
+                        letterSpacing: 1.2,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
-                    const SizedBox(width: 5),
-                    const Icon(
-                      Icons.arrow_forward_rounded,
+                  ),
+                  const Spacer(),
+                  const Text(
+                    '羽毛球 AI 视觉分析',
+                    style: TextStyle(
                       color: Colors.white,
-                      size: 19,
+                      fontSize: 25,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.4,
                     ),
-                  ],
-                ),
-              ],
+                  ),
+                  const SizedBox(height: 7),
+                  const Text(
+                    '上传比赛视频，一键生成数字化跑动报告',
+                    style: TextStyle(
+                      color: Color(0xDFFFFFFF),
+                      fontSize: 14,
+                      height: 1.35,
+                    ),
+                  ),
+                  const SizedBox(height: 13),
+                  Row(
+                    children: [
+                      Text(
+                        '开始分析',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.95),
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(width: 5),
+                      const Icon(
+                        Icons.arrow_forward_rounded,
+                        color: Colors.white,
+                        size: 19,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ],
         ),
