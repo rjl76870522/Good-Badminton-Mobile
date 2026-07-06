@@ -171,7 +171,7 @@ class _TaskStatusPageState extends State<TaskStatusPage>
                           ),
                           const Spacer(),
                           Text(
-                            '${task.progressPercent}%',
+                            task.isFailed ? '已停止' : '${task.progressPercent}%',
                             style: Theme.of(context).textTheme.titleLarge,
                           ),
                         ],
@@ -181,13 +181,18 @@ class _TaskStatusPageState extends State<TaskStatusPage>
                         value: task.progress.clamp(0.0, 1.0).toDouble(),
                         minHeight: 8,
                         borderRadius: BorderRadius.circular(8),
+                        color: task.isFailed
+                            ? const Color(0xFFB65C62)
+                            : Theme.of(context).colorScheme.primary,
+                        backgroundColor:
+                            task.isFailed ? const Color(0xFFF4E5E6) : null,
                       ),
                       const SizedBox(height: 14),
                       Align(
                         alignment: Alignment.centerLeft,
                         child: Text(
                           '当前阶段：'
-                          '${task.stage.isEmpty ? '等待更新' : task.stage}',
+                          '${_stageLabel(task)}',
                         ),
                       ),
                       const SizedBox(height: 4),
@@ -212,21 +217,13 @@ class _TaskStatusPageState extends State<TaskStatusPage>
               ],
               if (task.isFailed) ...[
                 const SizedBox(height: 12),
-                Text(
-                  task.error ?? '分析失败',
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.error,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                FilledButton.tonalIcon(
-                  onPressed: () => Navigator.of(context).pushReplacement(
+                _FailureHelpCard(
+                  error: task.error,
+                  onRetry: () => Navigator.of(context).pushReplacement(
                     MaterialPageRoute(
                       builder: (_) => UploadPage(retryTaskId: task.taskId),
                     ),
                   ),
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('重新上传'),
                 ),
               ],
             ],
@@ -283,6 +280,14 @@ class _TaskStatusPageState extends State<TaskStatusPage>
     };
   }
 
+  String _stageLabel(TaskStatus task) {
+    if (task.isFailed) return '分析已停止';
+    if (task.isCompleted) return '分析完成';
+    if (task.status == 'queued') return '等待分析';
+    if (task.stage.isEmpty) return '等待更新';
+    return task.stage;
+  }
+
   String _stageMessage(TaskStatus task) {
     if (task.status == 'queued') return '[1/4] 正在准备分析资源…';
     if (task.isCompleted) return '分析完成，训练报告已生成';
@@ -310,6 +315,125 @@ class _TaskStatusPageState extends State<TaskStatusPage>
     if (task.progress < 0.55) return '[2/4] 正在追踪球员轨迹…';
     if (task.progress < 0.82) return '[3/4] 正在识别羽毛球运动…';
     return '[4/4] 正在生成复盘报告…';
+  }
+}
+
+class _FailureHelpCard extends StatelessWidget {
+  const _FailureHelpCard({
+    required this.error,
+    required this.onRetry,
+  });
+
+  final String? error;
+  final VoidCallback onRetry;
+
+  bool get _isDetectionFailure {
+    final message = error ?? '';
+    return message.contains('未检测到有效球场') ||
+        message.contains('球员数据') ||
+        message.contains('四个球场角点');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final title = _isDetectionFailure ? '没有识别到有效比赛画面' : '本次分析未完成';
+    final description = _isDetectionFailure
+        ? '系统没有获得足够稳定的球场和球员数据，暂时无法生成可靠报告。'
+        : '分析过程中出现问题，请根据下方错误详情检查视频后重试。';
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF7F6),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xFFF0C9CC)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(
+                Icons.info_outline_rounded,
+                color: Color(0xFFB65C62),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(description, style: const TextStyle(height: 1.5)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (_isDetectionFailure) ...[
+            const SizedBox(height: 14),
+            const _SuggestionLine(text: '确认视频完整拍到球场，且人物没有长时间离开画面'),
+            const SizedBox(height: 8),
+            const _SuggestionLine(text: '重新上传后，在预览页手动标记四个球场角点'),
+          ],
+          if (error != null && error!.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            ExpansionTile(
+              tilePadding: EdgeInsets.zero,
+              childrenPadding: const EdgeInsets.only(bottom: 8),
+              title: const Text('查看原始错误详情'),
+              children: [
+                SelectableText(
+                  error!,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.tonalIcon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh),
+              label: Text(
+                _isDetectionFailure ? '重新上传并标记角点' : '重新上传',
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SuggestionLine extends StatelessWidget {
+  const _SuggestionLine({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.only(top: 2),
+          child: Icon(
+            Icons.check_circle_outline,
+            size: 18,
+            color: Color(0xFF2E7D32),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(child: Text(text, style: const TextStyle(height: 1.4))),
+      ],
+    );
   }
 }
 
