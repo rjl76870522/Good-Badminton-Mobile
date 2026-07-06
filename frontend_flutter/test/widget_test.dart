@@ -17,5 +17,11 @@ void main() {
     expect(find.text('首页'), findsOneWidget);
     expect(find.text('历史记录'), findsWidgets);
     expect(find.text('训练档案'), findsWidgets);
+
+    await tester.tap(find.text('训练档案').last);
+    await tester.pump();
+
+    expect(find.text('后端游客身份'), findsOneWidget);
+    expect(find.text('查询游客身份'), findsOneWidget);
   });
 }

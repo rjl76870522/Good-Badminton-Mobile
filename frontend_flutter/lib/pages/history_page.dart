@@ -217,11 +217,6 @@ class _HistoryCard extends StatelessWidget {
                         ),
                       ),
                       Chip(label: Text(_statusLabel(task.status))),
-                      IconButton(
-                        tooltip: '删除记录',
-                        onPressed: onDelete,
-                        icon: const Icon(Icons.delete_outline),
-                      ),
                     ],
                   ),
                   const SizedBox(height: 8),
@@ -253,14 +248,24 @@ class _HistoryCard extends StatelessWidget {
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ],
-                  if (onRetry != null) ...[
-                    const SizedBox(height: 10),
-                    OutlinedButton.icon(
-                      onPressed: onRetry,
-                      icon: const Icon(Icons.refresh),
-                      label: const Text('重新上传'),
-                    ),
-                  ],
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      if (onRetry != null)
+                        OutlinedButton.icon(
+                          onPressed: onRetry,
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('重新上传'),
+                        ),
+                      TextButton.icon(
+                        onPressed: onDelete,
+                        icon: const Icon(Icons.delete_outline),
+                        label: const Text('删除记录'),
+                      ),
+                    ],
+                  ),
                 ],
               ),
             ),
