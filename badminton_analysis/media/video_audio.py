@@ -1,9 +1,38 @@
 import json
 import os
+import shutil
 import subprocess
 import time
+from pathlib import Path
 
 import cv2
+
+
+def find_ffmpeg_executable():
+    configured = os.environ.get("IMAGEIO_FFMPEG_EXE")
+    if configured and os.path.isfile(configured):
+        return configured
+
+    try:
+        import imageio_ffmpeg
+
+        executable = imageio_ffmpeg.get_ffmpeg_exe()
+        if executable and os.path.isfile(executable):
+            return executable
+    except Exception:
+        pass
+
+    executable = shutil.which("ffmpeg")
+    if executable:
+        return executable
+
+    project_bundled = Path(__file__).resolve().parents[2] / "bilibilivideo" / "ffmpeg.exe"
+    if project_bundled.is_file():
+        return str(project_bundled)
+
+    raise FileNotFoundError(
+        "FFmpeg was not found. Install FFmpeg or keep bilibilivideo/ffmpeg.exe in the project."
+    )
 
 
 def encode_vscode_compatible_mp4(input_video_path, output_path, audio_source_path=None):
@@ -16,7 +45,7 @@ def encode_vscode_compatible_mp4(input_video_path, output_path, audio_source_pat
         final_output_path = f"{output_path}.h264.tmp.mp4"
 
     command = [
-        "ffmpeg",
+        find_ffmpeg_executable(),
         "-y",
         "-i",
         input_video_path,

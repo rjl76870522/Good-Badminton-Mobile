@@ -1,0 +1,195 @@
+{
+  "schema_version": "coaching-advice-v1",
+  "sources": [
+    {
+      "id": "bwf-coach-l1",
+      "title": "BWF Coach Education Coaches Manual Level 1",
+      "url": "https://www.badminton-israel.co.il/newsNdata/General/CoachEducationBWF/BWF_Coach_Manual_Level_1.pdf",
+      "notes": "Used for split-step, movement chaining, lunge, recovery, posture, and court movement principles."
+    },
+    {
+      "id": "badmintonskills-footwork-drills",
+      "title": "BadmintonSkills Footwork And Court Coverage Drills",
+      "url": "https://badmintonskills.com/top-10-drills-to-improve-your-badminton-footwork-and-court-coverage/",
+      "notes": "Used for practical drill dosage such as six-corner shadow movement, net lunge drills, rear-court recovery, and multi-directional shuttle drills."
+    }
+  ],
+  "entries": [
+    {
+      "id": "fast_start_strength",
+      "category": "strength",
+      "title": "爆发启动明显",
+      "principle": "本次检测到较高峰值移动速度，说明抢点、启动和短距离冲刺能力有表现。",
+      "training_focus": "继续保持分腿垫步后再启动的节奏，避免只靠大步硬追导致下一拍回位慢。",
+      "source_ids": ["bwf-coach-l1"]
+    },
+    {
+      "id": "work_rate_strength",
+      "category": "strength",
+      "title": "连续跑动强度较高",
+      "principle": "单位时间移动距离和训练强度较高，说明这段训练包含较多连续移动或攻防转换。",
+      "training_focus": "后续训练可以把快速移动和稳定回中连起来，不只看单次速度。",
+      "source_ids": ["bwf-coach-l1", "badmintonskills-footwork-drills"]
+    },
+    {
+      "id": "court_coverage_strength",
+      "category": "strength",
+      "title": "场地覆盖较完整",
+      "principle": "球员轨迹覆盖了较大的横向或纵向范围，说明前后场/左右侧调动比较充分。",
+      "training_focus": "保持每次击球后的回中习惯，让下一次启动距离更短。",
+      "source_ids": ["bwf-coach-l1"]
+    },
+    {
+      "id": "stable_data_strength",
+      "category": "strength",
+      "title": "视频识别质量可用",
+      "principle": "球员和球的有效识别帧数较多，本次热力图、轨迹和速度指标有参考价值。",
+      "training_focus": "继续使用固定机位并尽量拍完整球场，方便长期对比训练数据。",
+      "source_ids": []
+    },
+    {
+      "id": "balanced_rally_strength",
+      "category": "strength",
+      "title": "双方移动负荷接近",
+      "principle": "两名球员的移动距离和速度接近时，说明这一回合双方对抗参与度较高，数据更适合做攻防节奏复盘。",
+      "training_focus": "复盘时可以同时比较双方回中速度和被调动区域，而不只看单个球员。",
+      "source_ids": ["bwf-coach-l1"]
+    },
+    {
+      "id": "data_insufficient_weakness",
+      "category": "weakness",
+      "title": "有效运动数据不足",
+      "principle": "本次没有检测到足够的球员移动，报告无法稳定判断技术表现。",
+      "training_focus": "重新选择完整球场画面，或在 App 中手动点选四个球场角点后再分析。",
+      "source_ids": []
+    },
+    {
+      "id": "low_continuity_weakness",
+      "category": "weakness",
+      "title": "连续移动和回位衔接偏弱",
+      "principle": "峰值速度不低，但平均速度或单位时间移动量偏低，可能是爆发后停顿较多，回中衔接不够连续。",
+      "training_focus": "重点练启动、到位、回中、再启动的连续链条。",
+      "source_ids": ["bwf-coach-l1"]
+    },
+    {
+      "id": "narrow_coverage_weakness",
+      "category": "weakness",
+      "title": "场地覆盖范围偏窄",
+      "principle": "轨迹覆盖面积较小，可能训练内容集中在局部区域，或者拍摄/角点让场地映射不完整。",
+      "training_focus": "优先确认角点是否准确；如果角点准确，再增加前后场和左右两侧的连续调动。",
+      "source_ids": ["bwf-coach-l1", "badmintonskills-footwork-drills"]
+    },
+    {
+      "id": "low_intensity_weakness",
+      "category": "weakness",
+      "title": "训练强度偏低",
+      "principle": "移动距离、速度和持续时间综合偏低，当前视频更像轻量练习或片段测试。",
+      "training_focus": "正式复盘建议上传 30 秒到 3 分钟的连续训练片段。",
+      "source_ids": []
+    },
+    {
+      "id": "short_sample_weakness",
+      "category": "weakness",
+      "title": "样本时长偏短",
+      "principle": "短片段可以判断这一回合的速度和覆盖，但不适合直接代表整场或完整训练课。",
+      "training_focus": "正式复盘建议保留 30 秒到 3 分钟的连续固定机位片段；短片段则重点看启动、回中和单回合质量。",
+      "source_ids": []
+    },
+    {
+      "id": "movement_balance_weakness",
+      "category": "weakness",
+      "title": "移动分布不够均衡",
+      "principle": "前后场或左右场比例明显偏向一侧时，说明该片段主要集中在某类落点或某个区域。",
+      "training_focus": "先结合视频判断这是战术选择还是移动短板；如果不是战术安排，再补对应半场的连续覆盖训练。",
+      "source_ids": ["bwf-coach-l1"]
+    },
+    {
+      "id": "tracking_noise_weakness",
+      "category": "weakness",
+      "title": "轨迹稳定性仍需关注",
+      "principle": "轨迹跳点或识别质量偏低时，距离、速度和集锦判断会受到影响。",
+      "training_focus": "优先检查固定机位、完整球场、光线和角点；确认画面稳定后再比较训练表现。",
+      "source_ids": []
+    },
+    {
+      "id": "player_load_gap_weakness",
+      "category": "weakness",
+      "title": "双方移动负荷差异明显",
+      "principle": "两名球员移动距离或速度差异较大时，可能是战术压迫、被动防守，也可能是某一侧跟踪质量不稳定。",
+      "training_focus": "结合视频确认是比赛战术导致，还是某名球员在连续回中和补位上更吃力。",
+      "source_ids": ["bwf-coach-l1"]
+    },
+    {
+      "id": "low_shuttle_visibility_weakness",
+      "category": "weakness",
+      "title": "羽毛球识别稳定性不足",
+      "principle": "羽毛球有效识别帧占比较低，精彩集锦和球速相关判断会受影响。",
+      "training_focus": "尽量使用清晰、光线稳定、球与背景反差明显的视频。",
+      "source_ids": []
+    },
+    {
+      "id": "split_step_recovery_drill",
+      "category": "improvement",
+      "title": "分腿垫步 + 回中衔接",
+      "principle": "分腿垫步能把上一拍恢复和下一拍启动连接起来，帮助更快改变方向。",
+      "training_focus": "做六点影子步：每次到点后回中，30 秒训练、30 秒休息，4 组；保持低重心，启动前做分腿垫步。",
+      "source_ids": ["bwf-coach-l1", "badmintonskills-footwork-drills"]
+    },
+    {
+      "id": "net_lunge_drill",
+      "category": "improvement",
+      "title": "网前弓步和回收",
+      "principle": "网前移动需要短触地、稳定弓步和快速回收，否则容易下一拍被动。",
+      "training_focus": "左右网前各 10 次为一组，做 3 组；落地时躯干保持稳定，推回中场后再启动。",
+      "source_ids": ["bwf-coach-l1", "badmintonskills-footwork-drills"]
+    },
+    {
+      "id": "rear_court_recovery_drill",
+      "category": "improvement",
+      "title": "后场击球后回位",
+      "principle": "后场击球后的恢复决定下一拍能否重新占位，落地平衡比单次冲刺更重要。",
+      "training_focus": "左右后场各 6 次为一组，做 3 组；用交叉步或并步到位，击球后用剪刀步或回撤步回中。",
+      "source_ids": ["bwf-coach-l1", "badmintonskills-footwork-drills"]
+    },
+    {
+      "id": "multi_directional_drill",
+      "category": "improvement",
+      "title": "多方向连续移动",
+      "principle": "比赛移动通常是多个方向连续切换，训练应把启动、到位、回中和再次启动连成循环。",
+      "training_focus": "做多方向抛球/喂球：30-60 秒连续移动，休息 60-90 秒，4 组；每拍后都回到合理中区。",
+      "source_ids": ["bwf-coach-l1", "badmintonskills-footwork-drills"]
+    },
+    {
+      "id": "coverage_shadow_drill",
+      "category": "improvement",
+      "title": "六点覆盖影子步",
+      "principle": "覆盖不足时，应先用无球影子步建立完整场地路径，再叠加有球对抗。",
+      "training_focus": "按左前、右前、左中、右中、左后、右后的六点顺序练习；每到一点后回中再去下一点。",
+      "source_ids": ["badmintonskills-footwork-drills", "bwf-coach-l1"]
+    },
+    {
+      "id": "balanced_coverage_drill",
+      "category": "improvement",
+      "title": "前后场/左右场均衡覆盖",
+      "principle": "当轨迹偏向某个半场时，需要用固定路线训练补齐另一侧或另一端的启动和回中。",
+      "training_focus": "按前后场或左右场 2:2 组合练习：每次到点后回中，再去相反区域；每组 30 秒，做 4 组。",
+      "source_ids": ["bwf-coach-l1", "badmintonskills-footwork-drills"]
+    },
+    {
+      "id": "longer_sample_review",
+      "category": "improvement",
+      "title": "连续片段采集与对比",
+      "principle": "短片段适合分析单回合，但训练趋势需要更长的连续片段才能稳定判断强度、覆盖和回中质量。",
+      "training_focus": "同一机位连续拍摄 30-90 秒，保留完整球场；每次复盘对比强度分、稳定速度、覆盖面积和回中质量。",
+      "source_ids": []
+    },
+    {
+      "id": "camera_setup_improvement",
+      "category": "improvement",
+      "title": "优化拍摄和角点",
+      "principle": "球场角点和完整视野会直接影响距离、速度、热力图和覆盖范围判断。",
+      "training_focus": "固定手机，尽量拍到完整双打边线和底线；自动角点不准时，先用 App 的放大点选四角功能校准。",
+      "source_ids": []
+    }
+  ]
+}
