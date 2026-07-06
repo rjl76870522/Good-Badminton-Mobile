@@ -116,57 +116,133 @@ class _HistoryPageState extends State<HistoryPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('训练历史')),
-      body: RefreshIndicator(
-        onRefresh: _load,
-        child: ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(12),
-          children: [
-            DropdownButtonFormField<String>(
-              initialValue: _statusFilter,
-              decoration: const InputDecoration(
-                labelText: '状态筛选',
-                border: OutlineInputBorder(),
+      backgroundColor: const Color(0xFF05080B),
+      appBar: AppBar(
+        title: const Text('训练历史'),
+        backgroundColor: const Color(0xFF080D12),
+        foregroundColor: Colors.white,
+      ),
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          Image.asset(
+            'assets/images/history_court_bg.png',
+            fit: BoxFit.cover,
+            alignment: const Alignment(0.18, -0.15),
+          ),
+          const DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Color(0x52000000),
+                  Color(0x26000000),
+                  Color(0x99000000),
+                ],
               ),
-              items: const [
-                DropdownMenuItem(value: 'all', child: Text('全部')),
-                DropdownMenuItem(value: 'queued', child: Text('排队中')),
-                DropdownMenuItem(value: 'processing', child: Text('分析中')),
-                DropdownMenuItem(value: 'completed', child: Text('已完成')),
-                DropdownMenuItem(value: 'failed', child: Text('失败')),
-              ],
-              onChanged: (value) {
-                setState(() => _statusFilter = value ?? 'all');
-                _load();
-              },
             ),
-            const SizedBox(height: 12),
-            if (_loading) const Center(child: CircularProgressIndicator()),
-            if (_error != null)
-              Text(
-                _error!,
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
-              ),
-            if (!_loading && _tasks.isEmpty && _error == null)
-              const Center(
-                  child: Padding(
-                padding: EdgeInsets.all(32),
-                child: Text('暂无训练记录'),
-              )),
-            ..._tasks.map(
-              (task) => Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: _HistoryCard(
-                  task: task,
-                  onTap: () => _openTask(task),
-                  onRetry: task.isFailed ? () => _retryTask(task) : null,
-                  onDelete: () => _deleteTask(task),
+          ),
+          RefreshIndicator(
+            onRefresh: _load,
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(12, 14, 12, 24),
+              children: [
+                DropdownButtonFormField<String>(
+                  initialValue: _statusFilter,
+                  dropdownColor: const Color(0xFF172026),
+                  iconEnabledColor: Colors.white,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    labelText: '状态筛选',
+                    labelStyle: const TextStyle(color: Colors.white70),
+                    filled: true,
+                    fillColor: Colors.black.withValues(alpha: 0.62),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(20),
+                      borderSide: BorderSide.none,
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(20),
+                      borderSide: BorderSide(
+                        color: Colors.white.withValues(alpha: 0.24),
+                      ),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(20),
+                      borderSide: const BorderSide(
+                        color: Color(0xFFFFC44D),
+                        width: 1.5,
+                      ),
+                    ),
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: 'all', child: Text('全部')),
+                    DropdownMenuItem(value: 'queued', child: Text('排队中')),
+                    DropdownMenuItem(value: 'processing', child: Text('分析中')),
+                    DropdownMenuItem(value: 'completed', child: Text('已完成')),
+                    DropdownMenuItem(value: 'failed', child: Text('失败')),
+                  ],
+                  onChanged: (value) {
+                    setState(() => _statusFilter = value ?? 'all');
+                    _load();
+                  },
                 ),
-              ),
+                const SizedBox(height: 12),
+                if (_loading)
+                  const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(18),
+                      child: CircularProgressIndicator(color: Colors.white),
+                    ),
+                  ),
+                if (_error != null)
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xE6FFF1F0),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Text(
+                      _error!,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                    ),
+                  ),
+                if (!_loading && _tasks.isEmpty && _error == null)
+                  Container(
+                    margin: const EdgeInsets.only(top: 18),
+                    padding: const EdgeInsets.all(28),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.58),
+                      borderRadius: BorderRadius.circular(22),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.18),
+                      ),
+                    ),
+                    child: const Text(
+                      '暂无训练记录',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  ),
+                ..._tasks.map(
+                  (task) => Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: _HistoryCard(
+                      task: task,
+                      onTap: () => _openTask(task),
+                      onRetry: task.isFailed ? () => _retryTask(task) : null,
+                      onDelete: () => _deleteTask(task),
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -189,6 +265,14 @@ class _HistoryCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final thumbnail = ApiConfig.absoluteFileUrl(task.thumbnail);
     return Card(
+      color: Colors.white.withValues(alpha: 0.93),
+      surfaceTintColor: Colors.transparent,
+      elevation: 8,
+      shadowColor: Colors.black.withValues(alpha: 0.35),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(22),
+        side: BorderSide(color: Colors.white.withValues(alpha: 0.45)),
+      ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,

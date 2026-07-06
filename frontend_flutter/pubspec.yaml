@@ -24,3 +24,4 @@ flutter:
   uses-material-design: true
   assets:
     - assets/images/badminton_dashboard_bg.png
+    - assets/images/history_court_bg.png
