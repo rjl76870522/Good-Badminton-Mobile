@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../config/api_config.dart';
 import '../models/report.dart';
 import '../services/api_service.dart';
+import '../widgets/inline_network_video.dart';
 
 class ReportPage extends StatefulWidget {
   const ReportPage({super.key, required this.taskId}) : loadDemo = false;
@@ -148,7 +149,7 @@ class _ReportPageState extends State<ReportPage> {
               const SizedBox(height: 20),
               Text('精彩时刻', style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 8),
-              _FileLink(
+              _VideoResult(
                 title: '精彩集锦',
                 relativeUrl: report.files.highlight,
                 available: _fileAvailability['highlight'] ?? false,
@@ -159,7 +160,8 @@ class _ReportPageState extends State<ReportPage> {
               ],
               if (report.highlightSegments.isNotEmpty)
                 ...report.highlightSegments.map(_HighlightCard.new),
-              _FileLink(
+              const SizedBox(height: 12),
+              _VideoResult(
                 title: '分析视频',
                 relativeUrl: report.files.analysisVideo,
                 available: _fileAvailability['analysis_video'] ?? false,
@@ -948,57 +950,76 @@ class _BentoMetric extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final primary = Theme.of(context).colorScheme.primary;
-    return Container(
-      width: double.infinity,
-      padding: EdgeInsets.all(emphasized ? 20 : 14),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: emphasized
-              ? const [Color(0xFF1B5E20), Color(0xFF43A047)]
-              : const [Color(0xFFFFFFFF), Color(0xFFF1F7EE)],
-        ),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: emphasized ? Colors.transparent : const Color(0xFFE0E5DD),
-          width: 0.8,
-        ),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x11000000),
-            blurRadius: 14,
-            offset: Offset(0, 7),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Icon(icon, color: emphasized ? Colors.white : primary),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: TextStyle(
-                  color: emphasized ? Colors.white70 : Colors.black54,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 4),
-              _AnimatedNumberText(
-                value: value,
-                decimals: decimals,
-                suffix: suffix,
-                color: emphasized ? Colors.white : Colors.black87,
-                fontSize: emphasized ? 32 : 22,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = !emphasized && constraints.maxHeight < 115;
+        return Container(
+          width: double.infinity,
+          padding: EdgeInsets.all(emphasized
+              ? 20
+              : compact
+                  ? 10
+                  : 14),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: emphasized
+                  ? const [Color(0xFF1B5E20), Color(0xFF43A047)]
+                  : const [Color(0xFFFFFFFF), Color(0xFFF1F7EE)],
+            ),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: emphasized ? Colors.transparent : const Color(0xFFE0E5DD),
+              width: 0.8,
+            ),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x11000000),
+                blurRadius: 14,
+                offset: Offset(0, 7),
               ),
             ],
           ),
-        ],
-      ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Icon(
+                icon,
+                size: compact ? 22 : 24,
+                color: emphasized ? Colors.white : primary,
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    maxLines: 1,
+                    style: TextStyle(
+                      color: emphasized ? Colors.white70 : Colors.black54,
+                      fontSize: compact ? 12 : null,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  SizedBox(height: compact ? 1 : 4),
+                  _AnimatedNumberText(
+                    value: value,
+                    decimals: decimals,
+                    suffix: suffix,
+                    color: emphasized ? Colors.white : Colors.black87,
+                    fontSize: emphasized
+                        ? 32
+                        : compact
+                            ? 18
+                            : 22,
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
@@ -1105,8 +1126,8 @@ Future<void> _showImagePreview(
   );
 }
 
-class _FileLink extends StatelessWidget {
-  const _FileLink({
+class _VideoResult extends StatelessWidget {
+  const _VideoResult({
     required this.title,
     required this.relativeUrl,
     required this.available,
@@ -1119,16 +1140,15 @@ class _FileLink extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final url = ApiConfig.absoluteFileUrl(relativeUrl);
-    final text = url == null
-        ? '暂无文件'
-        : available
-            ? url
-            : '文件未生成或已失效';
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      title: Text(title),
-      subtitle: SelectableText(text),
-      leading: url != null && !available ? const Icon(Icons.link_off) : null,
+    if (url != null && available) {
+      return InlineNetworkVideo(title: title, url: url);
+    }
+    return Card(
+      child: ListTile(
+        leading: const Icon(Icons.videocam_off_outlined),
+        title: Text(title),
+        subtitle: Text(url == null ? '暂无文件' : '文件未生成或已失效'),
+      ),
     );
   }
 }
