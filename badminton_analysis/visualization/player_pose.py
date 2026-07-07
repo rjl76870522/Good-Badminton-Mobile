@@ -15,7 +15,7 @@ class PlayerPoseVisualizer:
         show_skeletons=True,
         show_player_trajectories=True,
         show_performance_stats=False,
-        court_filter_margin=0.75,
+        court_filter_margin=0.60,
     ):
         self.rtmpose_processor = rtmpose_processor or RTMPoseProcessor()
         self.show_skeletons = show_skeletons
@@ -85,6 +85,27 @@ class PlayerPoseVisualizer:
                 point_left_hands[mid_point[1]] = (int(lh[0] + x1), int(lh[1] + y1))
             if rh[0] > 1 and rh[1] > 1:
                 point_right_hands[mid_point[1]] = (int(rh[0] + x1), int(rh[1] + y1))
+
+        # If more than 2 people passed, keep only the 2 closest to court center (3.05, 6.7)
+        if len(filtered_people) > 2:
+            court_center = (3.05, 6.7)
+            scored = []
+            for kp in filtered_people:
+                kp_arr = np.asarray(kp)
+                lf, rf = kp_arr[15], kp_arr[16]
+                cx = (float(lf[0]+x1) + float(rf[0]+x1)) / 2
+                cy = (float(lf[1]+y1) + float(rf[1]+y1)) / 2
+                if active_court_mapper:
+                    cp = active_court_mapper.image_to_court((cx, cy))
+                    if cp is not None and len(cp) == 2:
+                        dist = np.hypot(cp[0]-court_center[0], cp[1]-court_center[1])
+                    else:
+                        dist = 999
+                else:
+                    dist = 999
+                scored.append((dist, kp))
+            scored.sort(key=lambda x: x[0])
+            filtered_people = [item[1] for item in scored[:2]]
 
         if filtered_people:
             self.current_pose_data = {

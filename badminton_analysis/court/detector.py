@@ -187,6 +187,103 @@ def _dedupe_lines(lines, orientation, max_count):
     return selected
 
 
+def _order_quad_points(points):
+    pts = np.array(points, dtype=np.float32).reshape(-1, 2)
+    if pts.shape[0] != 4:
+        return None
+    sums = pts.sum(axis=1)
+    diffs = pts[:, 1] - pts[:, 0]
+    ordered = np.array(
+        [
+            pts[np.argmin(sums)],
+            pts[np.argmin(diffs)],
+            pts[np.argmax(sums)],
+            pts[np.argmax(diffs)],
+        ],
+        dtype=np.float32,
+    )
+    if len(np.unique(ordered.astype(np.int32), axis=0)) != 4:
+        return None
+    return ordered
+
+
+def _build_green_court_mask(image, *, fallback_bottom_roi=True, include_generic_range=True):
+    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+    h, s, v = cv2.split(hsv)
+    median_v = float(np.median(v))
+    image_area = image.shape[0] * image.shape[1]
+    threshold = max(20, median_v * 0.35)
+
+    # Try multiple HSV ranges from most specific to most general
+    ranges = [
+        (h >= 35) & (h <= 95) & (s >= 25) & (v >= threshold),          # standard green
+        (h >= 90) & (h <= 120) & (s >= 20) & (v >= threshold),         # cool blue-green
+        (h >= 20) & (h <= 50) & (s >= 30) & (v >= threshold),          # warm yellow-green
+        (h >= 0) & (h <= 180) & (s >= 0) & (s <= 15) & (v >= 60) & (v <= 180),    # dark gray court (low sat, mid V)
+        (h >= 0) & (h <= 180) & (s >= 0) & (s <= 30) & (v >= 45) & (v <= 160),    # medium gray court
+        (h >= 0) & (h <= 15) & (s >= 20) & (v >= threshold),           # red (segment 1)
+        (h >= 165) & (h <= 180) & (s >= 20) & (v >= threshold),        # red (segment 2)
+        (h >= 100) & (h <= 140) & (s >= 20) & (v >= threshold),        # blue court
+    ]
+    if include_generic_range:
+        # Wide ROI-only fallback. It helps line detection keep difficult courts,
+        # but it is too permissive for surface-corner fallback because it can
+        # absorb ads, walls, or the whole bright lower frame.
+        ranges.append((h >= 0) & (h <= 180) & (s >= 0) & (s <= 100) & (v >= 30))
+    best_mask, best_area = None, 0
+    for mask_bool in ranges:
+        mask = mask_bool.astype(np.uint8) * 255
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8), iterations=1)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((15, 15), np.uint8), iterations=1)
+        count, labels, stats, _centroids = cv2.connectedComponentsWithStats(mask)
+        candidates = [idx for idx in range(1, count) if stats[idx, cv2.CC_STAT_AREA] > image_area * 0.04]
+        if candidates:
+            largest = max(candidates, key=lambda idx: stats[idx, cv2.CC_STAT_AREA])
+            area = stats[largest, cv2.CC_STAT_AREA]
+            if area > best_area:
+                best_area = area
+                best_mask = ((labels == largest).astype(np.uint8)) * 255
+        if best_area > image_area * 0.30:
+            break  # Good enough, stop trying wider ranges
+
+    if best_mask is not None:
+        return best_mask
+
+    if not fallback_bottom_roi:
+        return np.zeros(image.shape[:2], dtype=np.uint8)
+
+    # Smart fallback: find court via white line clustering instead of "bottom 70%"
+    # White court lines form a dense network → largest connected blob = court region
+    # Billboard edges are isolated → smaller blobs → excluded
+    h_img, w_img = image.shape[:2]
+    scale = min(0.4, 400.0 / max(h_img, w_img))
+    small = cv2.resize(image, None, fx=scale, fy=scale)
+    sh, sw = small.shape[:2]
+    small_hsv = cv2.cvtColor(small, cv2.COLOR_BGR2HSV)
+    white = ((small_hsv[:,:,1] <= 50) & (small_hsv[:,:,2] >= 110)).astype(np.uint8) * 255
+    # Morph close: connect nearby white line fragments into a blob
+    kernel_close = cv2.getStructuringElement(cv2.MORPH_RECT, (max(4, sw//60), max(3, sh//50)))
+    white_blob = cv2.morphologyEx(white, cv2.MORPH_CLOSE, kernel_close, iterations=3)
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(white_blob)
+    if count > 1:
+        largest_idx = max(range(1, count), key=lambda i: stats[i, cv2.CC_STAT_AREA])
+        blob = ((labels == largest_idx).astype(np.uint8)) * 255
+        # Expand outward to cover the full court floor
+        kernel_expand = cv2.getStructuringElement(cv2.MORPH_RECT, (max(6, sw//30), max(5, sh//25)))
+        court_small = cv2.dilate(blob, kernel_expand, iterations=4)
+        # Cut off top 12% (keep sky/ceiling out)
+        court_small[:int(sh * 0.12), :] = 0
+        # Scale back to original size
+        court = cv2.resize(court_small, (w_img, h_img), interpolation=cv2.INTER_NEAREST)
+        if cv2.countNonZero(court) > image_area * 0.08:
+            return court
+
+    # Last resort: bottom 70%
+    fallback = np.zeros(image.shape[:2], dtype=np.uint8)
+    fallback[int(image.shape[0] * 0.30):, :] = 255
+    return fallback
+
+
 def _enhance_for_detection(image):
     """Return a list of pre-processed image variants for robust detection."""
     variants = [image]  # original
@@ -223,76 +320,50 @@ def build_court_line_mask(image):
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     median_v = np.median(v)
 
-    # Adaptive thresholds based on brightness
-    v_low = max(25, median_v * 0.5)
-    s_high = min(30, median_v * 0.6)
-
-    # Multi-level green detection
-    green_masks = []
-    # Standard green
-    green_masks.append(((h >= 35) & (h <= 95) & (s >= 25) & (v >= v_low)).astype(np.uint8) * 255)
-    # Blue-green (cool lighting)
-    green_masks.append(((h >= 90) & (h <= 120) & (s >= 20) & (v >= v_low)).astype(np.uint8) * 255)
-
-    green_mask = green_masks[0]
-    if green_masks[1].sum() > green_masks[0].sum():
-        green_mask = green_masks[1]
-
-    green_mask = cv2.morphologyEx(green_mask, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8), iterations=1)
-    green_mask = cv2.morphologyEx(green_mask, cv2.MORPH_CLOSE, np.ones((25, 25), np.uint8), iterations=2)
-
-    count, labels, stats, _centroids = cv2.connectedComponentsWithStats(green_mask)
-    if count > 1:
-        image_area = image.shape[0] * image.shape[1]
-        candidates = [idx for idx in range(1, count) if stats[idx, cv2.CC_STAT_AREA] > image_area * 0.06]
-        if candidates:
-            court_idx = max(candidates, key=lambda idx: stats[idx, cv2.CC_STAT_AREA])
-            green_mask = ((labels == court_idx).astype(np.uint8)) * 255
-
-    # If green detection is weak, expand to include any large non-sky region
-    green_ratio = cv2.countNonZero(green_mask) / (image.shape[0] * image.shape[1])
-    if green_ratio < 0.10:
-        # Fallback: just use the bottom 70% of the frame as court roi
-        green_mask = np.zeros_like(green_mask)
-        green_mask[int(image.shape[0] * 0.3):, :] = 255
+    green_mask = _build_green_court_mask(image)
 
     court_roi = cv2.dilate(green_mask, cv2.getStructuringElement(cv2.MORPH_RECT, (17, 17)), iterations=1)
 
-    # Adaptive white/yellow line thresholds
-    v_white = max(100, median_v * 1.8) if median_v > 30 else 100
-    white_mask = (((s <= 100) & (v >= v_white)).astype(np.uint8)) * 255
+    # Only truly white pixels (court lines), not off-white/gray
+    v_white = max(130, median_v * 1.05)
+    white_mask = (((s <= 35) & (v >= v_white)).astype(np.uint8)) * 255
     white_mask = cv2.bitwise_and(white_mask, court_roi)
 
-    # Adaptive Canny
-    canny_low = max(20, int(median_v * 0.8))
-    canny_high = min(250, int(median_v * 2.4))
-    blurred = cv2.GaussianBlur(gray, (3, 3), 0)
+    # Only detect edges ON white-ish pixels — supress red/green ad-board edges
+    white_only_gray = gray.copy()
+    white_only_gray[white_mask == 0] = 0  # zero out non-white areas
+    canny_low = max(20, int(median_v * 0.6))
+    canny_high = min(250, int(median_v * 2.0))
+    blurred = cv2.GaussianBlur(white_only_gray, (3, 3), 0)
     edges = cv2.Canny(blurred, canny_low, canny_high)
     edges = cv2.bitwise_and(edges, court_roi)
 
     merged = cv2.bitwise_or(white_mask, edges)
-    merged = cv2.morphologyEx(merged, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_RECT, (7, 5)), iterations=1)
+    merged = cv2.morphologyEx(merged, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_RECT, (9, 7)), iterations=2)
     merged = cv2.morphologyEx(merged, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)), iterations=1)
+
+    # Only keep the largest connected region (court lines form a network; billboard edges are isolated)
+    count, labels, stats, _centroids = cv2.connectedComponentsWithStats(merged)
+    if count > 1:
+        areas = [(idx, stats[idx, cv2.CC_STAT_AREA]) for idx in range(1, count)]
+        areas.sort(key=lambda x: -x[1])
+        # Keep top 3 components (court network might be fragmented into a few large parts)
+        keep = np.zeros_like(merged)
+        for idx, _area in areas[:3]:
+            keep[labels == idx] = 255
+        merged = keep
     return merged
 
 def build_reference_line_mask(image):
     hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
     h, s, v = cv2.split(hsv)
 
-    green_mask = (((h >= 35) & (h <= 95) & (s >= 30) & (v >= 45)).astype(np.uint8)) * 255
-    green_mask = cv2.morphologyEx(green_mask, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8), iterations=1)
-    green_mask = cv2.morphologyEx(green_mask, cv2.MORPH_CLOSE, np.ones((25, 25), np.uint8), iterations=2)
-
-    count, labels, stats, _centroids = cv2.connectedComponentsWithStats(green_mask)
-    if count > 1:
-        image_area = image.shape[0] * image.shape[1]
-        candidates = [idx for idx in range(1, count) if stats[idx, cv2.CC_STAT_AREA] > image_area * 0.08]
-        if candidates:
-            court_idx = max(candidates, key=lambda idx: stats[idx, cv2.CC_STAT_AREA])
-            green_mask = ((labels == court_idx).astype(np.uint8)) * 255
+    green_mask = _build_green_court_mask(image, fallback_bottom_roi=False)
 
     court_roi = cv2.dilate(green_mask, cv2.getStructuringElement(cv2.MORPH_RECT, (13, 13)), iterations=1)
-    white_mask = (((s <= 90) & (v >= 145)).astype(np.uint8)) * 255
+    median_v = np.median(v)
+    v_white = max(110, min(150, median_v * 0.90))
+    white_mask = (((s <= 90) & (v >= v_white)).astype(np.uint8)) * 255
     yellow_mask = (((h >= 12) & (h <= 42) & (s >= 45) & (v >= 120)).astype(np.uint8)) * 255
     line_mask = cv2.bitwise_and(cv2.bitwise_or(white_mask, yellow_mask), court_roi)
     line_mask = cv2.morphologyEx(line_mask, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_RECT, (5, 3)), iterations=1)
@@ -303,16 +374,36 @@ def build_reference_line_mask(image):
 def detect_court_line_segments(image):
     height, width = image.shape[:2]
     mask = build_court_line_mask(image)
-    min_line_length = max(46, int(min(width, height) * 0.10))
-    max_gap = max(14, int(min(width, height) * 0.045))
-    raw_lines = cv2.HoughLinesP(
-        mask,
-        rho=1,
-        theta=np.pi / 180,
-        threshold=60,
-        minLineLength=min_line_length,
-        maxLineGap=max_gap,
-    )
+    min_line_length = max(36, int(min(width, height) * 0.08))
+    max_gap = max(12, int(min(width, height) * 0.04))
+
+    # Adaptive Hough threshold: try descending, but must get both horizontals AND sides
+    hough_thresholds = [36, 48, 60, 75, 90]
+    raw_lines = None
+    hough_mask = mask
+    best_raw = None
+    for thresh in hough_thresholds:
+        raw_lines = cv2.HoughLinesP(
+            hough_mask,
+            rho=1,
+            theta=np.pi / 180,
+            threshold=thresh,
+            minLineLength=min_line_length,
+            maxLineGap=max_gap,
+        )
+        if raw_lines is not None and len(raw_lines) >= 4:
+            best_raw = raw_lines
+            # Count side lines at this threshold
+            n_side = 0
+            for rl in raw_lines[:, 0, :]:
+                ang = _line_angle(*rl)
+                if 45 <= ang <= 135:
+                    n_side += 1
+            if n_side >= 2:
+                break  # Good — we have both horizontals and sides
+    raw_lines = best_raw if best_raw is not None else raw_lines
+    if raw_lines is None:
+        return [], [], mask
     if raw_lines is None:
         return [], [], mask
 
@@ -345,7 +436,40 @@ def detect_court_line_segments(image):
         elif 45 <= angle <= 135:
             side.append(segment)
 
-    return _dedupe_lines(horizontal, "horizontal", 14), _dedupe_lines(side, "side", 18), mask
+    horizontal, side = _dedupe_lines(horizontal, "horizontal", 14), _dedupe_lines(side, "side", 18)
+
+    # If side lines are missing, run a dedicated vertical-line pass with lower thresholds
+    if len(side) < 2:
+        side_min_len = max(20, int(min(width, height) * 0.045))
+        side_max_gap = max(16, int(min(width, height) * 0.07))
+        for thresh in [20, 14, 10]:
+            side_raw = cv2.HoughLinesP(
+                mask, rho=1, theta=np.pi / 90,  # 2° angular resolution for better vertical
+                threshold=thresh, minLineLength=side_min_len, maxLineGap=side_max_gap,
+            )
+            if side_raw is None:
+                continue
+            extra = []
+            for raw_line in side_raw[:, 0, :]:
+                x1, y1, x2, y2 = [int(v) for v in raw_line]
+                if min(x1, x2) <= edge_margin or max(x1, x2) >= width - 1 - edge_margin:
+                    continue
+                if min(y1, y2) <= edge_margin or max(y1, y2) >= height - 1 - edge_margin:
+                    continue
+                ang = _line_angle(x1, y1, x2, y2)
+                if 30 <= ang <= 150:  # wider angle range for side lines
+                    extra.append({
+                        "points": (x1, y1, x2, y2),
+                        "length": float(np.hypot(x2 - x1, y2 - y1)),
+                        "mid": ((x1 + x2) / 2.0, (y1 + y2) / 2.0),
+                        "angle": ang,
+                    })
+            extra = _dedupe_lines(extra, "side", 18)
+            side.extend(extra)
+            if len(side) >= 2:
+                break
+
+    return horizontal, _dedupe_lines(side, "side", 18), mask
 
 
 def _score_court_quad(corners, image_shape, lines, line_mask, horizontal_lines, court_reference=None, line_support=None):
@@ -450,6 +574,10 @@ def _score_court_quad(corners, image_shape, lines, line_mask, horizontal_lines, 
     alignment_score = alignment_value * 10
     pattern_score = pattern_value * 110
     reference_score = reference_value * 18
+    # Ad-board penalty: quads overlapping high-saturation regions (billboards) are penalized
+    adboard_penalty = _compute_adboard_penalty(corners, line_mask, image_shape)
+    adboard_score = max(0, (1.0 - adboard_penalty)) * 60
+
     total_score = (
         area_score
         + height_score
@@ -465,15 +593,122 @@ def _score_court_quad(corners, image_shape, lines, line_mask, horizontal_lines, 
         + alignment_score
         + pattern_score
         + reference_score
+        + adboard_score
     )
     details = {
         "alignment_score": round(float(alignment_value), 4),
         "horizontal_pattern_score": round(float(pattern_value), 4),
         "endpoint_alignment_score": round(float(endpoint_alignment_value), 4),
         "clean_side_support_score": round(float(clean_side_support_value), 4),
+        "adboard_penalty": round(float(adboard_penalty), 4),
         **reference_details,
     }
     return total_score, details
+
+
+def _compute_adboard_penalty(corners, line_mask, image_shape):
+    """Check if the candidate quad contains enough edge/line content to be a real court.
+    Returns 0.0 (good court) to 1.0 (empty/suspicious)."""
+    height, width = image_shape[:2]
+    mask = np.zeros((height, width), dtype=np.uint8)
+    pts = np.array(corners, dtype=np.int32).reshape(-1, 1, 2)
+    cv2.fillPoly(mask, [pts], 255)
+    quad_area = max(1, cv2.countNonZero(mask))
+    if quad_area < 200:
+        return 0.5
+
+    # Check edge/white-line content inside the quad
+    content_in_quad = cv2.countNonZero(cv2.bitwise_and(line_mask, mask))
+    density = content_in_quad / quad_area
+    # Real court lines typically give 1-8% density in the mask
+    if density < 0.005:
+        return 0.9   # almost empty → likely not a court
+    if density > 0.25:
+        return 0.5   # too much edge clutter → could be ads
+    return 0.0  # reasonable line density → no penalty
+
+
+def _detect_surface_court_corners(image, court_reference, line_support):
+    height, width = image.shape[:2]
+    mask = _build_green_court_mask(
+        image,
+        fallback_bottom_roi=False,
+        include_generic_range=False,
+    )
+    contours, _hierarchy = cv2.findContours(
+        mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+    )
+    if not contours:
+        return None, None
+
+    image_area = width * height
+    candidates = []
+    for contour in sorted(contours, key=cv2.contourArea, reverse=True)[:4]:
+        contour_area = float(cv2.contourArea(contour))
+        if contour_area < image_area * 0.10:
+            continue
+
+        perimeter = cv2.arcLength(contour, True)
+        quad = None
+        for epsilon_ratio in (0.018, 0.024, 0.032, 0.045):
+            approx = cv2.approxPolyDP(contour, epsilon_ratio * perimeter, True)
+            if len(approx) == 4:
+                quad = approx.reshape(4, 2)
+                break
+        if quad is None:
+            quad = cv2.boxPoints(cv2.minAreaRect(cv2.convexHull(contour))).reshape(4, 2)
+
+        ordered = _order_quad_points(quad)
+        if ordered is None:
+            continue
+        area = _polygon_area(ordered)
+        if not (image_area * 0.12 <= area <= image_area * 0.62):
+            continue
+        if not _is_convex_quad(ordered):
+            continue
+
+        top_left, top_right, bottom_right, bottom_left = ordered
+        top_width = float(np.linalg.norm(top_right - top_left))
+        bottom_width = float(np.linalg.norm(bottom_right - bottom_left))
+        left_height = float(np.linalg.norm(bottom_left - top_left))
+        right_height = float(np.linalg.norm(bottom_right - top_right))
+        if min(top_width, bottom_width, left_height, right_height) < min(width, height) * 0.12:
+            continue
+        if bottom_width < top_width * 0.75:
+            continue
+        center = np.mean(ordered, axis=0)
+        if not (
+            width * 0.22 <= center[0] <= width * 0.78
+            and height * 0.42 <= center[1] <= height * 0.88
+        ):
+            continue
+
+        reference_score, details = court_reference.score_line_support(
+            ordered, line_support, image.shape
+        )
+        support_mask = np.zeros((height, width), dtype=np.uint8)
+        cv2.fillPoly(
+            support_mask,
+            [ordered.astype(np.int32).reshape(-1, 1, 2)],
+            255,
+        )
+        support_density = cv2.countNonZero(
+            cv2.bitwise_and(line_support, support_mask)
+        ) / max(1, cv2.countNonZero(support_mask))
+        if reference_score >= 0.10 and support_density >= 0.003:
+            details = {
+                **details,
+                "surface_support_density": round(float(support_density), 4),
+            }
+            candidates.append(
+                (contour_area / image_area + reference_score, ordered, details)
+            )
+
+    if not candidates:
+        return None, None
+    _score, corners, details = max(candidates, key=lambda item: item[0])
+    return corners, details
+
 
 def auto_detect_court_corners(image):
     """Auto-detect with multi-stage preprocessing for robustness."""
@@ -533,6 +768,29 @@ def auto_detect_court_corners(image):
                             }
 
     if best_result is None:
+        mask = build_court_line_mask(image)
+        reference_mask = build_reference_line_mask(image)
+        line_support = court_reference.prepare_line_support(reference_mask, image.shape)
+        surface_corners, surface_details = _detect_surface_court_corners(
+            image, court_reference, line_support
+        )
+        if surface_corners is not None:
+            horizontal_lines, side_lines, _mask = detect_court_line_segments(image)
+            debug = {
+                "horizontal": horizontal_lines,
+                "side": side_lines,
+                "score": None,
+                "details": {
+                    "surface_fallback": True,
+                    **(surface_details or {}),
+                },
+            }
+            corners = [
+                (int(round(point[0])), int(round(point[1])))
+                for point in surface_corners
+            ]
+            return corners, mask, debug
+
         debug = {"horizontal": [], "side": [], "score": None, "details": None}
         return None, np.zeros(image.shape[:2], dtype=np.uint8), debug
 

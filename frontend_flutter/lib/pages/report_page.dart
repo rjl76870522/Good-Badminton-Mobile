@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../config/api_config.dart';
 import '../models/report.dart';
 import '../services/api_service.dart';
+import '../widgets/app_background.dart';
 import '../widgets/inline_network_video.dart';
 
 class ReportPage extends StatefulWidget {
@@ -85,89 +86,94 @@ class _ReportPageState extends State<ReportPage> {
   Widget build(BuildContext context) {
     final report = _report;
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: Text(widget.loadDemo ? 'Demo 训练复盘' : '训练复盘报告'),
+        backgroundColor: Colors.transparent,
       ),
-      body: RefreshIndicator(
-        onRefresh: _load,
-        child: ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(16),
-          children: [
-            if (_loading) const Center(child: CircularProgressIndicator()),
-            if (_error != null) ...[
-              Text(
-                _error!,
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
-              ),
-              const SizedBox(height: 12),
-              OutlinedButton(onPressed: _load, child: const Text('重新加载')),
-            ],
-            if (report != null) ...[
-              if (report.reportSummary.isNotEmpty) ...[
-                _ReportConclusion(text: report.reportSummary),
-                const SizedBox(height: 20),
-              ],
-              Text(
-                '核心表现',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-              const SizedBox(height: 8),
-              _SummaryCard(
-                summary: report.summary,
-                highlightCount: report.highlightSegments.length,
-              ),
-              const SizedBox(height: 12),
-              _MovementQualityCard(summary: report.summary),
-              if (report.players.isNotEmpty) ...[
-                const SizedBox(height: 20),
+      body: AppBackground(
+        imageOpacity: 0.11,
+        child: RefreshIndicator(
+          onRefresh: _load,
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(16),
+            children: [
+              if (_loading) const Center(child: CircularProgressIndicator()),
+              if (_error != null) ...[
                 Text(
-                  '球员表现',
+                  _error!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton(onPressed: _load, child: const Text('重新加载')),
+              ],
+              if (report != null) ...[
+                if (report.reportSummary.isNotEmpty) ...[
+                  _ReportConclusion(text: report.reportSummary),
+                  const SizedBox(height: 20),
+                ],
+                Text(
+                  '核心表现',
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
                 const SizedBox(height: 8),
-                ...report.players.map(_PlayerPerformanceCard.new),
-              ],
-              const SizedBox(height: 20),
-              Text(
-                '移动可视化',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-              const SizedBox(height: 8),
-              _VisualizationSwitcher(
-                heatmapUrl: report.files.heatmap,
-                trajectoryUrl: report.files.trajectory,
-                heatmapAvailable: _fileAvailability['heatmap'] ?? false,
-                trajectoryAvailable: _fileAvailability['trajectory'] ?? false,
-              ),
-              const SizedBox(height: 20),
-              _CoachingSection(report: report),
-              if (report.adviceSources.isNotEmpty) ...[
+                _SummaryCard(
+                  summary: report.summary,
+                  highlightCount: report.highlightSegments.length,
+                ),
+                const SizedBox(height: 12),
+                _MovementQualityCard(summary: report.summary),
+                if (report.players.isNotEmpty) ...[
+                  const SizedBox(height: 20),
+                  Text(
+                    '球员表现',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  const SizedBox(height: 8),
+                  ...report.players.map(_PlayerPerformanceCard.new),
+                ],
+                const SizedBox(height: 20),
+                Text(
+                  '移动可视化',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
                 const SizedBox(height: 8),
-                _AdviceSourcesCard(sources: report.adviceSources),
-              ],
-              const SizedBox(height: 20),
-              Text('精彩时刻', style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: 8),
-              _VideoResult(
-                title: '精彩集锦',
-                relativeUrl: report.files.highlight,
-                available: _fileAvailability['highlight'] ?? false,
-              ),
-              if (report.highlightError != null) ...[
+                _VisualizationSwitcher(
+                  heatmapUrl: report.files.heatmap,
+                  trajectoryUrl: report.files.trajectory,
+                  heatmapAvailable: _fileAvailability['heatmap'] ?? false,
+                  trajectoryAvailable: _fileAvailability['trajectory'] ?? false,
+                ),
+                const SizedBox(height: 20),
+                _CoachingSection(report: report),
+                if (report.adviceSources.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  _AdviceSourcesCard(sources: report.adviceSources),
+                ],
+                const SizedBox(height: 20),
+                Text('精彩时刻', style: Theme.of(context).textTheme.titleLarge),
                 const SizedBox(height: 8),
-                _HighlightWarning(message: report.highlightError!),
+                _VideoResult(
+                  title: '精彩集锦',
+                  relativeUrl: report.files.highlight,
+                  available: _fileAvailability['highlight'] ?? false,
+                ),
+                if (report.highlightError != null) ...[
+                  const SizedBox(height: 8),
+                  _HighlightWarning(message: report.highlightError!),
+                ],
+                if (report.highlightSegments.isNotEmpty)
+                  ...report.highlightSegments.map(_HighlightCard.new),
+                const SizedBox(height: 12),
+                _VideoResult(
+                  title: '分析视频',
+                  relativeUrl: report.files.analysisVideo,
+                  available: _fileAvailability['analysis_video'] ?? false,
+                ),
               ],
-              if (report.highlightSegments.isNotEmpty)
-                ...report.highlightSegments.map(_HighlightCard.new),
-              const SizedBox(height: 12),
-              _VideoResult(
-                title: '分析视频',
-                relativeUrl: report.files.analysisVideo,
-                available: _fileAvailability['analysis_video'] ?? false,
-              ),
             ],
-          ],
+          ),
         ),
       ),
     );

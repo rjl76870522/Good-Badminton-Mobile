@@ -66,7 +66,8 @@ class BadmintonAnalysisSystem:
                  save_images=False, language='zh', output_dir=None,
                  ball_model_path='weights/yolo11s-ball.pt', template_path=None,
                  pose_mode='balanced', pose_family='rtmpose',
-                 yolo_pose_model='yolo11n-pose.pt', show_pose_roi=True):
+                 yolo_pose_model='yolo11n-pose.pt', show_pose_roi=True,
+                 court_match_threshold=0.75, always_process_court=False):
         self.video_path = video_path
         self.show_display = show_display
         self.language = language
@@ -76,6 +77,8 @@ class BadmintonAnalysisSystem:
         self.pose_family = pose_family
         self.yolo_pose_model = yolo_pose_model
         self.show_pose_roi = show_pose_roi
+        self.court_match_threshold = float(court_match_threshold)
+        self.always_process_court = bool(always_process_court)
 
 
         self.show_skeletons = show_skeletons
@@ -125,7 +128,6 @@ class BadmintonAnalysisSystem:
         self.player_2_hand = "right"  
         self.start_time = None
         self.end_time = None
-        
 
         self.shuttlecock_tracker = ShuttlecockTracker(
             yolo_ball_model=self.yolo_ball_model,
@@ -274,7 +276,11 @@ class BadmintonAnalysisSystem:
         
         # frame = self.draw_court_roi(frame, corners, roi_corners)
 
-        is_court = self.is_court_view(gray_frame, template_gray)
+        is_court = self.always_process_court or self.is_court_view(
+            gray_frame,
+            template_gray,
+            threshold=self.court_match_threshold,
+        )
         
         if is_court:
             self.is_court_view_count += 1

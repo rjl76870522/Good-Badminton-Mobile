@@ -190,7 +190,9 @@ def run_analysis(video_path, template_path, corners, options, progress_cb=None):
     _ensure_dependencies()
     _cleanup_old_outputs()
 
-    corners = _scale_corners_to_video(corners, template_path, video_path)
+    corners_coordinate_space = options.get("corners_coordinate_space", "template")
+    if corners_coordinate_space != "video":
+        corners = _scale_corners_to_video(corners, template_path, video_path)
 
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
@@ -226,6 +228,8 @@ def run_analysis(video_path, template_path, corners, options, progress_cb=None):
     show_player_stats = options.get("show_player_stats", True)
     show_pose_roi = options.get("show_pose_roi", True)
     visualize_positions = options.get("visualize_positions", True)
+    court_match_threshold = options.get("court_match_threshold", 0.75)
+    always_process_court = options.get("always_process_court", False)
 
     system = BadmintonAnalysisSystem(
         video_path,
@@ -245,6 +249,8 @@ def run_analysis(video_path, template_path, corners, options, progress_cb=None):
         pose_family=pose_family,
         yolo_pose_model=yolo_pose_model,
         show_pose_roi=show_pose_roi,
+        court_match_threshold=court_match_threshold,
+        always_process_court=always_process_court,
     )
     system.keep_audio = keep_audio
     system.process_video(progress_callback=progress_cb)

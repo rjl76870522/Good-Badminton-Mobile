@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../models/task_status.dart';
 import '../services/api_service.dart';
 import '../services/task_storage.dart';
+import '../widgets/app_background.dart';
 import 'report_page.dart';
 import 'upload_page.dart';
 
@@ -87,164 +88,172 @@ class _TaskStatusPageState extends State<TaskStatusPage>
   Widget build(BuildContext context) {
     final task = _task;
     return Scaffold(
-      appBar: AppBar(title: const Text('任务状态')),
-      body: RefreshIndicator(
-        onRefresh: _refresh,
-        child: ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(16),
-          children: [
-            SelectableText('task_id：${widget.taskId}'),
-            const SizedBox(height: 16),
-            if (_loading) const Center(child: CircularProgressIndicator()),
-            if (task != null) ...[
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      SizedBox(
-                        width: 112,
-                        height: 112,
-                        child: task.isRunning
-                            ? AnimatedBuilder(
-                                animation: _motionController,
-                                builder: (context, _) => Stack(
-                                  alignment: Alignment.center,
-                                  children: [
-                                    _PulseRing(
-                                      progress: _motionController.value,
-                                      color: _statusColor(context, task),
-                                    ),
-                                    _PulseRing(
-                                      progress:
-                                          (_motionController.value + 0.5) % 1,
-                                      color: _statusColor(context, task),
-                                    ),
-                                    RotationTransition(
-                                      turns: _motionController,
-                                      child: Icon(
-                                        Icons.sports_tennis,
-                                        size: 42,
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        title: const Text('任务状态'),
+        backgroundColor: Colors.transparent,
+      ),
+      body: AppBackground(
+        child: RefreshIndicator(
+          onRefresh: _refresh,
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(16),
+            children: [
+              SelectableText('task_id：${widget.taskId}'),
+              const SizedBox(height: 16),
+              if (_loading) const Center(child: CircularProgressIndicator()),
+              if (task != null) ...[
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        SizedBox(
+                          width: 112,
+                          height: 112,
+                          child: task.isRunning
+                              ? AnimatedBuilder(
+                                  animation: _motionController,
+                                  builder: (context, _) => Stack(
+                                    alignment: Alignment.center,
+                                    children: [
+                                      _PulseRing(
+                                        progress: _motionController.value,
                                         color: _statusColor(context, task),
                                       ),
-                                    ),
-                                  ],
+                                      _PulseRing(
+                                        progress:
+                                            (_motionController.value + 0.5) % 1,
+                                        color: _statusColor(context, task),
+                                      ),
+                                      RotationTransition(
+                                        turns: _motionController,
+                                        child: Icon(
+                                          Icons.sports_tennis,
+                                          size: 42,
+                                          color: _statusColor(context, task),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                )
+                              : Container(
+                                  decoration: BoxDecoration(
+                                    color: _statusColor(context, task)
+                                        .withValues(alpha: 0.10),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(
+                                    _statusIcon(task),
+                                    size: 42,
+                                    color: _statusColor(context, task),
+                                  ),
                                 ),
-                              )
-                            : Container(
-                                decoration: BoxDecoration(
-                                  color: _statusColor(context, task)
-                                      .withValues(alpha: 0.10),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Icon(
-                                  _statusIcon(task),
-                                  size: 42,
-                                  color: _statusColor(context, task),
-                                ),
-                              ),
-                      ),
-                      const SizedBox(height: 14),
-                      Text(
-                        _stageMessage(task),
-                        textAlign: TextAlign.center,
-                        style:
-                            Theme.of(context).textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.w800,
-                                ),
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Chip(
-                            backgroundColor: _statusColor(context, task)
-                                .withValues(alpha: 0.12),
-                            side: BorderSide.none,
-                            avatar: Icon(
-                              _statusIcon(task),
-                              size: 18,
-                              color: _statusColor(context, task),
-                            ),
-                            label: Text(_statusLabel(task)),
-                          ),
-                          const Spacer(),
-                          Text(
-                            task.isFailed ? '已停止' : '${task.progressPercent}%',
-                            style: Theme.of(context).textTheme.titleLarge,
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      LinearProgressIndicator(
-                        value: task.progress.clamp(0.0, 1.0).toDouble(),
-                        minHeight: 8,
-                        borderRadius: BorderRadius.circular(8),
-                        color: task.isFailed
-                            ? const Color(0xFFB65C62)
-                            : Theme.of(context).colorScheme.primary,
-                        backgroundColor:
-                            task.isFailed ? const Color(0xFFF4E5E6) : null,
-                      ),
-                      const SizedBox(height: 14),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          '当前阶段：'
-                          '${_stageLabel(task)}',
                         ),
-                      ),
-                      const SizedBox(height: 4),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text('视频：${task.videoName}'),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              if (task.isCompleted) ...[
-                const SizedBox(height: 20),
-                FilledButton(
-                  onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => ReportPage(taskId: widget.taskId),
+                        const SizedBox(height: 14),
+                        Text(
+                          _stageMessage(task),
+                          textAlign: TextAlign.center,
+                          style:
+                              Theme.of(context).textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Chip(
+                              backgroundColor: _statusColor(context, task)
+                                  .withValues(alpha: 0.12),
+                              side: BorderSide.none,
+                              avatar: Icon(
+                                _statusIcon(task),
+                                size: 18,
+                                color: _statusColor(context, task),
+                              ),
+                              label: Text(_statusLabel(task)),
+                            ),
+                            const Spacer(),
+                            Text(
+                              task.isFailed
+                                  ? '已停止'
+                                  : '${task.progressPercent}%',
+                              style: Theme.of(context).textTheme.titleLarge,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        LinearProgressIndicator(
+                          value: task.progress.clamp(0.0, 1.0).toDouble(),
+                          minHeight: 8,
+                          borderRadius: BorderRadius.circular(8),
+                          color: task.isFailed
+                              ? const Color(0xFFB65C62)
+                              : Theme.of(context).colorScheme.primary,
+                          backgroundColor:
+                              task.isFailed ? const Color(0xFFF4E5E6) : null,
+                        ),
+                        const SizedBox(height: 14),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            '当前阶段：'
+                            '${_stageLabel(task)}',
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text('视频：${task.videoName}'),
+                        ),
+                      ],
                     ),
                   ),
-                  child: const Text('查看报告'),
                 ),
+                if (task.isCompleted) ...[
+                  const SizedBox(height: 20),
+                  FilledButton(
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => ReportPage(taskId: widget.taskId),
+                      ),
+                    ),
+                    child: const Text('查看报告'),
+                  ),
+                ],
+                if (task.isFailed) ...[
+                  const SizedBox(height: 12),
+                  _FailureHelpCard(
+                    error: task.error,
+                    onRetry: () => Navigator.of(context).pushReplacement(
+                      MaterialPageRoute(
+                        builder: (_) => UploadPage(retryTaskId: task.taskId),
+                      ),
+                    ),
+                  ),
+                ],
               ],
-              if (task.isFailed) ...[
+              if (_error != null) ...[
                 const SizedBox(height: 12),
-                _FailureHelpCard(
-                  error: task.error,
-                  onRetry: () => Navigator.of(context).pushReplacement(
-                    MaterialPageRoute(
-                      builder: (_) => UploadPage(retryTaskId: task.taskId),
+                Card(
+                  color: _temporaryNetworkIssue
+                      ? Theme.of(context).colorScheme.secondaryContainer
+                      : Theme.of(context).colorScheme.errorContainer,
+                  child: ListTile(
+                    leading: Icon(
+                      _temporaryNetworkIssue ? Icons.sync : Icons.error_outline,
                     ),
+                    title: Text(_error!),
+                    subtitle: _temporaryNetworkIssue
+                        ? const Text('任务编号已保留，无需重新上传。')
+                        : null,
                   ),
                 ),
               ],
             ],
-            if (_error != null) ...[
-              const SizedBox(height: 12),
-              Card(
-                color: _temporaryNetworkIssue
-                    ? Theme.of(context).colorScheme.secondaryContainer
-                    : Theme.of(context).colorScheme.errorContainer,
-                child: ListTile(
-                  leading: Icon(
-                    _temporaryNetworkIssue ? Icons.sync : Icons.error_outline,
-                  ),
-                  title: Text(_error!),
-                  subtitle: _temporaryNetworkIssue
-                      ? const Text('任务编号已保留，无需重新上传。')
-                      : null,
-                ),
-              ),
-            ],
-          ],
+          ),
         ),
       ),
     );
