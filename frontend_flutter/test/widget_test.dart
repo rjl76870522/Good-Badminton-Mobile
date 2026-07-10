@@ -24,4 +24,30 @@ void main() {
     expect(find.text('后端游客身份'), findsOneWidget);
     expect(find.text('查询游客身份'), findsOneWidget);
   });
+
+  for (final device in <String, Size>{
+    'iPhone 14': const Size(390, 844),
+    'iPhone 15 Pro': const Size(393, 852),
+  }.entries) {
+    testWidgets('${device.key} portrait layout has no overflow',
+        (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      await tester.binding.setSurfaceSize(device.value);
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(const GoodBadmintonApp());
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(tester.takeException(), isNull);
+
+      await tester.tap(find.text('历史记录').last);
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.text('训练历史'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+
+      await tester.tap(find.text('训练档案').last);
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.text('后端游客身份'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
 }

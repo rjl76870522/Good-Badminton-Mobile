@@ -1,4 +1,8 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../config/api_config.dart';
 import '../models/report.dart';
@@ -86,93 +90,103 @@ class _ReportPageState extends State<ReportPage> {
   Widget build(BuildContext context) {
     final report = _report;
     return Scaffold(
-      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: Text(widget.loadDemo ? 'Demo 训练复盘' : '训练复盘报告'),
-        backgroundColor: Colors.transparent,
+        actions: [
+          IconButton(
+            tooltip: '退出',
+            icon: const Icon(Icons.close),
+            onPressed: () => Navigator.of(context).maybePop(),
+          ),
+        ],
       ),
       body: AppBackground(
         imageOpacity: 0.11,
-        child: RefreshIndicator(
-          onRefresh: _load,
-          child: ListView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.all(16),
-            children: [
-              if (_loading) const Center(child: CircularProgressIndicator()),
-              if (_error != null) ...[
-                Text(
-                  _error!,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
-                ),
-                const SizedBox(height: 12),
-                OutlinedButton(onPressed: _load, child: const Text('重新加载')),
-              ],
-              if (report != null) ...[
-                if (report.reportSummary.isNotEmpty) ...[
-                  _ReportConclusion(text: report.reportSummary),
-                  const SizedBox(height: 20),
-                ],
-                Text(
-                  '核心表现',
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                const SizedBox(height: 8),
-                _SummaryCard(
-                  summary: report.summary,
-                  highlightCount: report.highlightSegments.length,
-                ),
-                const SizedBox(height: 12),
-                _MovementQualityCard(summary: report.summary),
-                if (report.players.isNotEmpty) ...[
-                  const SizedBox(height: 20),
+        child: SafeArea(
+          top: false,
+          child: RefreshIndicator(
+            onRefresh: _load,
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.all(16),
+              children: [
+                if (_loading) const Center(child: CircularProgressIndicator()),
+                if (_error != null) ...[
                   Text(
-                    '球员表现',
+                    _error!,
+                    style:
+                        TextStyle(color: Theme.of(context).colorScheme.error),
+                  ),
+                  const SizedBox(height: 12),
+                  OutlinedButton(onPressed: _load, child: const Text('重新加载')),
+                ],
+                if (report != null) ...[
+                  if (report.reportSummary.isNotEmpty) ...[
+                    _ReportConclusion(text: report.reportSummary),
+                    const SizedBox(height: 20),
+                  ],
+                  Text(
+                    '核心表现',
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
                   const SizedBox(height: 8),
-                  ...report.players.map(_PlayerPerformanceCard.new),
-                ],
-                const SizedBox(height: 20),
-                Text(
-                  '移动可视化',
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                const SizedBox(height: 8),
-                _VisualizationSwitcher(
-                  heatmapUrl: report.files.heatmap,
-                  trajectoryUrl: report.files.trajectory,
-                  heatmapAvailable: _fileAvailability['heatmap'] ?? false,
-                  trajectoryAvailable: _fileAvailability['trajectory'] ?? false,
-                ),
-                const SizedBox(height: 20),
-                _CoachingSection(report: report),
-                if (report.adviceSources.isNotEmpty) ...[
+                  _SummaryCard(
+                    summary: report.summary,
+                    highlightCount: report.highlightSegments.length,
+                  ),
+                  const SizedBox(height: 12),
+                  _MovementQualityCard(summary: report.summary),
+                  if (report.players.isNotEmpty) ...[
+                    const SizedBox(height: 20),
+                    Text(
+                      '球员表现',
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                    const SizedBox(height: 8),
+                    ...report.players.map(_PlayerPerformanceCard.new),
+                  ],
+                  const SizedBox(height: 20),
+                  Text(
+                    '移动可视化',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
                   const SizedBox(height: 8),
-                  _AdviceSourcesCard(sources: report.adviceSources),
-                ],
-                const SizedBox(height: 20),
-                Text('精彩时刻', style: Theme.of(context).textTheme.titleLarge),
-                const SizedBox(height: 8),
-                _VideoResult(
-                  title: '精彩集锦',
-                  relativeUrl: report.files.highlight,
-                  available: _fileAvailability['highlight'] ?? false,
-                ),
-                if (report.highlightError != null) ...[
+                  _VisualizationSwitcher(
+                    heatmapUrl: report.files.heatmap,
+                    trajectoryUrl: report.files.trajectory,
+                    heatmapAvailable: _fileAvailability['heatmap'] ?? false,
+                    trajectoryAvailable:
+                        _fileAvailability['trajectory'] ?? false,
+                  ),
+                  const SizedBox(height: 20),
+                  _CoachingSection(report: report),
+                  if (report.adviceSources.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    _AdviceSourcesCard(sources: report.adviceSources),
+                  ],
+                  const SizedBox(height: 20),
+                  Text('精彩时刻', style: Theme.of(context).textTheme.titleLarge),
                   const SizedBox(height: 8),
-                  _HighlightWarning(message: report.highlightError!),
+                  _VideoResult(
+                    title: '精彩集锦',
+                    relativeUrl: report.files.highlight,
+                    available: _fileAvailability['highlight'] ?? false,
+                  ),
+                  if (report.highlightError != null) ...[
+                    const SizedBox(height: 8),
+                    _HighlightWarning(message: report.highlightError!),
+                  ],
+                  if (report.highlightSegments.isNotEmpty)
+                    ...report.highlightSegments.map(_HighlightCard.new),
+                  const SizedBox(height: 12),
+                  _VideoResult(
+                    title: '分析视频',
+                    relativeUrl: report.files.analysisVideo,
+                    available: _fileAvailability['analysis_video'] ?? false,
+                  ),
                 ],
-                if (report.highlightSegments.isNotEmpty)
-                  ...report.highlightSegments.map(_HighlightCard.new),
-                const SizedBox(height: 12),
-                _VideoResult(
-                  title: '分析视频',
-                  relativeUrl: report.files.analysisVideo,
-                  available: _fileAvailability['analysis_video'] ?? false,
-                ),
               ],
-            ],
+            ),
           ),
         ),
       ),
@@ -338,7 +352,7 @@ class _SummaryCard extends StatelessWidget {
     return Column(
       children: [
         SizedBox(
-          height: 210,
+          height: MediaQuery.sizeOf(context).width < 375 ? 190 : 210,
           child: Row(
             children: [
               Expanded(
@@ -1132,7 +1146,7 @@ Future<void> _showImagePreview(
   );
 }
 
-class _VideoResult extends StatelessWidget {
+class _VideoResult extends StatefulWidget {
   const _VideoResult({
     required this.title,
     required this.relativeUrl,
@@ -1144,15 +1158,156 @@ class _VideoResult extends StatelessWidget {
   final bool available;
 
   @override
+  State<_VideoResult> createState() => _VideoResultState();
+}
+
+class _VideoResultState extends State<_VideoResult> {
+  final ApiService _api = ApiService();
+  bool _downloading = false;
+  double _downloadProgress = 0;
+
+  String _filename(String url) {
+    final segments = url.split('/');
+    final name = segments.last;
+    if (name.contains('.')) return name;
+    return '${name}_${DateTime.now().millisecondsSinceEpoch}.mp4';
+  }
+
+  Future<void> _downloadVideo() async {
+    final url = ApiConfig.absoluteFileUrl(widget.relativeUrl);
+    if (url == null) return;
+
+    setState(() {
+      _downloading = true;
+      _downloadProgress = 0;
+    });
+
+    try {
+      // Show indeterminate first
+      await Future.delayed(const Duration(milliseconds: 100));
+
+      final dir = await getApplicationDocumentsDirectory();
+      final videoDir = Directory('${dir.path}/GoodBadminton');
+      if (!await videoDir.exists()) {
+        await videoDir.create(recursive: true);
+      }
+
+      final localPath = '${videoDir.path}/${_filename(url)}';
+
+      if (!mounted) return;
+      setState(() => _downloadProgress = 0.3);
+      final savedPath = await _api.downloadFile(url, localPath);
+      if (!mounted) return;
+      setState(() => _downloadProgress = 1.0);
+
+      final file = File(savedPath);
+      final fileSize = await file.length();
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+              '✅ 已保存：${fileSize > 1024 * 1024 ? '${(fileSize / 1024 / 1024).toStringAsFixed(1)} MB' : '${(fileSize / 1024).toStringAsFixed(0)} KB'}'),
+          backgroundColor: const Color(0xFF1B5E20),
+          duration: const Duration(seconds: 3),
+          action: SnackBarAction(
+            label: '分享',
+            textColor: Colors.white,
+            onPressed: () async {
+              final xFile = XFile(savedPath);
+              await Share.shareXFiles([xFile]);
+            },
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('❌ 下载失败：$e'),
+          backgroundColor: Colors.red.shade800,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _downloading = false;
+          _downloadProgress = 0;
+        });
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _api.close();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final url = ApiConfig.absoluteFileUrl(relativeUrl);
-    if (url != null && available) {
-      return InlineNetworkVideo(title: title, url: url);
+    final url = ApiConfig.absoluteFileUrl(widget.relativeUrl);
+
+    if (url != null && widget.available) {
+      return Stack(
+        children: [
+          InlineNetworkVideo(title: widget.title, url: url),
+          Positioned(
+            top: 12,
+            right: 12,
+            child: _downloading
+                ? Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.black87,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            value: _downloadProgress < 0.5
+                                ? null
+                                : _downloadProgress,
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        const Text(
+                          '下载中…',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                : IconButton.filled(
+                    tooltip: '下载视频到本地',
+                    onPressed: _downloadVideo,
+                    icon: const Icon(Icons.download_rounded),
+                    style: IconButton.styleFrom(
+                      backgroundColor: Colors.black54,
+                      foregroundColor: Colors.white,
+                      iconSize: 22,
+                    ),
+                  ),
+          ),
+        ],
+      );
     }
     return Card(
       child: ListTile(
         leading: const Icon(Icons.videocam_off_outlined),
-        title: Text(title),
+        title: Text(widget.title),
         subtitle: Text(url == null ? '暂无文件' : '文件未生成或已失效'),
       ),
     );

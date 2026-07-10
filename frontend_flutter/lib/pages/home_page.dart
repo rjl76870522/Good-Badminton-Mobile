@@ -143,88 +143,92 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
           ),
-          ListView(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 112),
-            children: [
-              _HeroCard(onTap: _openUpload),
-              const SizedBox(height: 14),
-              _ConnectionCard(
-                connected: _connected,
-                checking: _checking,
-                health: _health,
-                error: _error,
-                onCheck: _checkHealth,
-              ),
-              if (_restoringTask) ...[
-                const SizedBox(height: 12),
-                const LinearProgressIndicator(),
-              ],
-              if (_restoredTask != null) ...[
+          SafeArea(
+            top: false,
+            bottom: false,
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 112),
+              children: [
+                _HeroCard(onTap: _openUpload),
                 const SizedBox(height: 14),
-                _ActiveTaskCard(
-                  task: _restoredTask!,
-                  onTap: _openRestoredTask,
+                _ConnectionCard(
+                  connected: _connected,
+                  checking: _checking,
+                  health: _health,
+                  error: _error,
+                  onCheck: _checkHealth,
                 ),
-              ],
-              const SizedBox(height: 14),
-              Text(
-                '快捷入口',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-              ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(
-                    child: _QuickAccessCard(
-                      icon: Icons.science_outlined,
-                      label: 'Demo',
-                      color: const Color(0xFFFFF4D9),
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => const ReportPage.demo(),
+                if (_restoringTask) ...[
+                  const SizedBox(height: 12),
+                  const LinearProgressIndicator(),
+                ],
+                if (_restoredTask != null) ...[
+                  const SizedBox(height: 14),
+                  _ActiveTaskCard(
+                    task: _restoredTask!,
+                    onTap: _openRestoredTask,
+                  ),
+                ],
+                const SizedBox(height: 14),
+                Text(
+                  '快捷入口',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _QuickAccessCard(
+                        icon: Icons.science_outlined,
+                        label: 'Demo',
+                        color: const Color(0xFFFFF4D9),
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const ReportPage.demo(),
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: _QuickAccessCard(
-                      icon: Icons.insights_outlined,
-                      label: '历史记录',
-                      color: const Color(0xFFE2F3E3),
-                      onTap: () => widget.onSelectTab?.call(1),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _QuickAccessCard(
+                        icon: Icons.insights_outlined,
+                        label: '历史记录',
+                        color: const Color(0xFFE2F3E3),
+                        onTap: () => widget.onSelectTab?.call(1),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: _QuickAccessCard(
-                      icon: Icons.person_outline_rounded,
-                      label: '训练档案',
-                      color: const Color(0xFFE8EEF7),
-                      onTap: () => widget.onSelectTab?.call(2),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _QuickAccessCard(
+                        icon: Icons.person_outline_rounded,
+                        label: '训练档案',
+                        color: const Color(0xFFE8EEF7),
+                        onTap: () => widget.onSelectTab?.call(2),
+                      ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 18),
-              Text(
-                '专业运动数字化复盘',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'AI 自动追踪球员移动、速度、覆盖范围与羽毛球轨迹，'
-                '把每一次训练转化为清晰可读的数据。',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: colorScheme.onSurfaceVariant,
-                      height: 1.55,
-                    ),
-              ),
-            ],
+                  ],
+                ),
+                const SizedBox(height: 18),
+                Text(
+                  '专业运动数字化复盘',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'AI 自动追踪球员移动、速度、覆盖范围与羽毛球轨迹，'
+                  '把每一次训练转化为清晰可读的数据。',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                        height: 1.55,
+                      ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -239,123 +243,129 @@ class _HeroCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 202,
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(28),
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF1B5E20), Color(0xFF43A047)],
-        ),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x402E7D32),
-            blurRadius: 24,
-            offset: Offset(0, 12),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 375;
+        final height = (constraints.maxWidth * 0.52).clamp(190.0, 220.0);
+        return Container(
+          height: height,
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(28),
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFF1B5E20), Color(0xFF43A047)],
+            ),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x402E7D32),
+                blurRadius: 24,
+                offset: Offset(0, 12),
+              ),
+            ],
           ),
-        ],
-      ),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(28),
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: Opacity(
-                opacity: 0.16,
-                child: Image.asset(
-                  'assets/images/badminton_dashboard_bg.png',
-                  fit: BoxFit.cover,
-                  alignment: Alignment.center,
-                  color: Colors.white,
-                  colorBlendMode: BlendMode.screen,
-                ),
-              ),
-            ),
-            const Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.centerLeft,
-                    end: Alignment.centerRight,
-                    colors: [
-                      Color(0x5C0B4217),
-                      Color(0x0D2E7D32),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(22),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.16),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.12),
-                      ),
-                    ),
-                    child: const Text(
-                      'AI SPORTS VISION',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 11,
-                        letterSpacing: 1.2,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                  const Spacer(),
-                  const Text(
-                    '羽毛球 AI 视觉分析',
-                    style: TextStyle(
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(28),
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: Opacity(
+                    opacity: 0.16,
+                    child: Image.asset(
+                      'assets/images/badminton_dashboard_bg.png',
+                      fit: BoxFit.cover,
+                      alignment: Alignment.center,
                       color: Colors.white,
-                      fontSize: 25,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: -0.4,
+                      colorBlendMode: BlendMode.screen,
                     ),
                   ),
-                  const SizedBox(height: 7),
-                  const Text(
-                    '上传比赛视频，一键生成数字化跑动报告',
-                    style: TextStyle(
-                      color: Color(0xDFFFFFFF),
-                      fontSize: 14,
-                      height: 1.35,
+                ),
+                const Positioned.fill(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.centerLeft,
+                        end: Alignment.centerRight,
+                        colors: [
+                          Color(0x5C0B4217),
+                          Color(0x0D2E7D32),
+                        ],
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 13),
-                  Row(
+                ),
+                Padding(
+                  padding: EdgeInsets.all(compact ? 18 : 22),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        '开始分析',
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.95),
-                          fontWeight: FontWeight.w700,
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.16),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.12),
+                          ),
+                        ),
+                        child: const Text(
+                          'AI SPORTS VISION',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            letterSpacing: 1.2,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ),
-                      const SizedBox(width: 5),
-                      const Icon(
-                        Icons.arrow_forward_rounded,
-                        color: Colors.white,
-                        size: 19,
+                      const Spacer(),
+                      Text(
+                        '羽毛球 AI 视觉分析',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: compact ? 22 : 25,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.4,
+                        ),
+                      ),
+                      const SizedBox(height: 7),
+                      Text(
+                        '上传比赛视频，一键生成数字化跑动报告',
+                        style: TextStyle(
+                          color: Color(0xDFFFFFFF),
+                          fontSize: compact ? 13 : 14,
+                          height: 1.35,
+                        ),
+                      ),
+                      const SizedBox(height: 13),
+                      Row(
+                        children: [
+                          Text(
+                            '开始分析',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.95),
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(width: 5),
+                          const Icon(
+                            Icons.arrow_forward_rounded,
+                            color: Colors.white,
+                            size: 19,
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }
@@ -576,39 +586,45 @@ class _QuickAccessCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: color,
-      borderRadius: BorderRadius.circular(22),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(22),
-        child: Container(
-          height: 110,
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 115;
+        return Material(
+          color: color,
+          borderRadius: BorderRadius.circular(22),
+          child: InkWell(
+            onTap: onTap,
             borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.8)),
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                icon,
-                size: 30,
-                color: Theme.of(context).colorScheme.primary,
+            child: Container(
+              height: compact ? 96 : 110,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.8)),
               ),
-              const SizedBox(height: 10),
-              Text(
-                label,
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    icon,
+                    size: compact ? 27 : 30,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                  SizedBox(height: compact ? 7 : 10),
+                  Text(
+                    label,
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                          fontSize: compact ? 12 : null,
+                          fontWeight: FontWeight.w800,
+                        ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }

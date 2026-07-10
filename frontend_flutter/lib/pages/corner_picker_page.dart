@@ -74,244 +74,248 @@ class _CornerPickerPageState extends State<CornerPickerPage>
         backgroundColor: const Color(0xFF0D1711),
         foregroundColor: Colors.white,
       ),
-      body: Stack(
-        children: [
-          LayoutBuilder(
-            builder: (context, viewport) {
-              return InteractiveViewer(
-                transformationController: _transformCtrl,
-                minScale: 1,
-                maxScale: 8,
-                boundaryMargin: const EdgeInsets.all(360),
-                child: SizedBox(
-                  width: viewport.maxWidth,
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Card(
-                          color: const Color(0xFF193624),
-                          child: Padding(
-                            padding: const EdgeInsets.all(14),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  nextLabel,
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .titleMedium
-                                      ?.copyWith(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.w800,
-                                      ),
-                                ),
-                                const SizedBox(height: 4),
-                                const Text(
-                                  '顺序：左上角 → 右上角 → 右下角 → 左下角',
-                                  style: TextStyle(color: Colors.white70),
-                                ),
-                                const Text(
-                                  '可双指缩放整个页面；单击图片添加角点。',
-                                  style: TextStyle(color: Colors.white60),
-                                ),
-                                if (widget.preview.sceneWarning != null) ...[
-                                  const SizedBox(height: 8),
+      body: SafeArea(
+        top: false,
+        child: Stack(
+          children: [
+            LayoutBuilder(
+              builder: (context, viewport) {
+                return InteractiveViewer(
+                  transformationController: _transformCtrl,
+                  minScale: 1,
+                  maxScale: 8,
+                  boundaryMargin: const EdgeInsets.all(360),
+                  child: SizedBox(
+                    width: viewport.maxWidth,
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Card(
+                            color: const Color(0xFF193624),
+                            child: Padding(
+                              padding: const EdgeInsets.all(14),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
                                   Text(
-                                    widget.preview.sceneWarning!,
-                                    style: const TextStyle(
-                                      color: Color(0xFFFFCC80),
-                                      height: 1.4,
-                                    ),
+                                    nextLabel,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleMedium
+                                        ?.copyWith(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w800,
+                                        ),
                                   ),
+                                  const SizedBox(height: 4),
+                                  const Text(
+                                    '顺序：左上角 → 右上角 → 右下角 → 左下角',
+                                    style: TextStyle(color: Colors.white70),
+                                  ),
+                                  const Text(
+                                    '可双指缩放整个页面；单击图片添加角点。',
+                                    style: TextStyle(color: Colors.white60),
+                                  ),
+                                  if (widget.preview.sceneWarning != null) ...[
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      widget.preview.sceneWarning!,
+                                      style: const TextStyle(
+                                        color: Color(0xFFFFCC80),
+                                        height: 1.4,
+                                      ),
+                                    ),
+                                  ],
                                 ],
-                              ],
+                              ),
                             ),
                           ),
-                        ),
-                        const SizedBox(height: 12),
-                        AspectRatio(
-                          aspectRatio: widget.preview.video.width > 0 &&
-                                  widget.preview.video.height > 0
-                              ? widget.preview.video.width /
-                                  widget.preview.video.height
-                              : 16 / 9,
-                          child: LayoutBuilder(
-                            builder: (context, constraints) {
-                              final size = Size(
-                                constraints.maxWidth,
-                                constraints.maxHeight,
-                              );
-                              return ClipRRect(
-                                borderRadius: BorderRadius.circular(22),
-                                child: DecoratedBox(
-                                  decoration: BoxDecoration(
-                                    border: Border.all(
-                                      color: const Color(0xFF66BB6A),
-                                      width: 1.5,
+                          const SizedBox(height: 12),
+                          AspectRatio(
+                            aspectRatio: widget.preview.video.width > 0 &&
+                                    widget.preview.video.height > 0
+                                ? widget.preview.video.width /
+                                    widget.preview.video.height
+                                : 16 / 9,
+                            child: LayoutBuilder(
+                              builder: (context, constraints) {
+                                final size = Size(
+                                  constraints.maxWidth,
+                                  constraints.maxHeight,
+                                );
+                                return ClipRRect(
+                                  borderRadius: BorderRadius.circular(22),
+                                  child: DecoratedBox(
+                                    decoration: BoxDecoration(
+                                      border: Border.all(
+                                        color: const Color(0xFF66BB6A),
+                                        width: 1.5,
+                                      ),
+                                      borderRadius: BorderRadius.circular(22),
                                     ),
-                                    borderRadius: BorderRadius.circular(22),
-                                  ),
-                                  child: GestureDetector(
-                                    behavior: HitTestBehavior.opaque,
-                                    onTapUp: (details) =>
-                                        _addPoint(details.localPosition, size),
-                                    child: Stack(
-                                      fit: StackFit.expand,
-                                      children: [
-                                        Image.network(
-                                          imageUrl,
-                                          fit: BoxFit.fill,
-                                          errorBuilder: (_, error, __) =>
-                                              ColoredBox(
-                                            color: Colors.black38,
-                                            child: Center(
-                                              child: Text(
-                                                '预览图加载失败：$error',
-                                                style: const TextStyle(
-                                                  color: Colors.white70,
+                                    child: GestureDetector(
+                                      behavior: HitTestBehavior.opaque,
+                                      onTapUp: (details) => _addPoint(
+                                          details.localPosition, size),
+                                      child: Stack(
+                                        fit: StackFit.expand,
+                                        children: [
+                                          Image.network(
+                                            imageUrl,
+                                            fit: BoxFit.fill,
+                                            errorBuilder: (_, error, __) =>
+                                                ColoredBox(
+                                              color: Colors.black38,
+                                              child: Center(
+                                                child: Text(
+                                                  '预览图加载失败：$error',
+                                                  style: const TextStyle(
+                                                    color: Colors.white70,
+                                                  ),
                                                 ),
                                               ),
                                             ),
                                           ),
-                                        ),
-                                        AnimatedBuilder(
-                                          animation: _pulseController,
-                                          builder: (context, _) => CustomPaint(
-                                            painter: _CornerPainter(
-                                              points: _points,
-                                              videoSize: _videoSize,
-                                              pulse: _pulseController.value,
+                                          AnimatedBuilder(
+                                            animation: _pulseController,
+                                            builder: (context, _) =>
+                                                CustomPaint(
+                                              painter: _CornerPainter(
+                                                points: _points,
+                                                videoSize: _videoSize,
+                                                pulse: _pulseController.value,
+                                              ),
                                             ),
                                           ),
-                                        ),
-                                      ],
+                                        ],
+                                      ),
                                     ),
                                   ),
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Card(
-                          color: const Color(0xCC1A261F),
-                          child: Padding(
-                            padding: const EdgeInsets.all(12),
-                            child: Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: [
-                                OutlinedButton.icon(
-                                  style: OutlinedButton.styleFrom(
-                                    foregroundColor: Colors.white,
-                                  ),
-                                  onPressed: _points.isEmpty
-                                      ? null
-                                      : () => setState(() => _points = []),
-                                  icon: const Icon(Icons.refresh),
-                                  label: const Text('重新选择'),
-                                ),
-                                OutlinedButton.icon(
-                                  style: OutlinedButton.styleFrom(
-                                    foregroundColor: const Color(0xFFA5D6A7),
-                                  ),
-                                  onPressed:
-                                      widget.preview.autoCorners.length == 4
-                                          ? _useAutoCorners
-                                          : null,
-                                  icon: const Icon(Icons.auto_fix_high),
-                                  label: const Text('自动检测'),
-                                ),
-                              ],
+                                );
+                              },
                             ),
                           ),
-                        ),
-                        const SizedBox(height: 12),
-                        if (_points.isNotEmpty)
-                          ...List.generate(
-                            _points.length,
-                            (index) => Text(
-                              '${_labels[index]}：'
-                              '(${_points[index].x.round()}, ${_points[index].y.round()})',
-                              style: const TextStyle(color: Colors.white70),
+                          const SizedBox(height: 12),
+                          Card(
+                            color: const Color(0xCC1A261F),
+                            child: Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: [
+                                  OutlinedButton.icon(
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: Colors.white,
+                                    ),
+                                    onPressed: _points.isEmpty
+                                        ? null
+                                        : () => setState(() => _points = []),
+                                    icon: const Icon(Icons.refresh),
+                                    label: const Text('重新选择'),
+                                  ),
+                                  OutlinedButton.icon(
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: const Color(0xFFA5D6A7),
+                                    ),
+                                    onPressed:
+                                        widget.preview.autoCorners.length == 4
+                                            ? _useAutoCorners
+                                            : null,
+                                    icon: const Icon(Icons.auto_fix_high),
+                                    label: const Text('自动检测'),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
-                        const SizedBox(height: 20),
-                        FilledButton.icon(
-                          onPressed: _points.length == 4
-                              ? () => Navigator.of(context)
-                                  .pop(List<CourtPoint>.of(_points))
-                              : null,
-                          icon: const Icon(Icons.check),
-                          label: const Text('确认角点并继续'),
-                        ),
-                        const SizedBox(height: 8),
-                        TextButton(
-                          style: TextButton.styleFrom(
-                              foregroundColor: Colors.white70),
-                          onPressed: () =>
-                              Navigator.of(context).pop(<CourtPoint>[]),
-                          child: const Text('跳过手动角点'),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
-          Positioned(
-            top: 12,
-            right: 12,
-            child: AnimatedBuilder(
-              animation: _transformCtrl,
-              builder: (context, _) {
-                final scale = _transformCtrl.value.getMaxScaleOnAxis();
-                if (scale <= 1.05) return const SizedBox.shrink();
-                return DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: Colors.black54,
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                  child: Padding(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.zoom_in,
-                          size: 15,
-                          color: Colors.white70,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          '${scale.toStringAsFixed(1)}x',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
+                          const SizedBox(height: 12),
+                          if (_points.isNotEmpty)
+                            ...List.generate(
+                              _points.length,
+                              (index) => Text(
+                                '${_labels[index]}：'
+                                '(${_points[index].x.round()}, ${_points[index].y.round()})',
+                                style: const TextStyle(color: Colors.white70),
+                              ),
+                            ),
+                          const SizedBox(height: 20),
+                          FilledButton.icon(
+                            onPressed: _points.length == 4
+                                ? () => Navigator.of(context)
+                                    .pop(List<CourtPoint>.of(_points))
+                                : null,
+                            icon: const Icon(Icons.check),
+                            label: const Text('确认角点并继续'),
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        GestureDetector(
-                          onTap: () =>
-                              _transformCtrl.value = Matrix4.identity(),
-                          child: const Icon(
-                            Icons.refresh,
-                            size: 15,
-                            color: Colors.white70,
+                          const SizedBox(height: 8),
+                          TextButton(
+                            style: TextButton.styleFrom(
+                                foregroundColor: Colors.white70),
+                            onPressed: () =>
+                                Navigator.of(context).pop(<CourtPoint>[]),
+                            child: const Text('跳过手动角点'),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 );
               },
             ),
-          ),
-        ],
+            Positioned(
+              top: 12,
+              right: 12,
+              child: AnimatedBuilder(
+                animation: _transformCtrl,
+                builder: (context, _) {
+                  final scale = _transformCtrl.value.getMaxScaleOnAxis();
+                  if (scale <= 1.05) return const SizedBox.shrink();
+                  return DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: Colors.black54,
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 6),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.zoom_in,
+                            size: 15,
+                            color: Colors.white70,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '${scale.toStringAsFixed(1)}x',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          GestureDetector(
+                            onTap: () =>
+                                _transformCtrl.value = Matrix4.identity(),
+                            child: const Icon(
+                              Icons.refresh,
+                              size: 15,
+                              color: Colors.white70,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

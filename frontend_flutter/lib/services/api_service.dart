@@ -219,6 +219,18 @@ class ApiService {
     _decodeMap(response);
   }
 
+  Future<String> downloadFile(String url, String localPath) async {
+    final response = await _client
+        .get(Uri.parse(url))
+        .timeout(const Duration(minutes: 10));
+    if (response.statusCode != 200) {
+      throw ApiException('下载失败：HTTP ${response.statusCode}');
+    }
+    final file = File(localPath);
+    await file.writeAsBytes(response.bodyBytes);
+    return file.path;
+  }
+
   Future<bool> fileExists(String? relativePath) async {
     final url = ApiConfig.absoluteFileUrl(relativePath);
     if (url == null) return false;
