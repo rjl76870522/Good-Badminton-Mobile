@@ -1,8 +1,8 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:gal/gal.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
 
 import '../config/api_config.dart';
 import '../models/report.dart';
@@ -1186,7 +1186,7 @@ class _VideoResultState extends State<_VideoResult> {
       // Show indeterminate first
       await Future.delayed(const Duration(milliseconds: 100));
 
-      final dir = await getApplicationDocumentsDirectory();
+      final dir = await getTemporaryDirectory();
       final videoDir = Directory('${dir.path}/GoodBadminton');
       if (!await videoDir.exists()) {
         await videoDir.create(recursive: true);
@@ -1202,22 +1202,25 @@ class _VideoResultState extends State<_VideoResult> {
 
       final file = File(savedPath);
       final fileSize = await file.length();
+      final hasAccess = await Gal.hasAccess(toAlbum: true);
+      final granted = hasAccess || await Gal.requestAccess(toAlbum: true);
+      if (!granted) {
+        throw StateError('未获得系统相册访问权限，请在系统设置中允许照片权限后重试。');
+      }
+      await Gal.putVideo(savedPath, album: 'Good-Badminton');
+      try {
+        await file.delete();
+      } on FileSystemException {
+        // 已成功导入系统相册；清理临时文件失败不应视为下载失败。
+      }
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-              '✅ 已保存：${fileSize > 1024 * 1024 ? '${(fileSize / 1024 / 1024).toStringAsFixed(1)} MB' : '${(fileSize / 1024).toStringAsFixed(0)} KB'}'),
+              '✅ 已保存到系统相册：${fileSize > 1024 * 1024 ? '${(fileSize / 1024 / 1024).toStringAsFixed(1)} MB' : '${(fileSize / 1024).toStringAsFixed(0)} KB'}'),
           backgroundColor: const Color(0xFF1B5E20),
           duration: const Duration(seconds: 3),
-          action: SnackBarAction(
-            label: '分享',
-            textColor: Colors.white,
-            onPressed: () async {
-              final xFile = XFile(savedPath);
-              await Share.shareXFiles([xFile]);
-            },
-          ),
         ),
       );
     } catch (e) {
