@@ -1,7 +1,7 @@
 :root { --ink: #1d1d1f; --blue: #0071e3; --blue-bright: #2997ff; --soft: #f5f5f7; --ice: #edf5fb; }
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
-body { margin: 0; background: #fff; color: var(--ink); font-family: KaiTi, STKaiti, "AR PL UKai CN", "Noto Serif CJK SC", serif; letter-spacing: 0; }
+body { margin: 0; background: #fff; color: var(--ink); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans CJK SC", "Microsoft YaHei", Arial, sans-serif; letter-spacing: 0; }
 a { color: inherit; }
 .global-nav { position: sticky; z-index: 50; top: 0; height: 48px; display: flex; align-items: center; justify-content: space-between; padding: 0 max(22px, calc((100vw - 1024px) / 2)); background: rgba(250,250,252,.82); color: #252527; backdrop-filter: saturate(180%) blur(20px); }
 .symbol { display: grid; width: 28px; height: 28px; place-items: center; border: 1.5px solid #252527; border-radius: 50%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; font-size: 9px; font-weight: 750; text-decoration: none; }
@@ -30,9 +30,9 @@ h1 { margin: 0; font-size: clamp(44px, 5vw, 70px); font-weight: 700; line-height
 .detail-copy { position: relative; z-index: 2; width: min(1100px, 100%); }
 .detail h2 { font-size: clamp(50px, 6.5vw, 90px); }
 .detail h2 span { background: linear-gradient(90deg, #0071e3, #53b7df); -webkit-background-clip: text; color: transparent; }
-.detail-product { display: block; width: min(1200px, 100vw); height: min(54vw, 560px); object-fit: cover; object-position: center 64%; mix-blend-mode: multiply; }
+.detail-product { display: block; width: 100vw; height: min(62svh, 720px); min-height: 520px; object-fit: cover; object-position: center 58%; mix-blend-mode: multiply; }
 .closing { min-height: 72svh; display: grid; place-items: center; padding: 80px 24px; background: radial-gradient(circle at 50% 85%, #15334c 0, #07111a 34%, #020406 70%); color: #f5f5f7; text-align: center; }
-.closing h2 { background: linear-gradient(90deg, #f5f5f7, #a5bdcf); -webkit-background-clip: text; color: transparent; }
+.closing h2 { background: linear-gradient(90deg, #f5f5f7 0%, #dcecf8 22%, #3a9fe8 50%, #dcecf8 78%, #f5f5f7 100%); -webkit-background-clip: text; color: transparent; }
 .closing .links a { color: #2997ff; }
 footer { padding: 34px max(22px, calc((100vw - 980px) / 2)); background: var(--soft); color: #6e6e73; font-size: 12px; }
 footer > div { display: flex; gap: 12px; padding-bottom: 18px; border-bottom: 1px solid #d2d2d7; }
@@ -57,7 +57,7 @@ footer a { text-decoration: none; } footer a:hover { text-decoration: underline;
   .statement-copy p, .detail-copy p, .closing-copy p { margin-bottom: 10px; font-size: 19px; }
   .statement h2, .detail h2, .closing h2 { font-size: clamp(42px, 12.5vw, 52px); line-height: 1.16; }
   .detail { min-height: 84svh; padding: 76px 18px 0; }
-  .detail-product { width: calc(100% + 36px); height: 350px; max-width: none; object-position: 41% center; }
+  .detail-product { width: calc(100% + 36px); height: 48svh; min-height: 390px; max-width: none; object-position: 40% center; }
   .closing { min-height: 60svh; }
   footer > div { flex-direction: column; }
 }
