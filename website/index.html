@@ -3,70 +3,73 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="description" content="Good-Badminton — 为每一次挥拍留下答案。" />
-    <title>Good-Badminton | Own The Court</title>
-    <link rel="stylesheet" href="./styles.css" />
+    <meta name="description" content="Good-Badminton — 看见每一次移动。" />
+    <title>Good-Badminton</title>
+    <link rel="stylesheet" href="./landing.css?v=20260711-1" />
   </head>
-  <body class="home-page">
-    <div class="scroll-progress" aria-hidden="true"></div>
-    <header class="site-header home-header">
-      <a class="brand" href="#top" aria-label="Good-Badminton 首页">
-        <span class="brand-mark">GB</span><span>GOOD BADMINTON</span>
-      </a>
-      <nav class="nav-links" aria-label="主导航">
-        <a href="#motion">MOTION</a><a href="#precision">PRECISION</a><a href="#future">FUTURE</a>
+  <body>
+    <header class="header">
+      <a class="logo" href="#home" aria-label="Good-Badminton 首页"><b>GOOD</b><span>BADMINTON</span></a>
+      <nav class="desktop-nav" aria-label="主导航">
+        <a href="#vision">VISION</a><a href="#motion">MOTION</a><a href="#court">THE COURT</a>
       </nav>
+      <button class="menu-button" type="button" aria-label="打开菜单" aria-expanded="false"><i></i><i></i><i></i></button>
     </header>
 
-    <main id="top">
-      <section class="brand-hero scroll-scene">
-        <img class="scene-media hero-visual" src="./assets/demo.gif" alt="羽毛球赛场上的高速对抗" />
-        <div class="scene-overlay"></div>
-        <div class="hero-type" data-parallax="-0.12">
-          <p class="kicker reveal">INTELLIGENCE IN MOTION</p>
-          <h1 class="reveal">OWN<br />THE COURT.</h1>
+    <nav class="menu-panel" aria-label="移动端导航">
+      <a href="#vision">VISION</a><a href="#motion">MOTION</a><a href="#court">THE COURT</a>
+      <a href="./privacy.html">PRIVACY</a><a href="./support.html">SUPPORT</a>
+    </nav>
+
+    <main>
+      <section class="panel hero" id="home">
+        <video class="background" autoplay muted loop playsinline poster="./assets/webui0.png">
+          <source src="./assets/demo.gif" type="image/gif" />
+        </video>
+        <img class="background fallback" src="./assets/demo.gif" alt="羽毛球比赛画面" />
+        <div class="shade"></div>
+        <div class="content">
+          <p>GOOD-BADMINTON</p>
+          <h1>掌控<br />每一拍</h1>
+          <a class="outline-button" href="#vision"><span>探索</span></a>
         </div>
-        <div class="hero-foot reveal"><span>GOOD-BADMINTON / 2026</span><span>SCROLL TO MOVE</span></div>
+        <a class="down" href="#vision" aria-label="向下滚动"></a>
       </section>
 
-      <section class="manifesto" id="motion">
-        <p class="chapter reveal">01 / MOTION</p>
-        <div class="manifesto-copy">
-          <span class="reveal">速度留下残影。</span>
-          <span class="outline reveal">判断决定下一拍。</span>
+      <section class="panel vision" id="vision">
+        <img class="background" src="./assets/match_heatmap.png" alt="球场移动热力视觉" />
+        <div class="shade"></div>
+        <div class="content">
+          <p>SEE WHAT OTHERS MISS</p>
+          <h2>看见<br />隐藏的轨迹</h2>
+          <a class="outline-button" href="#motion"><span>继续</span></a>
         </div>
-        <div class="shuttle-orbit" aria-hidden="true"><span></span></div>
+        <a class="down" href="#motion" aria-label="向下滚动"></a>
       </section>
 
-      <section class="cinema scroll-scene" id="precision">
-        <img class="scene-media cinema-visual" src="./assets/match_heatmap.png" alt="羽毛球运动轨迹视觉" />
-        <div class="scene-overlay red"></div>
-        <div class="cinema-copy" data-parallax="-0.08">
-          <p class="chapter reveal">02 / PRECISION</p>
-          <h2 class="reveal">SEE THE<br />UNSEEN.</h2>
-          <p class="cinema-cn reveal">每一次移动，都有它的方向。</p>
+      <section class="panel motion" id="motion">
+        <img class="background" src="./assets/webui1.png" alt="羽毛球运动分析画面" />
+        <div class="shade"></div>
+        <div class="content right">
+          <p>BUILT FOR MOTION</p>
+          <h2>速度<br />从不等待</h2>
+          <a class="outline-button" href="#court"><span>下一幕</span></a>
         </div>
+        <a class="down" href="#court" aria-label="向下滚动"></a>
       </section>
 
-      <div class="marquee" aria-hidden="true">
-        <div>FASTER / SHARPER / STRONGER / FASTER / SHARPER / STRONGER /</div>
-      </div>
-
-      <section class="future" id="future">
-        <div class="future-grid" aria-hidden="true"></div>
-        <p class="chapter reveal">03 / THE NEXT POINT</p>
-        <h2 class="reveal">下一分，<br />由你定义。</h2>
-        <div class="future-bottom reveal">
-          <p>BEYOND THE LINE.<br />BEYOND THE LIMIT.</p>
-          <a class="round-link" href="#top" aria-label="返回页面顶部">↑</a>
+      <section class="panel court" id="court">
+        <img class="background" src="./assets/demo.gif" alt="羽毛球球场" />
+        <div class="shade"></div>
+        <div class="content">
+          <p>THE NEXT POINT IS YOURS</p>
+          <h2>下一分<br />由你定义</h2>
+          <a class="outline-button" href="#home"><span>返回顶部</span></a>
         </div>
       </section>
     </main>
 
-    <footer class="site-footer brand-footer">
-      <span>© 2026 GOOD-BADMINTON</span>
-      <nav aria-label="页脚导航"><a href="./privacy.html">PRIVACY</a><a href="./support.html">SUPPORT</a></nav>
-    </footer>
-    <script src="./app.js"></script>
+    <footer><span>GOOD-BADMINTON © 2026</span><nav><a href="./privacy.html">PRIVACY</a><a href="./support.html">SUPPORT</a></nav></footer>
+    <script src="./landing.js?v=20260711-1"></script>
   </body>
 </html>
