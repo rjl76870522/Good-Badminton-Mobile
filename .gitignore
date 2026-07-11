@@ -25,6 +25,8 @@ apk/
 server/uploads/
 *.apk
 *.zip
+*.jks
+frontend_flutter/android/key.properties
 frontend_flutter/nul
 server/debug_line_mask.png
 

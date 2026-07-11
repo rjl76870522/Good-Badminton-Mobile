@@ -6,6 +6,9 @@ class TaskStatus {
     required this.stage,
     required this.videoName,
     this.error,
+    this.failureCode,
+    this.failureTitle,
+    this.failureHint,
     this.createdAt,
     this.updatedAt,
     this.reportUrl,
@@ -17,6 +20,9 @@ class TaskStatus {
   final String stage;
   final String videoName;
   final String? error;
+  final String? failureCode;
+  final String? failureTitle;
+  final String? failureHint;
   final double? createdAt;
   final double? updatedAt;
   final String? reportUrl;
@@ -34,6 +40,9 @@ class TaskStatus {
       stage: json['stage']?.toString() ?? '',
       videoName: json['video_name']?.toString() ?? '',
       error: json['error']?.toString(),
+      failureCode: json['failure_code']?.toString(),
+      failureTitle: json['failure_title']?.toString(),
+      failureHint: json['failure_hint']?.toString(),
       createdAt: _asNullableDouble(json['created_at']),
       updatedAt: _asNullableDouble(json['updated_at']),
       reportUrl: json['report_url']?.toString(),

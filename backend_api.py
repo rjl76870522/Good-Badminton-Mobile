@@ -10,9 +10,11 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import subprocess
 import threading
 import time
 import uuid
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -81,10 +83,16 @@ PREVIEW_FRAME_DIR.mkdir(parents=True, exist_ok=True)
 TASK_DIR.mkdir(parents=True, exist_ok=True)
 OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
 
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    recover_persisted_tasks()
+    yield
+
+
 # Initialize SQLite database (replaces JSON file storage)
 init_db(PROJECT_ROOT / "mobile_backend_data" / "badminton.db")
 
-app = FastAPI(title="Good-Badminton Mobile Backend", version="0.1.0")
+app = FastAPI(title="Good-Badminton Mobile Backend", version="0.1.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -99,6 +107,7 @@ if FRONTEND_DIR.is_dir():
 
 ANALYSIS_LOCK = threading.Lock()
 USER_REGISTRY_LOCK = threading.Lock()
+STARTUP_RECOVERY_LOCK = threading.Lock()
 
 
 class RegisterUserRequest(BaseModel):
@@ -112,6 +121,55 @@ def health() -> dict[str, Any]:
         "project_root": str(PROJECT_ROOT),
         "default_template": str(_default_template_path()),
     }
+
+
+def recover_persisted_tasks() -> None:
+    """Resume queued/processing tasks left behind by a backend restart."""
+    with STARTUP_RECOVERY_LOCK:
+        pending = [
+            task
+            for task in _load_all_tasks()
+            if task.get("status") in {"queued", "processing"}
+        ]
+        for task in pending:
+            upload_path = Path(str(task.get("upload_path") or ""))
+            template_path = Path(str(task.get("template_path") or ""))
+            if not upload_path.is_file() or not template_path.is_file():
+                _update_task(
+                    task["task_id"],
+                    status="failed",
+                    stage="failed",
+                    progress=1.0,
+                    error=(
+                        "服务器重启后无法恢复任务：上传视频或球场模板文件已不存在。"
+                        "请重新上传视频。"
+                    ),
+                )
+                continue
+            _update_task(
+                task["task_id"],
+                status="queued",
+                stage="queued_after_restart",
+                progress=0.0,
+            )
+            threading.Thread(
+                target=_run_analysis_task,
+                kwargs={
+                    "task_id": task["task_id"],
+                    "video_path": str(upload_path),
+                    "template_path": str(template_path),
+                    "corners": _task_corners(task),
+                    "language": str(task.get("language") or "zh"),
+                    "pose_mode": str(task.get("pose_mode") or "balanced"),
+                    "keep_audio": bool(task.get("keep_audio", True)),
+                },
+                daemon=True,
+            ).start()
+
+
+@app.get("/api/diagnostics")
+def diagnostics() -> dict[str, Any]:
+    return _diagnostics()
 
 
 @app.get("/", include_in_schema=False)
@@ -253,6 +311,10 @@ def upload_video(
         "user_id": user_id,
         "upload_path": str(upload_path),
         "template_path": str(template),
+        "corners_json": json.dumps(corners) if corners else None,
+        "language": language,
+        "pose_mode": pose_mode,
+        "keep_audio": keep_audio,
         "created_at": time.time(),
         "updated_at": time.time(),
         "report": None,
@@ -913,6 +975,7 @@ def _first_matching(urls: list[str | None], needle: str) -> str | None:
 
 
 def _public_task(task: dict[str, Any]) -> dict[str, Any]:
+    failure = _failure_info(task.get("error"))
     return {
         "task_id": task["task_id"],
         "user_id": task.get("user_id", DEFAULT_USER_ID),
@@ -920,6 +983,9 @@ def _public_task(task: dict[str, Any]) -> dict[str, Any]:
         "progress": task["progress"],
         "stage": task["stage"],
         "error": task["error"],
+        "failure_code": failure["code"] if task["status"] == "failed" else None,
+        "failure_title": failure["title"] if task["status"] == "failed" else None,
+        "failure_hint": failure["hint"] if task["status"] == "failed" else None,
         "video_name": task["video_name"],
         "created_at": task["created_at"],
         "updated_at": task["updated_at"],
@@ -947,24 +1013,6 @@ def _history_item(task: dict[str, Any]) -> dict[str, Any]:
         }
     )
     return public
-
-
-def _load_all_tasks() -> list[dict[str, Any]]:
-    tasks_by_id: dict[str, dict[str, Any]] = {}
-    for snapshot in TASK_DIR.glob("*.json"):
-        try:
-            with snapshot.open("r", encoding="utf-8") as f:
-                task = json.load(f)
-        except (OSError, json.JSONDecodeError):
-            continue
-        task_id = task.get("task_id")
-        if task_id:
-            tasks_by_id[task_id] = task
-
-    with TASKS_LOCK:
-        tasks_by_id.update(TASKS)
-
-    return list(tasks_by_id.values())
 
 
 def _filter_tasks_by_user(tasks: list[dict[str, Any]], user_id: str | None) -> list[dict[str, Any]]:
@@ -1037,6 +1085,140 @@ def _safe_path_under(path_value: Any, allowed_root: Path) -> Path | None:
     if resolved == root or root not in resolved.parents:
         return None
     return resolved
+
+
+def _task_corners(task: dict[str, Any]) -> list[list[int]] | None:
+    raw = task.get("corners_json")
+    if not raw:
+        return None
+    try:
+        corners = json.loads(str(raw))
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(corners, list) or len(corners) != 4:
+        return None
+    parsed: list[list[int]] = []
+    for point in corners:
+        if not isinstance(point, list | tuple) or len(point) != 2:
+            return None
+        parsed.append([int(point[0]), int(point[1])])
+    return parsed
+
+
+def _failure_info(error: Any) -> dict[str, str]:
+    message = str(error or "")
+    lower = message.lower()
+    if "cuda" in lower or "out of memory" in lower or "显存" in message:
+        return {
+            "code": "GPU_OUT_OF_MEMORY",
+            "title": "服务器显存不足",
+            "hint": "请换更短或更低分辨率的视频，或等待当前分析结束后重试。",
+        }
+    if "model" in lower or "weights/" in lower or "no such file" in lower or "模型" in message:
+        return {
+            "code": "MODEL_MISSING",
+            "title": "服务器模型文件缺失",
+            "hint": "请在服务器上检查 weights/yolo11n-pose.pt 和 weights/yolo11s-ball.pt 是否存在。",
+        }
+    if "未检测到有效球场" in message or "球员数据" in message or "court" in lower:
+        return {
+            "code": "DETECTION_FAILED",
+            "title": "没有识别到有效比赛画面",
+            "hint": "请确认视频完整拍到球场，或重新上传并手动标记四个球场角点。",
+        }
+    if "timeout" in lower or "timed out" in lower or "超时" in message:
+        return {
+            "code": "ANALYSIS_TIMEOUT",
+            "title": "分析超时",
+            "hint": "请换更短的视频重试；服务器忙时也可以稍后再试。",
+        }
+    if "服务器重启" in message:
+        return {
+            "code": "SERVER_RESTARTED",
+            "title": "服务器重启后任务无法恢复",
+            "hint": "请重新上传视频。后续任务参数会持久化，重启后会自动恢复可恢复的任务。",
+        }
+    return {
+        "code": "ANALYSIS_ERROR",
+        "title": "本次分析未完成",
+        "hint": "请检查视频格式、拍摄角度和服务器状态后重试。",
+    }
+
+
+def _diagnostics() -> dict[str, Any]:
+    disk = shutil.disk_usage(PROJECT_ROOT)
+    checks: dict[str, Any] = {
+        "ok": True,
+        "project_root": str(PROJECT_ROOT),
+        "disk": {
+            "total_gb": round(disk.total / 1024**3, 2),
+            "free_gb": round(disk.free / 1024**3, 2),
+            "used_percent": round(disk.used / disk.total * 100, 2),
+        },
+        "models": {
+            "pose": _model_status(PROJECT_ROOT / "weights" / "yolo11n-pose.pt"),
+            "ball": _model_status(PROJECT_ROOT / "weights" / "yolo11s-ball.pt"),
+        },
+        "gpu": _gpu_status(),
+        "database": str((PROJECT_ROOT / "mobile_backend_data" / "badminton.db").resolve()),
+    }
+    checks["ok"] = (
+        checks["disk"]["free_gb"] > 5
+        and checks["models"]["pose"]["exists"]
+        and checks["models"]["ball"]["exists"]
+    )
+    return checks
+
+
+def _model_status(path: Path) -> dict[str, Any]:
+    return {
+        "path": str(path),
+        "exists": path.is_file(),
+        "size_mb": round(path.stat().st_size / 1024**2, 2) if path.is_file() else 0,
+    }
+
+
+def _gpu_status() -> dict[str, Any]:
+    status: dict[str, Any] = {"nvidia_smi": None, "torch": None}
+    try:
+        result = subprocess.run(
+            [
+                "nvidia-smi",
+                "--query-gpu=name,driver_version,memory.total,memory.free",
+                "--format=csv,noheader,nounits",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        rows = []
+        for line in result.stdout.splitlines():
+            parts = [part.strip() for part in line.split(",")]
+            if len(parts) >= 4:
+                rows.append(
+                    {
+                        "name": parts[0],
+                        "driver_version": parts[1],
+                        "memory_total_mb": int(float(parts[2])),
+                        "memory_free_mb": int(float(parts[3])),
+                    }
+                )
+        status["nvidia_smi"] = {"ok": True, "gpus": rows}
+    except Exception as exc:  # noqa: BLE001 - diagnostic endpoint should not fail hard
+        status["nvidia_smi"] = {"ok": False, "error": str(exc)}
+
+    try:
+        import torch
+
+        status["torch"] = {
+            "version": torch.__version__,
+            "cuda_available": bool(torch.cuda.is_available()),
+            "device": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
+        }
+    except Exception as exc:  # noqa: BLE001
+        status["torch"] = {"cuda_available": False, "error": str(exc)}
+    return status
 
 
 def _safe_user_id(user_id: str | None) -> str:
@@ -1164,6 +1346,10 @@ def _set_task(task_id: str, task_data: dict[str, Any]) -> None:
             upload_path=task_data.get("upload_path", ""),
             template_path=task_data.get("template_path", ""),
             output_dir=task_data.get("output_dir"),
+            corners_json=task_data.get("corners_json"),
+            language=task_data.get("language", "zh"),
+            pose_mode=task_data.get("pose_mode", "balanced"),
+            keep_audio=bool(task_data.get("keep_audio", True)),
             created_at=task_data.get("created_at", time.time()),
             updated_at=task_data.get("updated_at", time.time()),
         )

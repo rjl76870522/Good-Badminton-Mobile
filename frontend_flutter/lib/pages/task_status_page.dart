@@ -216,6 +216,9 @@ class _TaskStatusPageState extends State<TaskStatusPage>
                     const SizedBox(height: 12),
                     _FailureHelpCard(
                       error: task.error,
+                      failureTitle: task.failureTitle,
+                      failureHint: task.failureHint,
+                      failureCode: task.failureCode,
                       onRetry: () => Navigator.of(context).pushReplacement(
                         MaterialPageRoute(
                           builder: (_) => UploadPage(retryTaskId: task.taskId),
@@ -408,10 +411,16 @@ class _JumpingDots extends StatelessWidget {
 class _FailureHelpCard extends StatelessWidget {
   const _FailureHelpCard({
     required this.error,
+    required this.failureTitle,
+    required this.failureHint,
+    required this.failureCode,
     required this.onRetry,
   });
 
   final String? error;
+  final String? failureTitle;
+  final String? failureHint;
+  final String? failureCode;
   final VoidCallback onRetry;
 
   bool get _isDetectionFailure {
@@ -423,10 +432,16 @@ class _FailureHelpCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final title = _isDetectionFailure ? '没有识别到有效比赛画面' : '本次分析未完成';
-    final description = _isDetectionFailure
-        ? '系统没有获得足够稳定的球场和球员数据，暂时无法生成可靠报告。'
-        : '分析过程中出现问题，请根据下方错误详情检查视频后重试。';
+    final title = failureTitle?.isNotEmpty == true
+        ? failureTitle!
+        : (_isDetectionFailure ? '没有识别到有效比赛画面' : '本次分析未完成');
+    final description = failureHint?.isNotEmpty == true
+        ? failureHint!
+        : (_isDetectionFailure
+            ? '系统没有获得足够稳定的球场和球员数据，暂时无法生成可靠报告。'
+            : '分析过程中出现问题，请根据下方错误详情检查视频后重试。');
+    final isModelOrServerIssue =
+        failureCode == 'MODEL_MISSING' || failureCode == 'GPU_OUT_OF_MEMORY';
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -467,6 +482,12 @@ class _FailureHelpCard extends StatelessWidget {
             const _SuggestionLine(text: '确认视频完整拍到球场，且人物没有长时间离开画面'),
             const SizedBox(height: 8),
             const _SuggestionLine(text: '重新上传后，在预览页手动标记四个球场角点'),
+          ],
+          if (isModelOrServerIssue) ...[
+            const SizedBox(height: 14),
+            const _SuggestionLine(text: '这更像服务器侧问题，不一定需要换视频'),
+            const SizedBox(height: 8),
+            const _SuggestionLine(text: '请稍后重试，或联系服务器维护者检查模型/GPU 状态'),
           ],
           if (error != null && error!.isNotEmpty) ...[
             const SizedBox(height: 10),
