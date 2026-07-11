@@ -108,8 +108,8 @@ domain. Remove the old `www` Public Hostname from the Cloudflare Tunnel first
 to prevent conflicting DNS routes. Keep `api.audacity6441.kdns.fr` on the
 Tunnel because video analysis still runs on this Ubuntu server.
 
-`website/_headers` defines cache and security headers. `website/_redirects`
-provides clean `/privacy` and `/support` URLs.
+`website/_headers` defines cache and security headers. Cloudflare Pages provides
+clean `/privacy` and `/support` URLs automatically for the matching HTML files.
 
 The Android APK is built with this public API URL as the default backend.
 
