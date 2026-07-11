@@ -3,41 +3,39 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Good-Badminton 技术支持" />
     <title>技术支持 | Good-Badminton</title>
-    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./landing-apple.css?v=20260711-4" />
   </head>
-  <body class="plain-page">
-    <header class="site-header solid">
-      <a class="brand" href="./index.html"><span class="brand-mark">GB</span><span>Good-Badminton</span></a>
-      <nav class="nav-links" aria-label="主导航">
-        <a href="./index.html">首页</a>
-        <a href="./privacy.html">隐私</a>
-      </nav>
+  <body class="legal-page support-page">
+    <header class="global-nav">
+      <a class="symbol" href="./index.html" aria-label="Good-Badminton 首页">GB</a>
+      <nav aria-label="主导航"><a href="./index.html">首页</a><a href="./privacy.html">隐私</a></nav>
     </header>
-    <main class="document">
-      <p class="eyebrow">Support</p>
-      <h1>技术支持</h1>
-      <section>
-        <h2>服务器状态</h2>
-        <p>API 健康检查地址：</p>
-        <p><a href="https://api.audacity6441.kdns.fr/api/health">https://api.audacity6441.kdns.fr/api/health</a></p>
+
+    <main>
+      <section class="legal-hero support-hero">
+        <p class="legal-label">SUPPORT</p>
+        <h1>需要帮助</h1>
+        <p class="legal-intro">从上传到保存<br />这里有你需要的答案</p>
+        <a class="status-link" id="server-status" href="https://api.audacity6441.kdns.fr/api/health"><i></i><span>正在检查分析服务器</span><b>›</b></a>
       </section>
-      <section>
-        <h2>常见问题</h2>
-        <ul>
-          <li>上传失败：确认视频小于 200 MB，并且服务器在线。</li>
-          <li>分析失败：确认画面完整拍到球场，必要时手动标记四个角点。</li>
-          <li>报告视频无法保存：确认已允许 App 写入系统相册。</li>
-          <li>服务器离线：确认 Ubuntu 电脑开机、联网，Cloudflare Tunnel 正常。</li>
-        </ul>
-      </section>
-      <section>
-        <h2>维护者排查命令</h2>
-        <pre><code>sudo systemctl status good-badminton-backend --no-pager
-sudo systemctl status cloudflared --no-pager
-sudo systemctl status good-badminton-site --no-pager
-curl http://127.0.0.1:8001/api/diagnostics</code></pre>
+
+      <div class="support-grid">
+        <article><span>01</span><h2>视频无法上传</h2><p>确认视频文件小于 200 MB，并检查手机网络与分析服务器状态</p></article>
+        <article><span>02</span><h2>分析没有完成</h2><p>保持画面完整拍到球场，必要时重新选择四个外侧角点后再次分析</p></article>
+        <article><span>03</span><h2>视频无法保存</h2><p>在手机系统设置中允许 Good-Badminton 访问照片或媒体文件</p></article>
+        <article><span>04</span><h2>服务器暂时离线</h2><p>分析服务依赖专用服务器，离线期间请稍后重试，已完成的本地内容不会受到影响</p></article>
+      </div>
+
+      <section class="support-closing">
+        <p>仍然没有解决</p>
+        <h2>把问题告诉我们</h2>
+        <a href="https://github.com/rundon0401-hue/Good-Badminton-1/issues">前往项目反馈 ›</a>
       </section>
     </main>
+
+    <footer><div><strong>Good-Badminton</strong><span>让每一次移动都有意义</span></div><nav><a href="./index.html">首页</a><a href="./privacy.html">隐私政策</a></nav><small>Copyright © 2026 Good-Badminton</small></footer>
+    <script src="./landing-apple.js?v=20260711-2"></script>
   </body>
 </html>
