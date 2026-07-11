@@ -410,7 +410,7 @@ def build_ui():
                     with gr.Column(scale=2):
                         md_step1 = gr.Markdown(t["step1"])
                         detect_btn = gr.Button(t["detect_btn"], variant="primary")
-                        court_image = gr.Image(label=t["court_preview"], interactive=False, type="numpy")
+                        court_image = gr.Image(label=t["court_preview"], interactive=True, type="numpy")
                         corner_status = gr.Textbox(label=t["corner_status"], interactive=False, value=t["corner_none"])
                         apply_btn = gr.Button(t["apply_btn"], variant="secondary")
 
@@ -525,27 +525,6 @@ def build_ui():
         language.change(fn=_switch_language, inputs=[language], outputs=lang_outputs)
 
     return demo
-        ).then(
-            fn=lambda c, lang: _UI_TEXT.get(lang, _UI_TEXT["zh"])["manual_ok"].format(len(c)) if c
-               else _UI_TEXT.get(lang, _UI_TEXT["zh"])["manual_fail"],
-            inputs=[corners_state, language],
-            outputs=[corner_status],
-        )
-
-        run_btn.click(
-            fn=run_full_analysis,
-            inputs=[
-                video_input, template_input, corners_state,
-                pose_family, pose_mode, language, audio,
-                show_skeletons, show_player_trajectories,
-                show_court_trajectory, show_shuttlecock_trajectory,
-                show_player_stats, show_pose_roi, visualize_positions,
-                yolo_pose_model, ball_model,
-            ],
-            outputs=[output_video, output_gallery, output_metadata, output_detections],
-        )
-
-    return demo
 
 
 if __name__ == "__main__":
@@ -553,7 +532,7 @@ if __name__ == "__main__":
     try:
         demo.queue(default_concurrency_limit=1).launch(
             theme=gr.themes.Soft(), ssr_mode=False, inbrowser=True,
-            server_name="localhost"
+            server_name="0.0.0.0"
         )
     except Exception as e:
         if "startup-events" in str(e):

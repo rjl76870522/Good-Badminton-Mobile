@@ -24,6 +24,14 @@ from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from badminton_analysis.database import (
+    OutputFile,
+    Task,
+    User,
+    get_session,
+    init_db,
+    task_to_legacy_dict,
+)
 from badminton_analysis.highlight import generate_highlight
 from badminton_analysis.mobile_report import build_mobile_report, load_advice_knowledge
 from badminton_analysis.court.mapper import auto_detect_preview
@@ -33,6 +41,8 @@ from badminton_analysis.user_registry import (
     UserNotFound,
     get_user as registry_get_user,
     register_user as registry_register_user,
+    search_users_by_display_name,
+    update_display_name,
 )
 from webui.pipeline import prepare_court, run_analysis
 
@@ -47,7 +57,7 @@ OUTPUTS_DIR = PROJECT_ROOT / "outputs"
 FRONTEND_DIR = PROJECT_ROOT / "mobile_frontend"
 DEFAULT_USER_ID = "guest"
 USER_ID_RULE_MESSAGE = "用户 ID 需要 3-32 位，只能使用小写英文字母、数字、下划线或短横线，且必须以字母或数字开头。"
-MAX_UPLOAD_BYTES = 500 * 1024 * 1024
+MAX_UPLOAD_BYTES = 200 * 1024 * 1024
 MIN_VIDEO_DURATION_SEC = 5.0
 MAX_VIDEO_DURATION_SEC = 180.0
 MIN_DETECTION_RECORDS = 3
@@ -71,6 +81,9 @@ PREVIEW_FRAME_DIR.mkdir(parents=True, exist_ok=True)
 TASK_DIR.mkdir(parents=True, exist_ok=True)
 OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
 
+# Initialize SQLite database (replaces JSON file storage)
+init_db(PROJECT_ROOT / "mobile_backend_data" / "badminton.db")
+
 app = FastAPI(title="Good-Badminton Mobile Backend", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
@@ -84,8 +97,6 @@ app.mount("/preview-frames", StaticFiles(directory=str(PREVIEW_FRAME_DIR)), name
 if FRONTEND_DIR.is_dir():
     app.mount("/app", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="mobile_frontend")
 
-TASKS: dict[str, dict[str, Any]] = {}
-TASKS_LOCK = threading.Lock()
 ANALYSIS_LOCK = threading.Lock()
 USER_REGISTRY_LOCK = threading.Lock()
 
@@ -112,10 +123,7 @@ def index() -> RedirectResponse:
 def register_mobile_user(payload: RegisterUserRequest) -> dict[str, Any]:
     with USER_REGISTRY_LOCK:
         try:
-            user = registry_register_user(
-                USER_REGISTRY_PATH,
-                user_id=payload.user_id,
-            )
+            user = registry_register_user(user_id=payload.user_id)
         except InvalidUserId:
             raise_api_error(
                 status_code=400,
@@ -136,7 +144,7 @@ def register_mobile_user(payload: RegisterUserRequest) -> dict[str, Any]:
 @app.get("/api/users/{user_id}")
 def get_mobile_user(user_id: str) -> dict[str, Any]:
     try:
-        user = registry_get_user(USER_REGISTRY_PATH, user_id)
+        user = registry_get_user(user_id)
     except InvalidUserId:
         raise_api_error(
             status_code=400,
@@ -152,6 +160,41 @@ def get_mobile_user(user_id: str) -> dict[str, Any]:
             hint="请先注册这个用户 ID，或继续使用游客模式。",
         )
     return {"user": user}
+
+
+class UpdateDisplayNameRequest(BaseModel):
+    display_name: str
+
+
+@app.put("/api/users/{user_id}/display-name")
+def set_display_name(user_id: str, payload: UpdateDisplayNameRequest) -> dict[str, Any]:
+    """Set or change a user's display name. Names can be anything, duplicates allowed."""
+    try:
+        user = update_display_name(user_id=user_id, display_name=payload.display_name)
+    except InvalidUserId:
+        raise_api_error(
+            status_code=400,
+            code="INVALID_USER_ID",
+            message="这个用户 ID 格式不能使用。",
+            hint=USER_ID_RULE_MESSAGE,
+        )
+    except UserNotFound:
+        raise_api_error(
+            status_code=404,
+            code="USER_NOT_FOUND",
+            message="用户不存在，请先注册。",
+        )
+    return {"user": user}
+
+
+@app.get("/api/users/search")
+def search_users(
+    name: str = Query(default="", min_length=1, max_length=128),
+    limit: int = Query(default=20, ge=1, le=50),
+) -> dict[str, Any]:
+    """Search users by display name (fuzzy match)."""
+    users = search_users_by_display_name(name, limit=limit)
+    return {"users": users, "count": len(users)}
 
 
 @app.post("/api/videos/upload")
@@ -312,13 +355,17 @@ def delete_task(
         )
 
     deleted_paths = _delete_task_artifacts(task)
-    with TASKS_LOCK:
-        TASKS.pop(task_id, None)
-    snapshot = TASK_DIR / f"{task_id}.json"
+    session = get_session()
     try:
-        snapshot.unlink(missing_ok=True)
-    except OSError:
-        pass
+        db_task = session.get(Task, task_id)
+        if db_task:
+            session.delete(db_task)
+            session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
 
     return {
         "ok": True,
@@ -1093,51 +1140,88 @@ def _mock_demo_report() -> dict[str, Any]:
     }
 
 
-def _set_task(task_id: str, task: dict[str, Any]) -> None:
-    with TASKS_LOCK:
-        TASKS[task_id] = task
-    _write_task_snapshot(task_id)
+# ---------------------------------------------------------------------------
+# Task storage (SQLite via SQLAlchemy)
+# ---------------------------------------------------------------------------
+
+
+def _set_task(task_id: str, task_data: dict[str, Any]) -> None:
+    """Insert a new task row into the database."""
+    session = get_session()
+    try:
+        user_id = task_data.get("user_id", DEFAULT_USER_ID)
+        if session.get(User, user_id) is None:
+            now = time.time()
+            session.add(User(user_id=user_id, created_at=now, updated_at=now))
+        task = Task(
+            task_id=task_id,
+            user_id=user_id,
+            status=task_data.get("status", "queued"),
+            progress=float(task_data.get("progress", 0.0)),
+            stage=task_data.get("stage", "queued"),
+            error=task_data.get("error"),
+            video_name=task_data.get("video_name", ""),
+            upload_path=task_data.get("upload_path", ""),
+            template_path=task_data.get("template_path", ""),
+            output_dir=task_data.get("output_dir"),
+            created_at=task_data.get("created_at", time.time()),
+            updated_at=task_data.get("updated_at", time.time()),
+        )
+        session.add(task)
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
 
 
 def _update_task(task_id: str, **changes: Any) -> None:
-    with TASKS_LOCK:
-        task = TASKS[task_id]
-        task.update(changes)
-        task["updated_at"] = time.time()
-    _write_task_snapshot(task_id)
+    """Update fields on an existing task row."""
+    session = get_session()
+    try:
+        task = session.get(Task, task_id)
+        if task is None:
+            return
+        if "report" in changes:
+            task.report = changes.pop("report")
+        for key, value in changes.items():
+            if hasattr(task, key):
+                setattr(task, key, value)
+        task.updated_at = time.time()
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
 
 
 def _get_task_or_404(task_id: str) -> dict[str, Any]:
-    with TASKS_LOCK:
-        task = TASKS.get(task_id)
-        if task is not None:
-            return dict(task)
-
-    snapshot = TASK_DIR / f"{task_id}.json"
-    if snapshot.is_file():
-        with snapshot.open("r", encoding="utf-8") as f:
-            task = json.load(f)
-        with TASKS_LOCK:
-            TASKS[task_id] = task
-        return dict(task)
-
-    raise_api_error(
-        status_code=404,
-        code="TASK_NOT_FOUND",
-        message="任务不存在。",
-        hint="请检查 task_id 是否正确。",
-    )
+    """Fetch a task dict, raising 404-style HTTPException if missing."""
+    session = get_session()
+    try:
+        task = session.get(Task, task_id)
+        if task is None:
+            raise_api_error(
+                status_code=404,
+                code="TASK_NOT_FOUND",
+                message="任务不存在。",
+                hint="请检查 task_id 是否正确。",
+            )
+        return task_to_legacy_dict(task)
+    finally:
+        session.close()
 
 
-def _write_task_snapshot(task_id: str) -> None:
-    with TASKS_LOCK:
-        task = TASKS.get(task_id)
-        if not task:
-            return
-        payload = dict(task)
-    path = TASK_DIR / f"{task_id}.json"
-    with path.open("w", encoding="utf-8") as f:
-        json.dump(payload, f, ensure_ascii=False, indent=2)
+def _load_all_tasks() -> list[dict[str, Any]]:
+    """Return all tasks as legacy dicts."""
+    session = get_session()
+    try:
+        return [task_to_legacy_dict(t) for t in session.query(Task).all()]
+    finally:
+        session.close()
+
 
 
 def _resolve_template(template_path: str | None) -> Path:
@@ -1216,7 +1300,7 @@ def _validate_uploaded_video(path: Path) -> None:
         raise_api_error(
             status_code=413,
             code="VIDEO_TOO_LARGE",
-            message="视频文件过大，请上传 500MB 以内的视频。",
+            message="视频文件过大，请上传 200MB 以内的视频。",
             hint="建议先使用 30 秒到 3 分钟的横屏固定机位视频。",
         )
 

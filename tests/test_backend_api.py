@@ -16,7 +16,7 @@ def _configure_data_dirs(monkeypatch, tmp_path: Path) -> None:
         directory = tmp_path / name.lower()
         directory.mkdir()
         monkeypatch.setattr(backend_api, name, directory)
-    backend_api.TASKS.clear()
+    backend_api.init_db(tmp_path / "badminton.db")
 
 
 def _fake_preview(video_path: Path, source_upload_id: str) -> dict:

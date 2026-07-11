@@ -1,0 +1,23 @@
+[Unit]
+Description=Good Badminton backend API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=john
+Group=john
+WorkingDirectory=/data/projects/Good-Badminton-1
+Environment=PYTHONPATH=/data/projects/Good-Badminton-1
+Environment=ALL_PROXY=
+Environment=all_proxy=
+Environment=NO_PROXY=*
+Environment=no_proxy=*
+ExecStart=/data/projects/Good-Badminton-1/start_backend.sh
+Restart=always
+RestartSec=5
+KillSignal=SIGINT
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

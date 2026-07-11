@@ -73,10 +73,17 @@ class StatsVisualizer:
 
     def _find_chinese_font(self):
         font_paths = [
+            os.path.join(os.path.dirname(__file__), "..", "..", "simhei.ttf"),
+            os.path.join(os.path.dirname(__file__), "..", "..", "weights", "simhei.ttf"),
+            "simhei.ttf",
             "C:/Windows/Fonts/simhei.ttf",
             "C:/Windows/Fonts/simsun.ttc",
             "C:/Windows/Fonts/simkai.ttf",
             "C:/Windows/Fonts/msyh.ttc",
+            "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+            "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
         ]
         for path in font_paths:
             if os.path.exists(path):
