@@ -88,18 +88,28 @@ Cloudflare routes:
 
 ```text
 https://api.audacity6441.kdns.fr -> http://localhost:8001
-https://www.audacity6441.kdns.fr -> http://localhost:8090
+https://www.audacity6441.kdns.fr -> Cloudflare Pages
 ```
 
-To publish the website in Cloudflare Zero Trust, open the existing
-`good-badminton` tunnel and add a Public Hostname:
+The static website should be deployed with Cloudflare Pages so it remains
+available while the Ubuntu server is offline. Connect the GitHub repository
+and use these build settings:
 
 ```text
-Subdomain: www
-Domain: audacity6441.kdns.fr
-Type: HTTP
-URL: localhost:8090
+Production branch: main
+Framework preset: None
+Build command: leave empty
+Build output directory: website
+Root directory: /
 ```
+
+After the first deployment, add `www.audacity6441.kdns.fr` as the Pages custom
+domain. Remove the old `www` Public Hostname from the Cloudflare Tunnel first
+to prevent conflicting DNS routes. Keep `api.audacity6441.kdns.fr` on the
+Tunnel because video analysis still runs on this Ubuntu server.
+
+`website/_headers` defines cache and security headers. `website/_redirects`
+provides clean `/privacy` and `/support` URLs.
 
 The Android APK is built with this public API URL as the default backend.
 
