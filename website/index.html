@@ -3,73 +3,55 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="description" content="Good-Badminton — 看见每一次移动。" />
+    <meta name="description" content="Good-Badminton — 看见球场上的每一次移动。" />
     <title>Good-Badminton</title>
-    <link rel="stylesheet" href="./landing.css?v=20260711-1" />
+    <link rel="stylesheet" href="./landing-apple.css?v=20260711-1" />
   </head>
   <body>
-    <header class="header">
-      <a class="logo" href="#home" aria-label="Good-Badminton 首页"><b>GOOD</b><span>BADMINTON</span></a>
-      <nav class="desktop-nav" aria-label="主导航">
-        <a href="#vision">VISION</a><a href="#motion">MOTION</a><a href="#court">THE COURT</a>
-      </nav>
-      <button class="menu-button" type="button" aria-label="打开菜单" aria-expanded="false"><i></i><i></i><i></i></button>
+    <header class="global-nav">
+      <a class="symbol" href="#top" aria-label="Good-Badminton 首页">GB</a>
+      <nav aria-label="主导航"><a href="#vision">探索</a><a href="#design">设计</a><a href="./support.html">支持</a></nav>
     </header>
 
-    <nav class="menu-panel" aria-label="移动端导航">
-      <a href="#vision">VISION</a><a href="#motion">MOTION</a><a href="#court">THE COURT</a>
-      <a href="./privacy.html">PRIVACY</a><a href="./support.html">SUPPORT</a>
-    </nav>
-
-    <main>
-      <section class="panel hero" id="home">
-        <video class="background" autoplay muted loop playsinline poster="./assets/webui0.png">
-          <source src="./assets/demo.gif" type="image/gif" />
-        </video>
-        <img class="background fallback" src="./assets/demo.gif" alt="羽毛球比赛画面" />
-        <div class="shade"></div>
-        <div class="content">
-          <p>GOOD-BADMINTON</p>
-          <h1>掌控<br />每一拍</h1>
-          <a class="outline-button" href="#vision"><span>探索</span></a>
+    <main id="top">
+      <section class="hero light-section">
+        <div class="headline reveal">
+          <p class="product-name">Good-Badminton</p>
+          <h1>更懂球场。更懂你。</h1>
+          <div class="links"><a href="#vision">进一步了解 ›</a><a href="./support.html">技术支持 ›</a></div>
         </div>
-        <a class="down" href="#vision" aria-label="向下滚动"></a>
+        <img class="hero-product" src="./assets/shuttle-hero-v1.png" alt="悬浮于浅色空间中的白色羽毛球" />
       </section>
 
-      <section class="panel vision" id="vision">
-        <img class="background" src="./assets/match_heatmap.png" alt="球场移动热力视觉" />
-        <div class="shade"></div>
-        <div class="content">
-          <p>SEE WHAT OTHERS MISS</p>
-          <h2>看见<br />隐藏的轨迹</h2>
-          <a class="outline-button" href="#motion"><span>继续</span></a>
+      <section class="statement dark-section" id="vision">
+        <div class="statement-copy reveal">
+          <p>Good-Badminton</p>
+          <h2>有些速度，<br /><span>值得被看见。</span></h2>
+          <a href="#design">继续探索 ›</a>
         </div>
-        <a class="down" href="#motion" aria-label="向下滚动"></a>
+        <div class="orbital" aria-hidden="true"><i></i><i></i><span></span></div>
       </section>
 
-      <section class="panel motion" id="motion">
-        <img class="background" src="./assets/webui1.png" alt="羽毛球运动分析画面" />
-        <div class="shade"></div>
-        <div class="content right">
-          <p>BUILT FOR MOTION</p>
-          <h2>速度<br />从不等待</h2>
-          <a class="outline-button" href="#court"><span>下一幕</span></a>
+      <section class="detail light-section" id="design">
+        <div class="detail-copy reveal">
+          <p>为移动而生</p>
+          <h2>轻盈，精准，<br />一目了然。</h2>
         </div>
-        <a class="down" href="#court" aria-label="向下滚动"></a>
+        <div class="shuttle-detail reveal" aria-hidden="true">
+          <div class="cork"></div><div class="feather f1"></div><div class="feather f2"></div><div class="feather f3"></div><div class="feather f4"></div>
+        </div>
       </section>
 
-      <section class="panel court" id="court">
-        <img class="background" src="./assets/demo.gif" alt="羽毛球球场" />
-        <div class="shade"></div>
-        <div class="content">
-          <p>THE NEXT POINT IS YOURS</p>
-          <h2>下一分<br />由你定义</h2>
-          <a class="outline-button" href="#home"><span>返回顶部</span></a>
+      <section class="closing dark-section">
+        <div class="closing-copy reveal">
+          <p>Good-Badminton</p>
+          <h2>下一拍，见真章。</h2>
+          <div class="links"><a href="#top">返回顶部 ↑</a><a href="./privacy.html">隐私政策 ›</a></div>
         </div>
       </section>
     </main>
 
-    <footer><span>GOOD-BADMINTON © 2026</span><nav><a href="./privacy.html">PRIVACY</a><a href="./support.html">SUPPORT</a></nav></footer>
-    <script src="./landing.js?v=20260711-1"></script>
+    <footer><div><strong>Good-Badminton</strong><span>让每一次移动都有意义。</span></div><nav><a href="./privacy.html">隐私政策</a><a href="./support.html">技术支持</a></nav><small>Copyright © 2026 Good-Badminton.</small></footer>
+    <script src="./landing-apple.js?v=20260711-1"></script>
   </body>
 </html>
