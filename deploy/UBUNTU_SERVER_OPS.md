@@ -20,6 +20,14 @@ sudo systemctl restart cloudflared
 journalctl -u cloudflared -n 100 --no-pager
 ```
 
+Static website:
+
+```bash
+sudo systemctl status good-badminton-site --no-pager
+sudo systemctl restart good-badminton-site
+journalctl -u good-badminton-site -n 100 --no-pager
+```
+
 Health timer:
 
 ```bash
@@ -33,6 +41,12 @@ Local backend:
 
 ```bash
 curl http://127.0.0.1:8001/api/health
+```
+
+Local website:
+
+```bash
+curl http://127.0.0.1:8090/
 ```
 
 Public API through Cloudflare:
@@ -74,6 +88,17 @@ Cloudflare routes:
 
 ```text
 https://api.audacity6441.kdns.fr -> http://localhost:8001
+https://www.audacity6441.kdns.fr -> http://localhost:8090
+```
+
+To publish the website in Cloudflare Zero Trust, open the existing
+`good-badminton` tunnel and add a Public Hostname:
+
+```text
+Subdomain: www
+Domain: audacity6441.kdns.fr
+Type: HTTP
+URL: localhost:8090
 ```
 
 The Android APK is built with this public API URL as the default backend.

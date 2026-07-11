@@ -1,0 +1,16 @@
+[Unit]
+Description=Good Badminton static website
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=john
+Group=john
+WorkingDirectory=/data/projects/Good-Badminton-1/website
+ExecStart=/usr/bin/python3 -m http.server 8090 --bind 127.0.0.1
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>技术支持 | Good-Badminton</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body class="plain-page">
+    <header class="site-header solid">
+      <a class="brand" href="./index.html"><span class="brand-mark">GB</span><span>Good-Badminton</span></a>
+      <nav class="nav-links" aria-label="主导航">
+        <a href="./index.html">首页</a>
+        <a href="./privacy.html">隐私</a>
+      </nav>
+    </header>
+    <main class="document">
+      <p class="eyebrow">Support</p>
+      <h1>技术支持</h1>
+      <section>
+        <h2>服务器状态</h2>
+        <p>API 健康检查地址：</p>
+        <p><a href="https://api.audacity6441.kdns.fr/api/health">https://api.audacity6441.kdns.fr/api/health</a></p>
+      </section>
+      <section>
+        <h2>常见问题</h2>
+        <ul>
+          <li>上传失败：确认视频小于 200 MB，并且服务器在线。</li>
+          <li>分析失败：确认画面完整拍到球场，必要时手动标记四个角点。</li>
+          <li>报告视频无法保存：确认已允许 App 写入系统相册。</li>
+          <li>服务器离线：确认 Ubuntu 电脑开机、联网，Cloudflare Tunnel 正常。</li>
+        </ul>
+      </section>
+      <section>
+        <h2>维护者排查命令</h2>
+        <pre><code>sudo systemctl status good-badminton-backend --no-pager
+sudo systemctl status cloudflared --no-pager
+sudo systemctl status good-badminton-site --no-pager
+curl http://127.0.0.1:8001/api/diagnostics</code></pre>
+      </section>
+    </main>
+  </body>
+</html>
