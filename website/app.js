@@ -1,25 +1,42 @@
-const statusText = document.getElementById("api-status");
-const statusDot = document.getElementById("api-dot");
-const backendDetail = document.getElementById("backend-detail");
+const root = document.documentElement;
+const progress = document.querySelector(".scroll-progress");
+const parallaxItems = [...document.querySelectorAll("[data-parallax]")];
+const sceneMedia = [...document.querySelectorAll(".scroll-scene .scene-media")];
 
-async function checkApi() {
-  if (!statusText || !statusDot) return;
-  try {
-    const response = await fetch("https://api.audacity6441.kdns.fr/api/health", {
-      cache: "no-store",
-    });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const data = await response.json();
-    statusText.textContent = data.ok ? "服务器在线" : "服务器状态异常";
-    statusDot.classList.toggle("ok", Boolean(data.ok));
-    if (backendDetail) {
-      backendDetail.textContent = data.ok ? "在线，Cloudflare 公网入口可用" : "状态异常";
-    }
-  } catch (error) {
-    statusText.textContent = "服务器暂时不可达";
-    statusDot.classList.remove("ok");
-    if (backendDetail) backendDetail.textContent = "暂时不可达，请检查 Tunnel 或后端服务";
-  }
+function updateScrollEffects() {
+  const scrollTop = window.scrollY;
+  const maxScroll = root.scrollHeight - window.innerHeight;
+  if (progress) progress.style.transform = `scaleX(${maxScroll > 0 ? scrollTop / maxScroll : 0})`;
+
+  parallaxItems.forEach((item) => {
+    const scene = item.closest("section");
+    const rect = scene.getBoundingClientRect();
+    const amount = Number(item.dataset.parallax || 0);
+    item.style.transform = `translate3d(0, ${(window.innerHeight - rect.top) * amount}px, 0)`;
+  });
+
+  sceneMedia.forEach((media) => {
+    const rect = media.parentElement.getBoundingClientRect();
+    const progressInScene = Math.max(0, Math.min(1, -rect.top / Math.max(1, rect.height - window.innerHeight)));
+    media.style.transform = `scale(${1.04 + progressInScene * 0.1}) translate3d(0, ${progressInScene * 2.5}%, 0)`;
+  });
 }
 
-checkApi();
+const revealObserver = new IntersectionObserver(
+  (entries) => entries.forEach((entry) => entry.target.classList.toggle("is-visible", entry.isIntersecting)),
+  { threshold: 0.16 },
+);
+
+document.querySelectorAll(".reveal").forEach((element) => revealObserver.observe(element));
+
+let ticking = false;
+window.addEventListener("scroll", () => {
+  if (ticking) return;
+  ticking = true;
+  requestAnimationFrame(() => {
+    updateScrollEffects();
+    ticking = false;
+  });
+}, { passive: true });
+
+updateScrollEffects();

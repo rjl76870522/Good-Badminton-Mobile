@@ -3,162 +3,70 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta
-      name="description"
-      content="Good-Badminton 是一套面向羽毛球训练视频的 AI 分析工具，支持球场角点、球员轨迹、热力图、精彩集锦和移动报告。"
-    />
-    <title>Good-Badminton | AI 羽毛球训练复盘</title>
+    <meta name="description" content="Good-Badminton — 为每一次挥拍留下答案。" />
+    <title>Good-Badminton | Own The Court</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
-  <body>
-    <header class="site-header">
-      <a class="brand" href="./index.html" aria-label="Good-Badminton 首页">
-        <span class="brand-mark">GB</span>
-        <span>Good-Badminton</span>
+  <body class="home-page">
+    <div class="scroll-progress" aria-hidden="true"></div>
+    <header class="site-header home-header">
+      <a class="brand" href="#top" aria-label="Good-Badminton 首页">
+        <span class="brand-mark">GB</span><span>GOOD BADMINTON</span>
       </a>
       <nav class="nav-links" aria-label="主导航">
-        <a href="#system">系统</a>
-        <a href="#report">报告</a>
-        <a href="./privacy.html">隐私</a>
-        <a href="./support.html">支持</a>
+        <a href="#motion">MOTION</a><a href="#precision">PRECISION</a><a href="#future">FUTURE</a>
       </nav>
     </header>
 
-    <main>
-      <section class="hero">
-        <img class="hero-media" src="./assets/demo.gif" alt="Good-Badminton 羽毛球视频分析演示" />
-        <div class="hero-shade"></div>
-        <div class="hero-content">
-          <p class="eyebrow">AI Badminton Training Review</p>
-          <h1>Good-Badminton</h1>
-          <p class="hero-copy">
-            把手机拍下的羽毛球训练视频变成球员轨迹、移动热力图、精彩集锦和可读训练报告。
-          </p>
-          <div class="hero-actions">
-            <a class="button primary" href="https://api.audacity6441.kdns.fr/api/health">API 状态</a>
-            <a class="button secondary" href="#report">查看报告能力</a>
-          </div>
+    <main id="top">
+      <section class="brand-hero scroll-scene">
+        <img class="scene-media hero-visual" src="./assets/demo.gif" alt="羽毛球赛场上的高速对抗" />
+        <div class="scene-overlay"></div>
+        <div class="hero-type" data-parallax="-0.12">
+          <p class="kicker reveal">INTELLIGENCE IN MOTION</p>
+          <h1 class="reveal">OWN<br />THE COURT.</h1>
         </div>
-        <div class="live-strip">
-          <span class="pulse" id="api-dot"></span>
-          <span id="api-status">正在检查服务器</span>
-          <span class="strip-divider"></span>
-          <span>api.audacity6441.kdns.fr</span>
+        <div class="hero-foot reveal"><span>GOOD-BADMINTON / 2026</span><span>SCROLL TO MOVE</span></div>
+      </section>
+
+      <section class="manifesto" id="motion">
+        <p class="chapter reveal">01 / MOTION</p>
+        <div class="manifesto-copy">
+          <span class="reveal">速度留下残影。</span>
+          <span class="outline reveal">判断决定下一拍。</span>
+        </div>
+        <div class="shuttle-orbit" aria-hidden="true"><span></span></div>
+      </section>
+
+      <section class="cinema scroll-scene" id="precision">
+        <img class="scene-media cinema-visual" src="./assets/match_heatmap.png" alt="羽毛球运动轨迹视觉" />
+        <div class="scene-overlay red"></div>
+        <div class="cinema-copy" data-parallax="-0.08">
+          <p class="chapter reveal">02 / PRECISION</p>
+          <h2 class="reveal">SEE THE<br />UNSEEN.</h2>
+          <p class="cinema-cn reveal">每一次移动，都有它的方向。</p>
         </div>
       </section>
 
-      <section class="section" id="system">
-        <div class="section-heading">
-          <p class="eyebrow">Pipeline</p>
-          <h2>从上传到报告，一条链路完成</h2>
-        </div>
-        <div class="workflow">
-          <article class="step">
-            <span>01</span>
-            <h3>选择视频</h3>
-            <p>支持 MP4、MOV、M4V，适合 30 秒到 3 分钟的固定机位训练片段。</p>
-          </article>
-          <article class="step">
-            <span>02</span>
-            <h3>确认球场</h3>
-            <p>自动识别球场角点；必要时可以手动点选四个外侧角点。</p>
-          </article>
-          <article class="step">
-            <span>03</span>
-            <h3>AI 分析</h3>
-            <p>后端追踪球员、羽毛球轨迹和移动强度，并生成可视化结果。</p>
-          </article>
-          <article class="step">
-            <span>04</span>
-            <h3>训练复盘</h3>
-            <p>在 App 里查看报告、播放视频、下载精彩集锦到系统相册。</p>
-          </article>
-        </div>
-      </section>
+      <div class="marquee" aria-hidden="true">
+        <div>FASTER / SHARPER / STRONGER / FASTER / SHARPER / STRONGER /</div>
+      </div>
 
-      <section class="split-section">
-        <div class="copy-panel">
-          <p class="eyebrow">Mobile First</p>
-          <h2>安卓已经跑通，iOS 走同一套 Flutter 前端</h2>
-          <p>
-            当前 App 使用 Cloudflare Tunnel 连接 Ubuntu 后端。手机不需要在同一个局域网，也不需要知道服务器公网 IP。
-          </p>
-          <dl class="facts">
-            <div>
-              <dt>公网 API</dt>
-              <dd>https://api.audacity6441.kdns.fr</dd>
-            </div>
-            <div>
-              <dt>后端状态</dt>
-              <dd id="backend-detail">等待检测</dd>
-            </div>
-            <div>
-              <dt>运行方式</dt>
-              <dd>Ubuntu + FastAPI + Cloudflare Tunnel</dd>
-            </div>
-          </dl>
-        </div>
-        <div class="phone-frame" aria-label="移动端应用界面预览">
-          <img src="./assets/badminton_dashboard_bg.png" alt="Good-Badminton 移动端背景界面" />
-        </div>
-      </section>
-
-      <section class="section media-section" id="report">
-        <div class="section-heading">
-          <p class="eyebrow">Report</p>
-          <h2>报告不是截图堆叠，而是可复盘的训练证据</h2>
-        </div>
-        <div class="media-grid">
-          <figure>
-            <img src="./assets/webui0.png" alt="球场检测与参数配置界面" />
-            <figcaption>球场检测与参数配置</figcaption>
-          </figure>
-          <figure>
-            <img src="./assets/webui1.png" alt="训练分析结果界面" />
-            <figcaption>训练分析结果</figcaption>
-          </figure>
-          <figure>
-            <img src="./assets/match_heatmap.png" alt="球员移动热力图" />
-            <figcaption>移动热力图</figcaption>
-          </figure>
-          <figure>
-            <img src="./assets/match_scatter.png" alt="球员移动散点图" />
-            <figcaption>移动散点图</figcaption>
-          </figure>
-        </div>
-      </section>
-
-      <section class="section status-section">
-        <div class="section-heading">
-          <p class="eyebrow">Server</p>
-          <h2>服务器现在不只是能跑，还能自检</h2>
-        </div>
-        <div class="status-grid">
-          <article>
-            <h3>Cloudflare Tunnel</h3>
-            <p>公网 HTTPS 入口转发到本机 FastAPI 后端。</p>
-          </article>
-          <article>
-            <h3>SQLite 任务状态</h3>
-            <p>任务信息、用户身份和历史记录落本地数据库。</p>
-          </article>
-          <article>
-            <h3>GPU 诊断</h3>
-            <p>诊断接口可检查模型文件、磁盘空间、CUDA 和 NVIDIA 显卡。</p>
-          </article>
+      <section class="future" id="future">
+        <div class="future-grid" aria-hidden="true"></div>
+        <p class="chapter reveal">03 / THE NEXT POINT</p>
+        <h2 class="reveal">下一分，<br />由你定义。</h2>
+        <div class="future-bottom reveal">
+          <p>BEYOND THE LINE.<br />BEYOND THE LIMIT.</p>
+          <a class="round-link" href="#top" aria-label="返回页面顶部">↑</a>
         </div>
       </section>
     </main>
 
-    <footer class="site-footer">
-      <span>Good-Badminton</span>
-      <nav aria-label="页脚导航">
-        <a href="./privacy.html">隐私政策</a>
-        <a href="./support.html">技术支持</a>
-        <a href="https://api.audacity6441.kdns.fr/api/health">API</a>
-      </nav>
+    <footer class="site-footer brand-footer">
+      <span>© 2026 GOOD-BADMINTON</span>
+      <nav aria-label="页脚导航"><a href="./privacy.html">PRIVACY</a><a href="./support.html">SUPPORT</a></nav>
     </footer>
-
     <script src="./app.js"></script>
   </body>
 </html>
