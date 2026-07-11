@@ -45,7 +45,7 @@ Fields:
 
 | Name | Required | Value |
 | --- | --- | --- |
-| `file` | yes | MP4, MOV, or M4V video, up to 500 MB |
+| `file` | yes | MP4, MOV, or M4V video, up to 200 MB |
 | `user_id` | no | Stable device/user identifier |
 
 The backend saves the video and returns a representative frame:

@@ -7,6 +7,7 @@ __pycache__/
 .pytest_tmp/
 .mypy_cache/
 .ruff_cache/
+.venv
 .venv/
 venv/
 env/
@@ -16,6 +17,7 @@ env/
 results/
 outputs/
 *.log
+logs/
 mobile_backend_data/
 deliverables/
 bilibilivideo/
@@ -23,6 +25,8 @@ apk/
 server/uploads/
 *.apk
 *.zip
+frontend_flutter/nul
+server/debug_line_mask.png
 
 # Keep only the small repository demo videos.
 videos/*
@@ -33,6 +37,7 @@ videos/*
 =4.0.0
 
 # Model weights are intentionally not published
+weights
 weights/*
 !weights/.gitkeep
 *.pt
