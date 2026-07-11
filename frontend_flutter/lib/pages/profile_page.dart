@@ -137,142 +137,147 @@ class _ProfilePageState extends State<ProfilePage> {
         imageAsset: 'assets/images/history_court_bg.png',
         imageOpacity: 0.12,
         alignment: const Alignment(0.1, -0.35),
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(18),
-                child: Column(
-                  children: [
-                    CircleAvatar(
-                      radius: 36,
-                      backgroundColor:
-                          Theme.of(context).colorScheme.primaryContainer,
-                      child: const Icon(Icons.person_outline, size: 38),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      _nickname.isEmpty ? '羽球访客' : _nickname,
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
-                    const SizedBox(height: 6),
-                    const Text('本地游客模式 · 无需登录'),
-                    const SizedBox(height: 10),
-                    SelectableText(
-                      _userId.isEmpty ? '正在生成身份…' : _userId,
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 12),
-                    OutlinedButton.icon(
-                      onPressed: _editNickname,
-                      icon: const Icon(Icons.edit_outlined),
-                      label: const Text('修改本地昵称'),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(Icons.badge_outlined),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            '后端游客身份',
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleMedium
-                                ?.copyWith(
-                                  fontWeight: FontWeight.w800,
-                                ),
-                          ),
-                        ),
-                        Chip(
-                          avatar: Icon(
-                            _registered == true
-                                ? Icons.check_circle
-                                : _registered == false
-                                    ? Icons.person_add_alt
-                                    : Icons.cloud_off_outlined,
-                            size: 17,
-                          ),
-                          label: Text(
-                            _checkingIdentity
-                                ? '查询中'
-                                : _registered == true
-                                    ? '已登记'
-                                    : _registered == false
-                                        ? '未登记'
-                                        : '待查询',
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      '登记后仍然是游客模式；上传、历史记录和报告将继续使用同一个 user_id。',
-                      style: TextStyle(height: 1.5),
-                    ),
-                    if (_identityError != null) ...[
-                      const SizedBox(height: 8),
+        child: SafeArea(
+          top: false,
+          bottom: false,
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(18),
+                  child: Column(
+                    children: [
+                      CircleAvatar(
+                        radius: 36,
+                        backgroundColor:
+                            Theme.of(context).colorScheme.primaryContainer,
+                        child: const Icon(Icons.person_outline, size: 38),
+                      ),
+                      const SizedBox(height: 12),
                       Text(
-                        _identityError!,
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.error,
-                        ),
+                        _nickname.isEmpty ? '羽球访客' : _nickname,
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                      const SizedBox(height: 6),
+                      const Text('本地游客模式 · 无需登录'),
+                      const SizedBox(height: 10),
+                      SelectableText(
+                        _userId.isEmpty ? '正在生成身份…' : _userId,
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 12),
+                      OutlinedButton.icon(
+                        onPressed: _editNickname,
+                        icon: const Icon(Icons.edit_outlined),
+                        label: const Text('修改本地昵称'),
                       ),
                     ],
-                    const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        OutlinedButton.icon(
-                          onPressed:
-                              _checkingIdentity ? null : _checkRegistration,
-                          icon: const Icon(Icons.manage_search),
-                          label: const Text('查询游客身份'),
-                        ),
-                        if (_registered != true)
-                          FilledButton.tonalIcon(
-                            onPressed: _registering ? null : _registerIdentity,
-                            icon: _registering
-                                ? const SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(
-                                        strokeWidth: 2),
-                                  )
-                                : const Icon(Icons.how_to_reg_outlined),
-                            label: Text(_registering ? '登记中' : '登记游客身份'),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.badge_outlined),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              '后端游客身份',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleMedium
+                                  ?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                            ),
                           ),
+                          Chip(
+                            avatar: Icon(
+                              _registered == true
+                                  ? Icons.check_circle
+                                  : _registered == false
+                                      ? Icons.person_add_alt
+                                      : Icons.cloud_off_outlined,
+                              size: 17,
+                            ),
+                            label: Text(
+                              _checkingIdentity
+                                  ? '查询中'
+                                  : _registered == true
+                                      ? '已登记'
+                                      : _registered == false
+                                          ? '未登记'
+                                          : '待查询',
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        '登记后仍然是游客模式；上传、历史记录和报告将继续使用同一个 user_id。',
+                        style: TextStyle(height: 1.5),
+                      ),
+                      if (_identityError != null) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          _identityError!,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.error,
+                          ),
+                        ),
                       ],
-                    ),
-                  ],
+                      const SizedBox(height: 12),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          OutlinedButton.icon(
+                            onPressed:
+                                _checkingIdentity ? null : _checkRegistration,
+                            icon: const Icon(Icons.manage_search),
+                            label: const Text('查询游客身份'),
+                          ),
+                          if (_registered != true)
+                            FilledButton.tonalIcon(
+                              onPressed:
+                                  _registering ? null : _registerIdentity,
+                              icon: _registering
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2),
+                                    )
+                                  : const Icon(Icons.how_to_reg_outlined),
+                              label: Text(_registering ? '登记中' : '登记游客身份'),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 16),
-            Card(
-              child: ListTile(
-                leading: const Icon(Icons.history),
-                title: const Text('查看训练历史'),
-                subtitle: const Text('历史记录按本机游客 ID 隔离'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const HistoryPage()),
+              const SizedBox(height: 16),
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.history),
+                  title: const Text('查看训练历史'),
+                  subtitle: const Text('历史记录按本机游客 ID 隔离'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const HistoryPage()),
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

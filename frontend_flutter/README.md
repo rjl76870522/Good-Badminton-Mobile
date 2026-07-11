@@ -49,27 +49,26 @@ http://127.0.0.1:8001/api/health
 http://127.0.0.1:8001/docs
 ```
 
-## 3. 确认电脑局域网 IP
+## 3. 后端访问地址
 
-在 Windows PowerShell 中运行：
-
-```powershell
-ipconfig
-```
-
-找到当前 Wi-Fi/WLAN 网卡的 IPv4 地址，不要使用 WSL、VPN、虚拟网卡地址。
-本项目当前开发地址是：
+默认通过 Cloudflare Tunnel 访问 Ubuntu 后端：
 
 ```text
-172.29.11.85
+https://api.audacity6441.kdns.fr
 ```
 
-手机与电脑必须连接同一个 Wi-Fi。手机不能使用 `localhost` 或 `127.0.0.1`
-访问电脑。
+本机调试仍然可以使用：
 
-## 4. 修改后端 baseUrl
+```text
+http://127.0.0.1:8001
+```
 
-统一修改：
+如果不用 Cloudflare Tunnel，而是同一 Wi-Fi 联调，手机必须访问电脑的局域网 IPv4，
+不能使用 `localhost` 或 `127.0.0.1`。
+
+## 4. 配置后端 baseUrl
+
+默认后端地址定义在：
 
 ```text
 lib/config/api_config.dart
@@ -78,7 +77,14 @@ lib/config/api_config.dart
 当前值：
 
 ```dart
-static const String baseUrl = 'http://172.29.11.85:8001';
+static const String _defaultBaseUrl = 'https://api.audacity6441.kdns.fr';
+```
+
+构建或运行时也可以覆盖地址，不需要改源码：
+
+```bash
+flutter run --dart-define=API_BASE_URL=http://127.0.0.1:8001
+flutter build apk --release --dart-define=API_BASE_URL=https://api.audacity6441.kdns.fr
 ```
 
 项目其他文件不重复写死后端地址。
@@ -96,11 +102,10 @@ flutter run
 
 如果手机无法连接后端：
 
-1. 确认手机和电脑在同一个 Wi-Fi。
-2. 在手机浏览器打开 `http://172.29.11.85:8001/api/health`。
-3. 确认后端使用 `--host 0.0.0.0 --port 8001` 启动。
-4. 允许 Windows 防火墙中的 Python/Uvicorn 访问专用网络，或放行 TCP 8001。
-5. 确认 `api_config.dart` 中的 IP 是电脑当前 WLAN IPv4 地址。
+1. 在手机浏览器打开 `https://api.audacity6441.kdns.fr/api/health`。
+2. 确认后端使用 `--host 0.0.0.0 --port 8001` 启动。
+3. 确认 Cloudflare Tunnel 正在运行，并把 `api.audacity6441.kdns.fr` 转发到 `http://127.0.0.1:8001`。
+4. 如果改用同 Wi-Fi 地址，确认 `API_BASE_URL` 是电脑当前 WLAN IPv4 地址。
 
 ## 6. 功能测试
 
@@ -167,7 +172,7 @@ flutter run
 
 ```text
 格式：MP4、MOV、M4V
-大小：不超过 500 MB
+大小：不超过 200 MB
 时长：5 秒～3 分钟（建议 30 秒以上）
 元数据读取：最长等待 20 秒
 ```

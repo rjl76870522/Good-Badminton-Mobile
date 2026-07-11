@@ -20,14 +20,23 @@ class UserStorage {
     return id;
   }
 
+  /// Get local nickname (fallback values are just display hints).
   Future<String> getNickname() async {
     final preferences = await SharedPreferences.getInstance();
-    return preferences.getString(_nicknameKey) ?? '羽球访客';
+    return preferences.getString(_nicknameKey) ?? '';
   }
 
+  /// Save locally. Caller should also push to server via
+  /// ApiService.updateDisplayName().
   Future<void> setNickname(String nickname) async {
-    final value = nickname.trim().isEmpty ? '羽球访客' : nickname.trim();
+    final value = nickname.trim();
     final preferences = await SharedPreferences.getInstance();
     await preferences.setString(_nicknameKey, value);
+  }
+
+  /// Convenience: clear local nickname cache.
+  Future<void> clearNickname() async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.remove(_nicknameKey);
   }
 }

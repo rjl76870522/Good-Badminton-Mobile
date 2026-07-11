@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
 
 import 'package:good_badminton_mobile/services/api_service.dart';
 
@@ -18,7 +19,7 @@ void main() {
 
     try {
       final result = await service.uploadVideo(
-        file.path,
+        XFile(file.path),
         userId: 'guest_test',
         onProgress: progress.add,
       );
@@ -49,7 +50,7 @@ void main() {
     try {
       await expectLater(
         service.uploadVideo(
-          file.path,
+          XFile(file.path),
           userId: 'guest_test',
           timeout: const Duration(milliseconds: 20),
         ),
@@ -105,7 +106,7 @@ void main() {
     final service = ApiService(client: client);
     try {
       final preview = await service.previewVideo(
-        file.path,
+        XFile(file.path),
         userId: 'guest_stable',
       );
       final request = client.request! as http.MultipartRequest;

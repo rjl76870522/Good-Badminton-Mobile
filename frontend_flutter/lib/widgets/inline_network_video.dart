@@ -92,8 +92,8 @@ class _InlineNetworkVideoState extends State<InlineNetworkVideo> {
                   );
                 }
                 if (snapshot.connectionState != ConnectionState.done) {
-                  return const SizedBox(
-                    height: 210,
+                  return const AspectRatio(
+                    aspectRatio: 16 / 9,
                     child: Center(child: CircularProgressIndicator()),
                   );
                 }
@@ -210,8 +210,8 @@ class _VideoError extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 190,
+    return AspectRatio(
+      aspectRatio: 16 / 9,
       child: Center(
         child: Padding(
           padding: const EdgeInsets.all(20),

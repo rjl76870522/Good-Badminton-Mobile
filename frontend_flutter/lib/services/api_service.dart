@@ -2,7 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
 
 import '../config/api_config.dart';
 import '../models/history_item.dart';
@@ -45,17 +47,41 @@ class ApiService {
     return MobileUser.fromJson(_nestedMap(payload, 'user'));
   }
 
+  Future<MobileUser> updateDisplayName(
+    String userId,
+    String displayName,
+  ) async {
+    final response = await _client
+        .put(
+          ApiConfig.uri('/api/users/$userId/display-name'),
+          headers: {'content-type': 'application/json'},
+          body: jsonEncode({'display_name': displayName}),
+        )
+        .timeout(const Duration(seconds: 20));
+    final payload = _decodeMap(response);
+    return MobileUser.fromJson(_nestedMap(payload, 'user'));
+  }
+
   Future<PreviewFrame> previewVideo(
-    String filePath, {
+    XFile file, {
     required String userId,
     void Function(double progress)? onProgress,
     Duration timeout = defaultUploadTimeout,
   }) async {
-    final file = File(filePath);
-    if (!await file.exists()) {
-      throw const ApiException('选择的视频文件不存在');
-    }
     onProgress?.call(0);
+    http.MultipartFile multipartFile;
+    if (kIsWeb) {
+      final bytes = await file.readAsBytes();
+      multipartFile = http.MultipartFile.fromBytes(
+        'file', bytes,
+        filename: file.name,
+      );
+    } else {
+      if (!await File(file.path).exists()) {
+        throw const ApiException('选择的视频文件不存在');
+      }
+      multipartFile = await http.MultipartFile.fromPath('file', file.path);
+    }
     final request = _ProgressMultipartRequest(
       'POST',
       ApiConfig.uri('/api/videos/preview-frame'),
@@ -66,7 +92,7 @@ class ApiService {
       },
     )
       ..fields['user_id'] = userId
-      ..files.add(await http.MultipartFile.fromPath('file', filePath));
+      ..files.add(multipartFile);
     try {
       final streamed = await _client.send(request).timeout(timeout);
       final response =
@@ -86,7 +112,7 @@ class ApiService {
   }
 
   Future<UploadResult> uploadVideo(
-    String? filePath, {
+    XFile? file, {
     required String userId,
     String? sourceUploadId,
     List<CourtPoint>? corners,
@@ -98,10 +124,10 @@ class ApiService {
   }) async {
     final hasSource =
         sourceUploadId != null && sourceUploadId.trim().isNotEmpty;
-    if (!hasSource && (filePath == null || filePath.isEmpty)) {
+    if (!hasSource && file == null) {
       throw const ApiException('请提供视频文件或预览上传 ID');
     }
-    if (!hasSource && !await File(filePath!).exists()) {
+    if (!hasSource && !kIsWeb && !await File(file!.path).exists()) {
       throw const ApiException('选择的视频文件不存在');
     }
 
@@ -121,7 +147,17 @@ class ApiService {
     if (hasSource) {
       request.fields['source_upload_id'] = sourceUploadId.trim();
     } else {
-      request.files.add(await http.MultipartFile.fromPath('file', filePath!));
+      http.MultipartFile multipartFile;
+      if (kIsWeb) {
+        final bytes = await file!.readAsBytes();
+        multipartFile = http.MultipartFile.fromBytes(
+          'file', bytes,
+          filename: file.name,
+        );
+      } else {
+        multipartFile = await http.MultipartFile.fromPath('file', file!.path);
+      }
+      request.files.add(multipartFile);
     }
     if (corners != null && corners.length == 4) {
       request.fields['corners_json'] =
@@ -217,6 +253,18 @@ class ApiService {
         )
         .timeout(const Duration(seconds: 20));
     _decodeMap(response);
+  }
+
+  Future<String> downloadFile(String url, String localPath) async {
+    final response = await _client
+        .get(Uri.parse(url))
+        .timeout(const Duration(minutes: 10));
+    if (response.statusCode != 200) {
+      throw ApiException('下载失败：HTTP ${response.statusCode}');
+    }
+    final file = File(localPath);
+    await file.writeAsBytes(response.bodyBytes);
+    return file.path;
   }
 
   Future<bool> fileExists(String? relativePath) async {

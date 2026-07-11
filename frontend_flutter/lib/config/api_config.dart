@@ -1,7 +1,15 @@
 class ApiConfig {
   ApiConfig._();
 
-  static const String baseUrl = 'http://172.29.11.85:8001';
+  static const String _defaultBaseUrl = 'https://api.audacity6441.kdns.fr';
+  static const String _configuredBaseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: _defaultBaseUrl,
+  );
+
+  static String get baseUrl => _configuredBaseUrl.endsWith('/')
+      ? _configuredBaseUrl.substring(0, _configuredBaseUrl.length - 1)
+      : _configuredBaseUrl;
 
   static Uri uri(String path, [Map<String, dynamic>? queryParameters]) {
     final normalizedPath = path.startsWith('/') ? path : '/$path';

@@ -136,7 +136,7 @@ class _UploadPageState extends State<UploadPage> {
     try {
       final userId = await _userStorage.getOrCreateUserId();
       final preview = await _api.previewVideo(
-        file.path,
+        file,
         userId: userId,
         onProgress: (progress) {
           if (mounted) setState(() => _previewProgress = progress);
@@ -204,7 +204,7 @@ class _UploadPageState extends State<UploadPage> {
     try {
       final userId = await _userStorage.getOrCreateUserId();
       final result = await _api.uploadVideo(
-        _preview == null ? file.path : null,
+        _preview == null ? file : null,
         userId: userId,
         sourceUploadId: _preview?.sourceUploadId,
         corners: _corners?.length == 4 ? _corners : null,
@@ -251,125 +251,126 @@ class _UploadPageState extends State<UploadPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: const Text('上传视频'),
-        backgroundColor: Colors.transparent,
       ),
       body: AppBackground(
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            Card(
-              color: Theme.of(context).colorScheme.primaryContainer,
-              child: const Padding(
-                padding: EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '视频要求',
-                      style:
-                          TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                    ),
-                    SizedBox(height: 8),
-                    Text('格式：MP4 / MOV / M4V'),
-                    Text('大小：不超过 500 MB'),
-                    Text('时长：5 秒～3 分钟（建议 30 秒以上）'),
-                    SizedBox(height: 6),
-                    Text('建议横屏固定机位拍摄，画面尽量覆盖完整球场。'),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              onPressed: _uploading || _inspectingVideo ? null : _pickVideo,
-              icon: const Icon(Icons.video_library_outlined),
-              label: const Text('选择视频'),
-            ),
-            const SizedBox(height: 12),
-            if (_selectedFile == null)
-              const Center(child: Text('尚未选择视频'))
-            else
-              _SelectedVideoCard(
-                fileName: _selectedFile!.name,
-                fileSize: _selectedFileSize,
-                duration: _selectedDuration,
-                inspecting: _inspectingVideo,
-                errors: _validationErrors,
-                warnings: _validationWarnings,
-              ),
-            if (_previewing) ...[
-              const SizedBox(height: 12),
-              LinearProgressIndicator(value: _previewProgress),
-              const SizedBox(height: 6),
-              Text(
-                '正在上传并提取预览帧：${(_previewProgress * 100).round()}%',
-                textAlign: TextAlign.center,
-              ),
-            ],
-            if (_preview != null && !_previewing) ...[
-              const SizedBox(height: 12),
+        child: SafeArea(
+          top: false,
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
               Card(
-                child: ListTile(
-                  leading: const Icon(Icons.crop_free),
-                  title: const Text('球场预览已生成'),
-                  subtitle: Text(
-                    _corners?.length == 4 ? '已设置 4 个角点' : '未使用手动角点，将由后端自动处理',
+                color: Theme.of(context).colorScheme.primaryContainer,
+                child: const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '视频要求',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 18),
+                      ),
+                      SizedBox(height: 8),
+                      Text('格式：MP4 / MOV / M4V'),
+                      Text('大小：不超过 200 MB'),
+                      Text('时长：5 秒～3 分钟（建议 30 秒以上）'),
+                      SizedBox(height: 6),
+                      Text('建议横屏固定机位拍摄，画面尽量覆盖完整球场。'),
+                    ],
                   ),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: _editCorners,
                 ),
               ),
-            ],
-            if (_preview == null &&
-                !_previewing &&
-                _selectedFile != null &&
-                _validationErrors.isEmpty) ...[
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
               OutlinedButton.icon(
-                onPressed: _createPreview,
-                icon: const Icon(Icons.image_search),
-                label: const Text('重新提取预览帧'),
+                onPressed: _uploading || _inspectingVideo ? null : _pickVideo,
+                icon: const Icon(Icons.video_library_outlined),
+                label: const Text('选择视频'),
               ),
-            ],
-            const SizedBox(height: 20),
-            FilledButton.icon(
-              onPressed: _canUpload ? _upload : null,
-              icon: _uploading
-                  ? const SizedBox.square(
-                      dimension: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.cloud_upload_outlined),
-              label: Text(_uploading ? '正在上传' : '上传视频'),
-            ),
-            if (_uploading) ...[
               const SizedBox(height: 12),
-              LinearProgressIndicator(value: _uploadProgress),
-              const SizedBox(height: 6),
-              Text(
-                '上传进度：${(_uploadProgress * 100).round()}%',
-                textAlign: TextAlign.center,
+              if (_selectedFile == null)
+                const Center(child: Text('尚未选择视频'))
+              else
+                _SelectedVideoCard(
+                  fileName: _selectedFile!.name,
+                  fileSize: _selectedFileSize,
+                  duration: _selectedDuration,
+                  inspecting: _inspectingVideo,
+                  errors: _validationErrors,
+                  warnings: _validationWarnings,
+                ),
+              if (_previewing) ...[
+                const SizedBox(height: 12),
+                LinearProgressIndicator(value: _previewProgress),
+                const SizedBox(height: 6),
+                Text(
+                  '正在上传并提取预览帧：${(_previewProgress * 100).round()}%',
+                  textAlign: TextAlign.center,
+                ),
+              ],
+              if (_preview != null && !_previewing) ...[
+                const SizedBox(height: 12),
+                Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.crop_free),
+                    title: const Text('球场预览已生成'),
+                    subtitle: Text(
+                      _corners?.length == 4 ? '已设置 4 个角点' : '未使用手动角点，将由后端自动处理',
+                    ),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: _editCorners,
+                  ),
+                ),
+              ],
+              if (_preview == null &&
+                  !_previewing &&
+                  _selectedFile != null &&
+                  _validationErrors.isEmpty) ...[
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: _createPreview,
+                  icon: const Icon(Icons.image_search),
+                  label: const Text('重新提取预览帧'),
+                ),
+              ],
+              const SizedBox(height: 20),
+              FilledButton.icon(
+                onPressed: _canUpload ? _upload : null,
+                icon: _uploading
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.cloud_upload_outlined),
+                label: Text(_uploading ? '正在上传' : '上传视频'),
               ),
-              const Text(
-                '超过 5 分钟将自动停止并提示超时',
-                textAlign: TextAlign.center,
-              ),
+              if (_uploading) ...[
+                const SizedBox(height: 12),
+                LinearProgressIndicator(value: _uploadProgress),
+                const SizedBox(height: 6),
+                Text(
+                  '上传进度：${(_uploadProgress * 100).round()}%',
+                  textAlign: TextAlign.center,
+                ),
+                const Text(
+                  '超过 5 分钟将自动停止并提示超时',
+                  textAlign: TextAlign.center,
+                ),
+              ],
+              if (_taskId != null) ...[
+                const SizedBox(height: 12),
+                SelectableText('task_id：$_taskId'),
+              ],
+              if (_error != null) ...[
+                const SizedBox(height: 12),
+                Text(
+                  _error!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ],
             ],
-            if (_taskId != null) ...[
-              const SizedBox(height: 12),
-              SelectableText('task_id：$_taskId'),
-            ],
-            if (_error != null) ...[
-              const SizedBox(height: 12),
-              Text(
-                _error!,
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
-              ),
-            ],
-          ],
+          ),
         ),
       ),
     );

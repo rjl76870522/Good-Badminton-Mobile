@@ -1,7 +1,7 @@
 class UploadConstraints {
   UploadConstraints._();
 
-  static const int maxFileSizeBytes = 500 * 1024 * 1024;
+  static const int maxFileSizeBytes = 200 * 1024 * 1024;
   static const Duration minDuration = Duration(seconds: 5);
   static const Duration recommendedDuration = Duration(seconds: 30);
   static const Duration maxDuration = Duration(minutes: 3);
@@ -30,7 +30,7 @@ class UploadConstraints {
     if (fileSizeBytes <= 0) {
       errors.add('视频文件为空');
     } else if (fileSizeBytes > maxFileSizeBytes) {
-      errors.add('视频不能超过 500 MB');
+      errors.add('视频不能超过 200 MB');
     }
     if (duration == null || duration <= Duration.zero) {
       errors.add('无法读取视频时长，文件可能已损坏');
