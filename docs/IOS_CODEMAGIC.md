@@ -23,6 +23,25 @@ The `ios-unsigned` workflow performs these checks on a Codemagic Mac:
 The unsigned `.app` proves that the Flutter and native iOS code compile, but it
 cannot be installed on a physical iPhone or uploaded to TestFlight.
 
+## Appetize simulator preview
+
+The `ios-simulator-preview` workflow builds a separate debug application for
+the iOS Simulator. Run it manually from the `ios/codemagic` branch in
+Codemagic. Its artifacts include:
+
+- `Runner.app`
+- `Runner-simulator.zip`
+
+The zip contains `Runner.app` at its top level and can be uploaded to Appetize.
+This preview is useful for checking layout, navigation, scrolling, animations,
+and basic HTTPS requests in a browser-hosted simulator.
+
+Appetize does not run the application on a physical iPhone. Photo library video
+selection, HEVC compatibility, large uploads, mobile network changes,
+background behavior, memory pressure, performance, and saving to Photos still
+need to be tested on a signed build installed on a real iPhone through
+TestFlight or another Apple-supported distribution method.
+
 ## Run the unsigned build
 
 1. Sign in at <https://codemagic.io> with GitHub
