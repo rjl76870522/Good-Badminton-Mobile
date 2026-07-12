@@ -38,11 +38,14 @@ videos/*
 # Accidental dependency marker / local scratch file.
 =4.0.0
 
-# Model weights are intentionally not published
-weights
+# Model weights
 weights/*
 !weights/.gitkeep
+!weights/yolo11n-pose.pt
+!weights/yolo11s-ball.pt
 *.pt
+!weights/yolo11n-pose.pt
+!weights/yolo11s-ball.pt
 *.pth
 *.onnx
 
