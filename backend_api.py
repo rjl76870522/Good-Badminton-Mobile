@@ -20,11 +20,12 @@ from typing import Any
 
 import cv2
 import numpy as np
-from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Query, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from sqlalchemy import or_
 
 from badminton_analysis.database import (
     OutputFile,
@@ -35,6 +36,7 @@ from badminton_analysis.database import (
     task_to_legacy_dict,
 )
 from badminton_analysis.highlight import generate_highlight
+from badminton_analysis.task_queue import DurableTaskWorker
 from badminton_analysis.mobile_report import build_mobile_report, load_advice_knowledge
 from badminton_analysis.court.mapper import auto_detect_preview
 from badminton_analysis.user_registry import (
@@ -86,7 +88,12 @@ OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     recover_persisted_tasks()
-    yield
+    TASK_WORKER.start()
+    TASK_WORKER.notify()
+    try:
+        yield
+    finally:
+        TASK_WORKER.stop()
 
 
 # Initialize SQLite database (replaces JSON file storage)
@@ -105,7 +112,6 @@ app.mount("/preview-frames", StaticFiles(directory=str(PREVIEW_FRAME_DIR)), name
 if FRONTEND_DIR.is_dir():
     app.mount("/app", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="mobile_frontend")
 
-ANALYSIS_LOCK = threading.Lock()
 USER_REGISTRY_LOCK = threading.Lock()
 STARTUP_RECOVERY_LOCK = threading.Lock()
 
@@ -116,15 +122,17 @@ class RegisterUserRequest(BaseModel):
 
 @app.get("/api/health")
 def health() -> dict[str, Any]:
+    queue = _queue_summary()
     return {
         "ok": True,
         "project_root": str(PROJECT_ROOT),
         "default_template": str(_default_template_path()),
+        "queue": queue,
     }
 
 
 def recover_persisted_tasks() -> None:
-    """Resume queued/processing tasks left behind by a backend restart."""
+    """Validate pending work and return interrupted tasks to the durable queue."""
     with STARTUP_RECOVERY_LOCK:
         pending = [
             task
@@ -151,20 +159,8 @@ def recover_persisted_tasks() -> None:
                 status="queued",
                 stage="queued_after_restart",
                 progress=0.0,
+                error=None,
             )
-            threading.Thread(
-                target=_run_analysis_task,
-                kwargs={
-                    "task_id": task["task_id"],
-                    "video_path": str(upload_path),
-                    "template_path": str(template_path),
-                    "corners": _task_corners(task),
-                    "language": str(task.get("language") or "zh"),
-                    "pose_mode": str(task.get("pose_mode") or "balanced"),
-                    "keep_audio": bool(task.get("keep_audio", True)),
-                },
-                daemon=True,
-            ).start()
 
 
 @app.get("/api/diagnostics")
@@ -257,7 +253,6 @@ def search_users(
 
 @app.post("/api/videos/upload")
 def upload_video(
-    background_tasks: BackgroundTasks,
     file: UploadFile | None = File(default=None),
     user_id: str = Form(default=DEFAULT_USER_ID),
     source_upload_id: str | None = Form(default=None),
@@ -320,17 +315,7 @@ def upload_video(
         "report": None,
     }
     _set_task(task_id, task)
-
-    background_tasks.add_task(
-        _run_analysis_task,
-        task_id=task_id,
-        video_path=str(upload_path),
-        template_path=str(template),
-        corners=corners,
-        language=language,
-        pose_mode=pose_mode,
-        keep_audio=keep_audio,
-    )
+    TASK_WORKER.notify()
 
     return {
         "task_id": task_id,
@@ -379,6 +364,11 @@ def list_tasks(user_id: str | None = Query(default=None)) -> dict[str, Any]:
     return {"tasks": [_public_task(t) for t in tasks]}
 
 
+@app.get("/api/queue")
+def get_queue_status() -> dict[str, Any]:
+    return _queue_summary()
+
+
 @app.get("/api/history")
 def get_history(
     limit: int = Query(default=20, ge=1, le=100),
@@ -400,6 +390,59 @@ def get_history(
 def get_task(task_id: str) -> dict[str, Any]:
     task = _get_task_or_404(task_id)
     return _public_task(task)
+
+
+@app.post("/api/tasks/{task_id}/cancel")
+def cancel_task(
+    task_id: str,
+    user_id: str | None = Query(default=None),
+) -> dict[str, Any]:
+    task = _get_task_or_404(task_id)
+    if user_id and task.get("user_id", DEFAULT_USER_ID) != _safe_user_id(user_id):
+        raise_api_error(
+            status_code=404,
+            code="TASK_NOT_FOUND",
+            message="任务不存在。",
+            hint="请确认当前 user_id 和 task_id 是否匹配。",
+        )
+    if task["status"] == "cancelled":
+        return _public_task(task)
+    if task["status"] != "queued":
+        raise_api_error(
+            status_code=409,
+            code="TASK_CANNOT_CANCEL",
+            message="任务已经开始分析，当前不能取消。",
+            hint="只有仍在排队的任务可以取消。",
+        )
+
+    session = get_session()
+    try:
+        changed = (
+            session.query(Task)
+            .filter(Task.task_id == task_id, Task.status == "queued")
+            .update(
+                {
+                    Task.status: "cancelled",
+                    Task.stage: "cancelled",
+                    Task.error: None,
+                    Task.updated_at: time.time(),
+                },
+                synchronize_session=False,
+            )
+        )
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+    if not changed:
+        raise_api_error(
+            status_code=409,
+            code="TASK_CANNOT_CANCEL",
+            message="任务刚刚开始分析，当前不能取消。",
+        )
+    return _public_task(_get_task_or_404(task_id))
 
 
 @app.delete("/api/tasks/{task_id}")
@@ -445,6 +488,13 @@ def get_report(task_id: str) -> dict[str, Any]:
             code="ANALYSIS_FAILED",
             message=task["error"] or "视频分析失败。",
             hint="请检查拍摄角度、球场线是否清晰，或换一段稳定样例视频。",
+        )
+    if task["status"] == "cancelled":
+        raise_api_error(
+            status_code=409,
+            code="TASK_CANCELLED",
+            message="任务已取消。",
+            hint="请重新选择视频并创建分析任务。",
         )
     if task["status"] != "completed" or not task.get("report"):
         raise_api_error(
@@ -512,87 +562,86 @@ def _run_analysis_task(
     pose_mode: str,
     keep_audio: bool,
 ) -> None:
-    with ANALYSIS_LOCK:
-        try:
-            manual_corners = corners is not None
-            _update_task(task_id, status="processing", stage="preparing_court", progress=0.02)
-            if corners is None:
-                court = prepare_court(template_path)
-                corners = court.get("corners")
-            if not corners or len(corners) != 4:
-                raise RuntimeError("Could not resolve court corners from the template.")
+    try:
+        manual_corners = corners is not None
+        _update_task(task_id, status="processing", stage="preparing_court", progress=0.02)
+        if corners is None:
+            court = prepare_court(template_path)
+            corners = court.get("corners")
+        if not corners or len(corners) != 4:
+            raise RuntimeError("Could not resolve court corners from the template.")
 
-            options = {
-                "pose_family": "yolo-pose",
-                "pose_mode": pose_mode,
-                "language": language,
-                "audio": keep_audio,
-                "show_skeletons": True,
-                "show_player_trajectories": True,
-                "show_court_trajectory": True,
-                "show_shuttlecock_trajectory": True,
-                "show_player_stats": True,
-                "show_pose_roi": True,
-                "visualize_positions": True,
-                "always_process_court": True,
-                "court_match_threshold": 0.55,
-                "corners_coordinate_space": "video" if manual_corners else "template",
-                "yolo_pose_model": "weights/yolo11n-pose.pt",
-                "ball_model": "weights/yolo11s-ball.pt",
-            }
+        options = {
+            "pose_family": "yolo-pose",
+            "pose_mode": pose_mode,
+            "language": language,
+            "audio": keep_audio,
+            "show_skeletons": True,
+            "show_player_trajectories": True,
+            "show_court_trajectory": True,
+            "show_shuttlecock_trajectory": True,
+            "show_player_stats": True,
+            "show_pose_roi": True,
+            "visualize_positions": True,
+            "always_process_court": True,
+            "court_match_threshold": 0.55,
+            "corners_coordinate_space": "video" if manual_corners else "template",
+            "yolo_pose_model": "weights/yolo11n-pose.pt",
+            "ball_model": "weights/yolo11s-ball.pt",
+        }
 
-            def progress_cb(frame: int, total: int) -> None:
-                ratio = frame / total if total else 0.0
-                _update_task(
-                    task_id,
-                    status="processing",
-                    stage="analyzing_video",
-                    progress=round(0.05 + ratio * 0.85, 4),
-                )
-
-            result = run_analysis(
-                video_path=video_path,
-                template_path=template_path,
-                corners=corners,
-                options=options,
-                progress_cb=progress_cb,
-            )
-            detection_records = _count_detection_records(result.get("detections"))
-            result["detection_records"] = detection_records
-            if detection_records < MIN_DETECTION_RECORDS:
-                raise RuntimeError(
-                    "未检测到有效球场/球员数据。请检查视频是否完整拍到球场，"
-                    "或在上传时手动填写四个球场角点。"
-                )
-
-            _update_task(task_id, stage="building_highlight", progress=0.92)
-            highlight = generate_highlight(
-                video_path=result.get("video") or video_path,
-                detections_path=result.get("detections"),
-                output_dir=result.get("output_dir") or OUTPUTS_DIR,
-            )
-            result["highlight"] = highlight.get("video")
-            result["highlight_segments"] = highlight.get("segments", [])
-            result["highlight_error"] = highlight.get("error")
-
-            _update_task(task_id, stage="building_report", progress=0.96)
-            report = _build_report_with_urls(task_id, result)
+        def progress_cb(frame: int, total: int) -> None:
+            ratio = frame / total if total else 0.0
             _update_task(
                 task_id,
-                status="completed",
-                stage="completed",
-                progress=1.0,
-                report=report,
-                output_dir=result.get("output_dir"),
+                status="processing",
+                stage="analyzing_video",
+                progress=round(0.05 + ratio * 0.85, 4),
             )
-        except Exception as exc:
-            _update_task(
-                task_id,
-                status="failed",
-                stage="failed",
-                progress=1.0,
-                error=str(exc),
+
+        result = run_analysis(
+            video_path=video_path,
+            template_path=template_path,
+            corners=corners,
+            options=options,
+            progress_cb=progress_cb,
+        )
+        detection_records = _count_detection_records(result.get("detections"))
+        result["detection_records"] = detection_records
+        if detection_records < MIN_DETECTION_RECORDS:
+            raise RuntimeError(
+                "未检测到有效球场/球员数据。请检查视频是否完整拍到球场，"
+                "或在上传时手动填写四个球场角点。"
             )
+
+        _update_task(task_id, stage="building_highlight", progress=0.92)
+        highlight = generate_highlight(
+            video_path=result.get("video") or video_path,
+            detections_path=result.get("detections"),
+            output_dir=result.get("output_dir") or OUTPUTS_DIR,
+        )
+        result["highlight"] = highlight.get("video")
+        result["highlight_segments"] = highlight.get("segments", [])
+        result["highlight_error"] = highlight.get("error")
+
+        _update_task(task_id, stage="building_report", progress=0.96)
+        report = _build_report_with_urls(task_id, result)
+        _update_task(
+            task_id,
+            status="completed",
+            stage="completed",
+            progress=1.0,
+            report=report,
+            output_dir=result.get("output_dir"),
+        )
+    except Exception as exc:
+        _update_task(
+            task_id,
+            status="failed",
+            stage="failed",
+            progress=1.0,
+            error=str(exc),
+        )
 
 
 def _build_report_with_urls(task_id: str, result: dict[str, Any]) -> dict[str, Any]:
@@ -976,6 +1025,7 @@ def _first_matching(urls: list[str | None], needle: str) -> str | None:
 
 def _public_task(task: dict[str, Any]) -> dict[str, Any]:
     failure = _failure_info(task.get("error"))
+    queue_position = _queue_position(task) if task.get("status") == "queued" else None
     return {
         "task_id": task["task_id"],
         "user_id": task.get("user_id", DEFAULT_USER_ID),
@@ -990,6 +1040,7 @@ def _public_task(task: dict[str, Any]) -> dict[str, Any]:
         "created_at": task["created_at"],
         "updated_at": task["updated_at"],
         "report_url": f"/api/tasks/{task['task_id']}/report",
+        "queue_position": queue_position,
     }
 
 
@@ -1409,6 +1460,105 @@ def _load_all_tasks() -> list[dict[str, Any]]:
         session.close()
 
 
+def _claim_next_task() -> dict[str, Any] | None:
+    """Atomically claim the oldest queued task across worker processes."""
+    while True:
+        session = get_session()
+        try:
+            candidate = (
+                session.query(Task.task_id)
+                .filter(Task.status == "queued")
+                .order_by(Task.created_at.asc(), Task.task_id.asc())
+                .first()
+            )
+            if candidate is None:
+                return None
+            now = time.time()
+            changed = (
+                session.query(Task)
+                .filter(Task.task_id == candidate[0], Task.status == "queued")
+                .update(
+                    {
+                        Task.status: "processing",
+                        Task.stage: "starting_worker",
+                        Task.progress: 0.01,
+                        Task.error: None,
+                        Task.updated_at: now,
+                    },
+                    synchronize_session=False,
+                )
+            )
+            session.commit()
+            if changed:
+                claimed = session.get(Task, candidate[0])
+                return task_to_legacy_dict(claimed) if claimed is not None else None
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
+
+def _run_claimed_task(task: dict[str, Any]) -> None:
+    _run_analysis_task(
+        task_id=task["task_id"],
+        video_path=str(task.get("upload_path") or ""),
+        template_path=str(task.get("template_path") or ""),
+        corners=_task_corners(task),
+        language=str(task.get("language") or "zh"),
+        pose_mode=str(task.get("pose_mode") or "balanced"),
+        keep_audio=bool(task.get("keep_audio", True)),
+    )
+
+
+def _fail_unhandled_task(task_id: str, exc: Exception) -> None:
+    _update_task(
+        task_id,
+        status="failed",
+        stage="failed",
+        progress=1.0,
+        error=f"Analysis worker failed unexpectedly: {exc}",
+    )
+
+
+def _queue_position(task: dict[str, Any]) -> int | None:
+    created_at = task.get("created_at")
+    task_id = task.get("task_id")
+    if created_at is None or not task_id:
+        return None
+    session = get_session()
+    try:
+        ahead = (
+            session.query(Task)
+            .filter(
+                Task.status == "queued",
+                or_(
+                    Task.created_at < float(created_at),
+                    (Task.created_at == float(created_at)) & (Task.task_id < str(task_id)),
+                ),
+            )
+            .count()
+        )
+        return ahead + 1
+    finally:
+        session.close()
+
+
+def _queue_summary() -> dict[str, Any]:
+    session = get_session()
+    try:
+        queued = session.query(Task).filter(Task.status == "queued").count()
+        processing = session.query(Task).filter(Task.status == "processing").count()
+        return {
+            "queued": queued,
+            "processing": processing,
+            "worker_running": TASK_WORKER.running,
+            "capacity": 1,
+        }
+    finally:
+        session.close()
+
+
 
 def _resolve_template(template_path: str | None) -> Path:
     if template_path:
@@ -1532,3 +1682,10 @@ def raise_api_error(
     if hint:
         detail["hint"] = hint
     raise HTTPException(status_code=status_code, detail=detail)
+
+
+TASK_WORKER = DurableTaskWorker(
+    claim_next=_claim_next_task,
+    run_task=_run_claimed_task,
+    fail_task=_fail_unhandled_task,
+)
