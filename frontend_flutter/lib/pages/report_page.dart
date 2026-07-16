@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import '../config/api_config.dart';
 import '../models/report.dart';
 import '../services/api_service.dart';
+import '../utils/user_facing_error.dart';
 import '../widgets/app_background.dart';
 import '../widgets/inline_network_video.dart';
 
@@ -57,7 +58,12 @@ class _ReportPageState extends State<ReportPage> {
       setState(() => _error = '报告还未生成完成');
     } catch (error) {
       if (!mounted) return;
-      setState(() => _error = '读取报告失败：$error');
+      setState(
+        () => _error = userFacingError(
+          error,
+          fallback: '暂时无法读取训练报告，请稍后重试。',
+        ),
+      );
     } finally {
       if (mounted) {
         setState(() => _loading = false);

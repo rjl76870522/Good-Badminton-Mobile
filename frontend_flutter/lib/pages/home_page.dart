@@ -4,7 +4,9 @@ import '../config/api_config.dart';
 import '../models/task_status.dart';
 import '../services/api_service.dart';
 import '../services/task_storage.dart';
+import '../utils/user_facing_error.dart';
 import 'report_page.dart';
+import 'qr_scan_page.dart';
 import 'task_status_page.dart';
 import 'upload_page.dart';
 
@@ -47,7 +49,14 @@ class _HomePageState extends State<HomePage> {
         await _storage.clearActiveTask(taskId);
       }
     } catch (error) {
-      if (mounted) setState(() => _error = '恢复未完成任务失败：$error');
+      if (mounted) {
+        setState(
+          () => _error = userFacingError(
+            error,
+            fallback: '未完成任务暂时无法恢复，请稍后在历史记录中查看。',
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _restoringTask = false);
     }
@@ -81,7 +90,7 @@ class _HomePageState extends State<HomePage> {
       if (mounted) {
         setState(() {
           _health = null;
-          _error = error.toString();
+          _error = userFacingError(error);
         });
       }
     } finally {
@@ -151,12 +160,21 @@ class _HomePageState extends State<HomePage> {
               children: [
                 _HeroCard(onTap: _openUpload),
                 const SizedBox(height: 14),
-                _ConnectionCard(
-                  connected: _connected,
-                  checking: _checking,
-                  health: _health,
-                  error: _error,
-                  onCheck: _checkHealth,
+                _VenueScanEntry(
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const QrScanPage()),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Offstage(
+                  offstage: true,
+                  child: _ConnectionCard(
+                    connected: _connected,
+                    checking: _checking,
+                    health: _health,
+                    error: _error,
+                    onCheck: _checkHealth,
+                  ),
                 ),
                 if (_restoringTask) ...[
                   const SizedBox(height: 12),
@@ -366,6 +384,54 @@ class _HeroCard extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+class _VenueScanEntry extends StatelessWidget {
+  const _VenueScanEntry({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(24),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Icon(
+                  Icons.qr_code_scanner_rounded,
+                  color: Theme.of(context).colorScheme.onPrimaryContainer,
+                ),
+              ),
+              const SizedBox(width: 14),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('扫描球馆二维码',
+                        style: TextStyle(fontWeight: FontWeight.w800)),
+                    SizedBox(height: 3),
+                    Text('获取合作球馆的可用比赛视频'),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

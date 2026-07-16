@@ -11,7 +11,7 @@ void main() {
 
     expect(find.text('Good-Badminton'), findsOneWidget);
     expect(find.text('羽毛球 AI 视觉分析'), findsOneWidget);
-    expect(find.byIcon(Icons.power_settings_new_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.power_settings_new_rounded), findsNothing);
     expect(find.text('开始上传视频'), findsOneWidget);
     expect(find.text('Demo'), findsOneWidget);
     expect(find.text('首页'), findsOneWidget);

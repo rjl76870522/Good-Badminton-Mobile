@@ -9,6 +9,7 @@ import '../models/preview_frame.dart';
 import '../services/api_service.dart';
 import '../services/task_storage.dart';
 import '../services/user_storage.dart';
+import '../utils/user_facing_error.dart';
 import '../widgets/app_background.dart';
 import 'corner_picker_page.dart';
 import 'task_status_page.dart';
@@ -76,7 +77,12 @@ class _UploadPageState extends State<UploadPage> {
       await _inspectSelectedFile(file);
     } catch (error) {
       if (!mounted) return;
-      setState(() => _error = '选择视频失败：$error');
+      setState(
+        () => _error = userFacingError(
+          error,
+          fallback: '选择视频失败，请重新选择后重试。',
+        ),
+      );
     }
   }
 
@@ -158,7 +164,8 @@ class _UploadPageState extends State<UploadPage> {
       setState(() {
         _preview = null;
         _corners = null;
-        _error = '预览帧提取失败：$error\n仍可跳过角点直接上传原视频。';
+        _error =
+            '${userFacingError(error, fallback: '预览帧提取失败，请检查网络后重试。')}\n仍可跳过角点直接上传原视频。';
       });
     } finally {
       if (mounted) setState(() => _previewing = false);
@@ -233,7 +240,10 @@ class _UploadPageState extends State<UploadPage> {
       if (!mounted) return;
       setState(() {
         _uploadProgress = 0;
-        _error = '上传失败：$error';
+        _error = userFacingError(
+          error,
+          fallback: '上传失败，请检查网络后重试。',
+        );
       });
     } finally {
       if (mounted) {
