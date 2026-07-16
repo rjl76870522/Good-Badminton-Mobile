@@ -59,7 +59,7 @@ A signed iPhone build requires an active Apple Developer Program membership.
 After joining the program:
 
 1. Create an app in App Store Connect with bundle ID
-   `com.rundon0401.goodbadminton`
+   `com.rundon2026.goodbadminton`
 2. Create a dedicated App Store Connect API key with App Manager access
 3. In Codemagic, open Team settings, Developer Portal, and add the API key
 4. Configure automatic iOS signing for the same bundle ID
@@ -72,7 +72,7 @@ encrypted environment variables.
 
 ## iOS project settings
 
-- Bundle ID: `com.rundon0401.goodbadminton`
+- Bundle ID: `com.rundon2026.goodbadminton`
 - Minimum iOS version: 13.0
 - Display name: `Good-Badminton`
 - API: `https://api.audacity6441.kdns.fr`
