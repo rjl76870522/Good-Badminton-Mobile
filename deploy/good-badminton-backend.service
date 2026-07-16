@@ -13,6 +13,7 @@ Environment=ALL_PROXY=
 Environment=all_proxy=
 Environment=NO_PROXY=*
 Environment=no_proxy=*
+Environment=ANALYSIS_WORKERS=2
 ExecStart=/data/projects/Good-Badminton-1/start_backend.sh
 Restart=always
 RestartSec=5

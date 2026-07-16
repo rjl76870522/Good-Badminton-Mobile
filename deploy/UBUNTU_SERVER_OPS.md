@@ -63,6 +63,31 @@ curl http://127.0.0.1:8001/api/diagnostics
 .venv/bin/python deploy/check_gpu.py
 ```
 
+## Analysis concurrency
+
+Uploads are accepted concurrently and persisted as separate SQLite tasks. The
+analysis worker pool is bounded independently so several phones can upload at
+once without starting an unbounded number of CUDA jobs.
+
+The Quadro RTX 5000 16 GB server is configured for two concurrent analyses:
+
+```ini
+Environment=ANALYSIS_WORKERS=2
+```
+
+Inspect live capacity and queue pressure with:
+
+```bash
+curl http://127.0.0.1:8001/api/queue
+```
+
+The response reports `queued`, `processing`, `capacity`, and `active_workers`.
+Use `ANALYSIS_WORKERS=auto` outside systemd to select 1-3 workers from detected
+GPU memory. Do not raise the production value above 2 without repeating the
+two-video GPU stress test and checking CPU load, disk throughput, and CUDA OOM
+errors. Matplotlib report rendering is serialized because it uses global state;
+model inference and video processing remain concurrent.
+
 ## Optional timer install
 
 ```bash

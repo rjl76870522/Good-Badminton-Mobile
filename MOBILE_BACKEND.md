@@ -69,6 +69,12 @@ Poll a task:
 GET /api/tasks/{task_id}
 ```
 
+Read queue and worker-pool status:
+
+```text
+GET /api/queue
+```
+
 Read the report:
 
 ```text
@@ -112,7 +118,8 @@ http://172.29.72.218:8001/outputs/.../match_heatmap.png
 
 ## Notes
 
-This backend stores tasks in memory and snapshots them under
-`mobile_backend_data/tasks`. It intentionally runs one analysis task at a time
-because the vision pipeline is heavy and local-demo stability matters more than
-throughput.
+Tasks and status transitions are persisted in SQLite under
+`mobile_backend_data/badminton.db`. Uploads can run concurrently. Analysis uses
+a bounded worker pool: `ANALYSIS_WORKERS=auto` chooses a conservative capacity
+from GPU memory, while the Ubuntu RTX 5000 service explicitly uses two workers.
+Queued and interrupted tasks survive backend restarts.

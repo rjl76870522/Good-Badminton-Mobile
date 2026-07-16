@@ -14,6 +14,7 @@ import subprocess
 import threading
 import time
 import uuid
+import gc
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -78,6 +79,53 @@ DEFAULT_TEMPLATE_CANDIDATES = [
     PROJECT_ROOT / "templates" / "my_template.png",
     PROJECT_ROOT / "templates" / "demo.png",
 ]
+
+
+def _recommend_analysis_workers(total_memory_mb: int, free_memory_mb: int) -> int:
+    """Choose conservative GPU concurrency with room for codec and UI peaks."""
+    if total_memory_mb >= 24_000 and free_memory_mb >= 18_000:
+        return 3
+    if total_memory_mb >= 12_000 and free_memory_mb >= 8_000:
+        return 2
+    return 1
+
+
+def _analysis_capacity() -> tuple[int, dict[str, Any]]:
+    override = os.getenv("ANALYSIS_WORKERS", "auto").strip().lower()
+    if override not in {"", "auto"}:
+        try:
+            configured = max(1, min(int(override), 4))
+            return configured, {"source": "environment", "configured": configured}
+        except ValueError:
+            pass
+    try:
+        result = subprocess.run(
+            [
+                "nvidia-smi",
+                "--query-gpu=name,memory.total,memory.free",
+                "--format=csv,noheader,nounits",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        name, total, free = [part.strip() for part in result.stdout.splitlines()[0].split(",")]
+        total_mb = int(float(total))
+        free_mb = int(float(free))
+        workers = _recommend_analysis_workers(total_mb, free_mb)
+        return workers, {
+            "source": "gpu_auto",
+            "gpu": name,
+            "memory_total_mb": total_mb,
+            "memory_free_at_start_mb": free_mb,
+            "configured": workers,
+        }
+    except Exception as exc:
+        return 1, {"source": "safe_default", "configured": 1, "reason": str(exc)}
+
+
+ANALYSIS_WORKER_COUNT, ANALYSIS_CAPACITY_INFO = _analysis_capacity()
 
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 PREVIEW_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -1500,15 +1548,25 @@ def _claim_next_task() -> dict[str, Any] | None:
 
 
 def _run_claimed_task(task: dict[str, Any]) -> None:
-    _run_analysis_task(
-        task_id=task["task_id"],
-        video_path=str(task.get("upload_path") or ""),
-        template_path=str(task.get("template_path") or ""),
-        corners=_task_corners(task),
-        language=str(task.get("language") or "zh"),
-        pose_mode=str(task.get("pose_mode") or "balanced"),
-        keep_audio=bool(task.get("keep_audio", True)),
-    )
+    try:
+        _run_analysis_task(
+            task_id=task["task_id"],
+            video_path=str(task.get("upload_path") or ""),
+            template_path=str(task.get("template_path") or ""),
+            corners=_task_corners(task),
+            language=str(task.get("language") or "zh"),
+            pose_mode=str(task.get("pose_mode") or "balanced"),
+            keep_audio=bool(task.get("keep_audio", True)),
+        )
+    finally:
+        gc.collect()
+        try:
+            import torch
+
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except Exception:
+            pass
 
 
 def _fail_unhandled_task(task_id: str, exc: Exception) -> None:
@@ -1553,7 +1611,9 @@ def _queue_summary() -> dict[str, Any]:
             "queued": queued,
             "processing": processing,
             "worker_running": TASK_WORKER.running,
-            "capacity": 1,
+            "capacity": TASK_WORKER.capacity,
+            "active_workers": TASK_WORKER.active_workers,
+            "capacity_reason": ANALYSIS_CAPACITY_INFO,
         }
     finally:
         session.close()
@@ -1688,4 +1748,5 @@ TASK_WORKER = DurableTaskWorker(
     claim_next=_claim_next_task,
     run_task=_run_claimed_task,
     fail_task=_fail_unhandled_task,
+    worker_count=ANALYSIS_WORKER_COUNT,
 )

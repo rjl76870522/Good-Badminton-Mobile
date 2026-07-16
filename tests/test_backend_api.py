@@ -173,6 +173,13 @@ def test_durable_queue_claims_fifo_and_updates_positions(monkeypatch, tmp_path):
     assert backend_api._public_task(backend_api._get_task_or_404("task-b"))["queue_position"] == 1
 
 
+def test_gpu_capacity_recommendation_is_conservative():
+    assert backend_api._recommend_analysis_workers(8_000, 7_000) == 1
+    assert backend_api._recommend_analysis_workers(16_384, 14_000) == 2
+    assert backend_api._recommend_analysis_workers(24_576, 17_000) == 2
+    assert backend_api._recommend_analysis_workers(24_576, 20_000) == 3
+
+
 def test_cancel_only_changes_queued_tasks(monkeypatch, tmp_path):
     _configure_data_dirs(monkeypatch, tmp_path)
     now = time.time()
