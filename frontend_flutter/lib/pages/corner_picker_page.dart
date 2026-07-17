@@ -1,16 +1,23 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:video_player/video_player.dart';
 
 import '../config/api_config.dart';
 import '../models/preview_frame.dart';
 import '../utils/corner_mapper.dart';
 
 class CornerPickerPage extends StatefulWidget {
-  const CornerPickerPage({super.key, required this.preview});
+  const CornerPickerPage({
+    super.key,
+    required this.preview,
+    this.localVideoPath,
+  });
 
   final PreviewFrame preview;
+  final String? localVideoPath;
 
   @override
   State<CornerPickerPage> createState() => _CornerPickerPageState();
@@ -25,6 +32,8 @@ class _CornerPickerPageState extends State<CornerPickerPage>
     vsync: this,
     duration: const Duration(milliseconds: 1200),
   )..repeat(reverse: true);
+  VideoPlayerController? _localVideoController;
+  bool _localVideoReady = false;
 
   @override
   void initState() {
@@ -32,6 +41,31 @@ class _CornerPickerPageState extends State<CornerPickerPage>
     _points = widget.preview.autoCorners.length == 4
         ? List.of(widget.preview.autoCorners)
         : [];
+    _initializeLocalVideoPreview();
+  }
+
+  Future<void> _initializeLocalVideoPreview() async {
+    final path = widget.localVideoPath;
+    if (path == null || path.isEmpty || !await File(path).exists()) return;
+    final controller = VideoPlayerController.file(File(path));
+    try {
+      await controller.initialize();
+      final seekTarget = Duration(
+        milliseconds: (widget.preview.timeSec * 1000).round(),
+      );
+      await controller.seekTo(seekTarget);
+      await controller.pause();
+      if (!mounted) {
+        await controller.dispose();
+        return;
+      }
+      setState(() {
+        _localVideoController = controller;
+        _localVideoReady = true;
+      });
+    } catch (_) {
+      await controller.dispose();
+    }
   }
 
   Size get _videoSize => Size(
@@ -58,6 +92,22 @@ class _CornerPickerPageState extends State<CornerPickerPage>
   }
 
   Widget _buildPreviewImage(String imageUrl) {
+    final localController = _localVideoController;
+    if (_localVideoReady && localController != null) {
+      final size = localController.value.size;
+      return ColoredBox(
+        color: Colors.black,
+        child: FittedBox(
+          fit: BoxFit.fill,
+          child: SizedBox(
+            width: size.width == 0 ? _videoSize.width : size.width,
+            height: size.height == 0 ? _videoSize.height : size.height,
+            child: VideoPlayer(localController),
+          ),
+        ),
+      );
+    }
+
     final dataUrl = widget.preview.imageDataUrl;
     if (dataUrl != null && dataUrl.startsWith('data:image/')) {
       final commaIndex = dataUrl.indexOf(',');
@@ -106,6 +156,7 @@ class _CornerPickerPageState extends State<CornerPickerPage>
   void dispose() {
     _pulseController.dispose();
     _transformCtrl.dispose();
+    _localVideoController?.dispose();
     super.dispose();
   }
 

@@ -170,7 +170,10 @@ class _UploadPageState extends State<UploadPage> {
       setState(() => _preview = preview);
       final corners = await Navigator.of(context).push<List<CourtPoint>>(
         MaterialPageRoute(
-          builder: (_) => CornerPickerPage(preview: preview),
+          builder: (_) => CornerPickerPage(
+            preview: preview,
+            localVideoPath: file.path,
+          ),
         ),
       );
       if (!mounted) return;
@@ -193,7 +196,12 @@ class _UploadPageState extends State<UploadPage> {
     final preview = _preview;
     if (preview == null) return;
     final corners = await Navigator.of(context).push<List<CourtPoint>>(
-      MaterialPageRoute(builder: (_) => CornerPickerPage(preview: preview)),
+      MaterialPageRoute(
+        builder: (_) => CornerPickerPage(
+          preview: preview,
+          localVideoPath: _selectedFile?.path,
+        ),
+      ),
     );
     if (mounted && corners != null) {
       setState(() => _corners = corners.length == 4 ? corners : const []);
@@ -329,7 +337,9 @@ class _UploadPageState extends State<UploadPage> {
                 LinearProgressIndicator(value: _previewProgress),
                 const SizedBox(height: 6),
                 Text(
-                  '正在上传并提取预览帧：${(_previewProgress * 100).round()}%',
+                  _previewProgress >= 0.92
+                      ? '上传完成，正在生成预览页'
+                      : '正在上传并提取预览帧：${(_previewProgress * 100).round()}%',
                   textAlign: TextAlign.center,
                 ),
               ],

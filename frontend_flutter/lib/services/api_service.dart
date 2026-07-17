@@ -73,7 +73,8 @@ class ApiService {
     if (kIsWeb) {
       final bytes = await file.readAsBytes();
       multipartFile = http.MultipartFile.fromBytes(
-        'file', bytes,
+        'file',
+        bytes,
         filename: file.name,
       );
     } else {
@@ -87,7 +88,7 @@ class ApiService {
       ApiConfig.uri('/api/videos/preview-frame'),
       onProgress: (sentBytes, totalBytes) {
         if (totalBytes > 0) {
-          onProgress?.call((sentBytes / totalBytes).clamp(0, 1));
+          onProgress?.call(((sentBytes / totalBytes) * 0.92).clamp(0, 0.92));
         }
       },
     )
@@ -97,6 +98,7 @@ class ApiService {
       final streamed = await _client.send(request).timeout(timeout);
       final response =
           await http.Response.fromStream(streamed).timeout(timeout);
+      onProgress?.call(0.96);
       final result = PreviewFrame.fromJson(_decodeMap(response));
       onProgress?.call(1);
       return result;
@@ -151,7 +153,8 @@ class ApiService {
       if (kIsWeb) {
         final bytes = await file!.readAsBytes();
         multipartFile = http.MultipartFile.fromBytes(
-          'file', bytes,
+          'file',
+          bytes,
           filename: file.name,
         );
       } else {
@@ -256,9 +259,8 @@ class ApiService {
   }
 
   Future<String> downloadFile(String url, String localPath) async {
-    final response = await _client
-        .get(Uri.parse(url))
-        .timeout(const Duration(minutes: 10));
+    final response =
+        await _client.get(Uri.parse(url)).timeout(const Duration(minutes: 10));
     if (response.statusCode != 200) {
       throw ApiException('下载失败：HTTP ${response.statusCode}');
     }

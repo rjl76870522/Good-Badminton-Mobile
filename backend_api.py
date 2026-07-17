@@ -15,7 +15,6 @@ import threading
 import time
 import uuid
 import gc
-import base64
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -77,8 +76,8 @@ MAX_PREVIEW_DARK_RATIO = 0.65
 MIN_PREVIEW_SHARPNESS = 12.0
 MIN_PREVIEW_COURT_AREA_RATIO = 0.025
 MAX_PREVIEW_COURT_AREA_RATIO = 0.92
-PREVIEW_IMAGE_MAX_WIDTH = 960
-PREVIEW_IMAGE_JPEG_QUALITY = 82
+PREVIEW_IMAGE_MAX_WIDTH = 480
+PREVIEW_IMAGE_JPEG_QUALITY = 65
 DEFAULT_TEMPLATE_CANDIDATES = [
     PROJECT_ROOT / "templates" / "badminton_template.png",
     PROJECT_ROOT / "templates" / "my_template.png",
@@ -933,7 +932,6 @@ def _select_preview_frame(video_path: Path, source_upload_id: str) -> dict[str, 
             message="预览帧编码失败。",
         )
     encoded.tofile(str(image_path))
-    image_data_url = "data:image/jpeg;base64," + base64.b64encode(encoded).decode("ascii")
     total_elapsed = time.perf_counter() - started_at
     print(
         "Preview frame selected: "
@@ -945,7 +943,6 @@ def _select_preview_frame(video_path: Path, source_upload_id: str) -> dict[str, 
 
     return {
         "image_url": f"/preview-frames/{source_upload_id}.jpg",
-        "image_data_url": image_data_url,
         "frame_index": best["frame_index"],
         "time_sec": round(float(best["time_sec"]), 2),
         "score": round(float(best["score"]), 3),
