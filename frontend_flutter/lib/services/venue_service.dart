@@ -1,9 +1,17 @@
 import 'dart:convert';
 
+import 'package:http/http.dart' as http;
+
 import '../models/venue.dart';
 
 class VenueQrException implements Exception {
   const VenueQrException(this.message);
+
+  final String message;
+}
+
+class VenueVideoException implements Exception {
+  const VenueVideoException(this.message);
 
   final String message;
 }
@@ -33,8 +41,51 @@ class VenueService {
     }
   }
 
-  Future<List<VenueVideo>> getVideos(String venueId) async {
-    // 第一阶段仅使用 Mock 数据；后续在此接入球馆视频库接口。
+  Future<List<VenueVideo>> getVideos(VenueInfo venue) async {
+    final uri = Uri.parse(venue.serverUrl).resolve('/videos');
+    try {
+      final response = await http.get(uri).timeout(const Duration(seconds: 12));
+      if (response.statusCode != 200) {
+        throw const VenueVideoException('球馆视频库暂时无法访问');
+      }
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map || decoded['items'] is! List) {
+        throw const VenueVideoException('球馆视频库数据格式错误');
+      }
+      final videos = <VenueVideo>[];
+      for (final rawItem in decoded['items'] as List) {
+        if (rawItem is! Map) {
+          throw const VenueVideoException('球馆视频库包含无效视频');
+        }
+        final item = Map<String, dynamic>.from(rawItem);
+        final id = item['id']?.toString().trim() ?? '';
+        final court = item['court']?.toString().trim() ?? '';
+        if (id.isEmpty || court.isEmpty) {
+          throw const VenueVideoException('球馆视频库包含无效视频');
+        }
+        videos.add(VenueVideo(
+          id: id,
+          court: court,
+          time: item['time']?.toString().trim() ?? '时间未知',
+          duration: item['duration']?.toString().trim() ?? '时长未知',
+          thumbnail: item['thumbnail']?.toString().trim(),
+          downloadUrl: uri.resolve('/videos/$id/download').toString(),
+        ));
+      }
+      if (videos.isEmpty) {
+        // A venue may briefly return an empty cache while recordings are syncing.
+        // Keep the first-stage demo flow usable instead of leaving the page blank.
+        return getMockVideos();
+      }
+      return videos;
+    } on VenueVideoException {
+      rethrow;
+    } catch (_) {
+      throw const VenueVideoException('无法连接球馆视频库，请检查网络后重试');
+    }
+  }
+
+  List<VenueVideo> getMockVideos() {
     return const [
       VenueVideo(
         id: 'video001',

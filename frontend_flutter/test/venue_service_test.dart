@@ -21,8 +21,8 @@ void main() {
     );
   });
 
-  test('returns mock venue videos', () async {
-    final videos = await service.getVideos('SZ_BADMINTON_001');
+  test('returns mock venue videos', () {
+    final videos = service.getMockVideos();
 
     expect(videos, hasLength(2));
     expect(videos.first.court, '1号场');

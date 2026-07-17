@@ -16,6 +16,7 @@ env/
 results/
 outputs/
 *.log
+mock_venue_server/*.pid
 mobile_backend_data/
 deliverables/
 bilibilivideo/

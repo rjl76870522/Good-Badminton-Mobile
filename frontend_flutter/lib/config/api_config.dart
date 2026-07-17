@@ -1,7 +1,9 @@
 class ApiConfig {
   ApiConfig._();
 
-  static const String baseUrl = 'http://localhost:8001';
+  /// Public HTTPS endpoint for physical-device access.
+  /// Keep this value without a trailing `/api`; services append endpoint paths.
+  static const String baseUrl = 'https://api.audacity6441.kdns.fr';
 
   static Uri uri(String path, [Map<String, dynamic>? queryParameters]) {
     final normalizedPath = path.startsWith('/') ? path : '/$path';

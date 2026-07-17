@@ -17,6 +17,7 @@ class VenueVideo {
     required this.time,
     required this.duration,
     this.thumbnail,
+    this.downloadUrl,
   });
 
   final String id;
@@ -24,4 +25,5 @@ class VenueVideo {
   final String time;
   final String duration;
   final String? thumbnail;
+  final String? downloadUrl;
 }

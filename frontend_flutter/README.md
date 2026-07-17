@@ -45,8 +45,8 @@ start_mobile_backend.bat
 电脑浏览器访问以下地址确认后端运行：
 
 ```text
-http://127.0.0.1:8001/api/health
-http://127.0.0.1:8001/docs
+https://api.audacity6441.kdns.fr/api/health
+https://api.audacity6441.kdns.fr/docs
 ```
 
 ## 3. 确认电脑局域网 IP
@@ -78,7 +78,7 @@ lib/config/api_config.dart
 当前值：
 
 ```dart
-static const String baseUrl = 'http://172.29.11.85:8001';
+static const String baseUrl = 'https://api.audacity6441.kdns.fr';
 ```
 
 项目其他文件不重复写死后端地址。
@@ -97,7 +97,7 @@ flutter run
 如果手机无法连接后端：
 
 1. 确认手机和电脑在同一个 Wi-Fi。
-2. 在手机浏览器打开 `http://172.29.11.85:8001/api/health`。
+2. 在手机浏览器打开 `https://api.audacity6441.kdns.fr/api/health`。
 3. 确认后端使用 `--host 0.0.0.0 --port 8001` 启动。
 4. 允许 Windows 防火墙中的 Python/Uvicorn 访问专用网络，或放行 TCP 8001。
 5. 确认 `api_config.dart` 中的 IP 是电脑当前 WLAN IPv4 地址。
