@@ -121,5 +121,5 @@ http://172.29.72.218:8001/outputs/.../match_heatmap.png
 Tasks and status transitions are persisted in SQLite under
 `mobile_backend_data/badminton.db`. Uploads can run concurrently. Analysis uses
 a bounded worker pool: `ANALYSIS_WORKERS=auto` chooses a conservative capacity
-from GPU memory, while the Ubuntu RTX 5000 service explicitly uses two workers.
+from GPU memory, while the Ubuntu RTX 5000 service explicitly uses three workers.
 Queued and interrupted tasks survive backend restarts.

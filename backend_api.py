@@ -84,6 +84,8 @@ DEFAULT_TEMPLATE_CANDIDATES = [
 def _recommend_analysis_workers(total_memory_mb: int, free_memory_mb: int) -> int:
     """Choose conservative GPU concurrency with room for codec and UI peaks."""
     if total_memory_mb >= 24_000 and free_memory_mb >= 18_000:
+        return 4
+    if total_memory_mb >= 16_000 and free_memory_mb >= 12_000:
         return 3
     if total_memory_mb >= 12_000 and free_memory_mb >= 8_000:
         return 2
