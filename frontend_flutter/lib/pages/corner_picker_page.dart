@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -53,6 +55,51 @@ class _CornerPickerPageState extends State<CornerPickerPage>
         ),
       );
     });
+  }
+
+  Widget _buildPreviewImage(String imageUrl) {
+    final dataUrl = widget.preview.imageDataUrl;
+    if (dataUrl != null && dataUrl.startsWith('data:image/')) {
+      final commaIndex = dataUrl.indexOf(',');
+      if (commaIndex > 0) {
+        try {
+          final bytes = base64Decode(dataUrl.substring(commaIndex + 1));
+          return Image.memory(
+            bytes,
+            fit: BoxFit.fill,
+            gaplessPlayback: true,
+          );
+        } on FormatException {
+          // Fall through to the network URL below.
+        }
+      }
+    }
+    return Image.network(
+      imageUrl,
+      fit: BoxFit.fill,
+      frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+        if (wasSynchronouslyLoaded || frame != null) {
+          return child;
+        }
+        return const ColoredBox(
+          color: Colors.black38,
+          child: Center(child: CircularProgressIndicator()),
+        );
+      },
+      errorBuilder: (_, error, __) => ColoredBox(
+        color: Colors.black38,
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Text(
+              '预览图加载失败：$error\n$imageUrl',
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.white70),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -170,22 +217,7 @@ class _CornerPickerPageState extends State<CornerPickerPage>
                                       child: Stack(
                                         fit: StackFit.expand,
                                         children: [
-                                          Image.network(
-                                            imageUrl,
-                                            fit: BoxFit.fill,
-                                            errorBuilder: (_, error, __) =>
-                                                ColoredBox(
-                                              color: Colors.black38,
-                                              child: Center(
-                                                child: Text(
-                                                  '预览图加载失败：$error',
-                                                  style: const TextStyle(
-                                                    color: Colors.white70,
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                          ),
+                                          _buildPreviewImage(imageUrl),
                                           AnimatedBuilder(
                                             animation: _pulseController,
                                             builder: (context, _) =>

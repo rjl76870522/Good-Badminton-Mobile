@@ -12,6 +12,7 @@ void main() {
     final preview = PreviewFrame.fromJson({
       'source_upload_id': 'source-1',
       'image_url': '/preview-frames/source-1.jpg',
+      'image_data_url': 'data:image/jpeg;base64,abc123',
       'frame_index': 86,
       'time_sec': 2.86,
       'selection_reason': 'auto_court_detected',
@@ -35,6 +36,7 @@ void main() {
     });
 
     expect(preview.sourceUploadId, 'source-1');
+    expect(preview.imageDataUrl, 'data:image/jpeg;base64,abc123');
     expect(preview.autoCorners, hasLength(4));
     expect(preview.video.width, 1000);
     expect(preview.score, 0.91);

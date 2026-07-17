@@ -18,6 +18,7 @@ class PreviewFrame {
   const PreviewFrame({
     required this.sourceUploadId,
     required this.imageUrl,
+    this.imageDataUrl,
     required this.frameIndex,
     required this.timeSec,
     required this.selectionReason,
@@ -31,6 +32,7 @@ class PreviewFrame {
 
   final String sourceUploadId;
   final String imageUrl;
+  final String? imageDataUrl;
   final int frameIndex;
   final double timeSec;
   final String selectionReason;
@@ -52,6 +54,7 @@ class PreviewFrame {
     return PreviewFrame(
       sourceUploadId: sourceUploadId,
       imageUrl: imageUrl,
+      imageDataUrl: _nullableString(json['image_data_url']),
       frameIndex: _integer(json['frame_index']),
       timeSec: _number(json['time_sec']),
       selectionReason: json['selection_reason']?.toString() ?? '',

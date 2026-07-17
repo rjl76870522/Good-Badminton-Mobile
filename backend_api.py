@@ -15,6 +15,7 @@ import threading
 import time
 import uuid
 import gc
+import base64
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -76,6 +77,8 @@ MAX_PREVIEW_DARK_RATIO = 0.65
 MIN_PREVIEW_SHARPNESS = 12.0
 MIN_PREVIEW_COURT_AREA_RATIO = 0.025
 MAX_PREVIEW_COURT_AREA_RATIO = 0.92
+PREVIEW_IMAGE_MAX_WIDTH = 960
+PREVIEW_IMAGE_JPEG_QUALITY = 82
 DEFAULT_TEMPLATE_CANDIDATES = [
     PROJECT_ROOT / "templates" / "badminton_template.png",
     PROJECT_ROOT / "templates" / "my_template.png",
@@ -917,7 +920,12 @@ def _select_preview_frame(video_path: Path, source_upload_id: str) -> dict[str, 
         )
 
     image_path = PREVIEW_FRAME_DIR / f"{source_upload_id}.jpg"
-    ok, encoded = cv2.imencode(".jpg", best["frame"], [int(cv2.IMWRITE_JPEG_QUALITY), 90])
+    preview_image = _resize_preview_image(best["frame"])
+    ok, encoded = cv2.imencode(
+        ".jpg",
+        preview_image,
+        [int(cv2.IMWRITE_JPEG_QUALITY), PREVIEW_IMAGE_JPEG_QUALITY],
+    )
     if not ok:
         raise_api_error(
             status_code=500,
@@ -925,6 +933,7 @@ def _select_preview_frame(video_path: Path, source_upload_id: str) -> dict[str, 
             message="预览帧编码失败。",
         )
     encoded.tofile(str(image_path))
+    image_data_url = "data:image/jpeg;base64," + base64.b64encode(encoded).decode("ascii")
     total_elapsed = time.perf_counter() - started_at
     print(
         "Preview frame selected: "
@@ -936,6 +945,7 @@ def _select_preview_frame(video_path: Path, source_upload_id: str) -> dict[str, 
 
     return {
         "image_url": f"/preview-frames/{source_upload_id}.jpg",
+        "image_data_url": image_data_url,
         "frame_index": best["frame_index"],
         "time_sec": round(float(best["time_sec"]), 2),
         "score": round(float(best["score"]), 3),
@@ -952,6 +962,15 @@ def _select_preview_frame(video_path: Path, source_upload_id: str) -> dict[str, 
             "total_frames": total_frames,
         },
     }
+
+
+def _resize_preview_image(frame: Any) -> Any:
+    height, width = frame.shape[:2]
+    if width <= PREVIEW_IMAGE_MAX_WIDTH:
+        return frame
+    scale = PREVIEW_IMAGE_MAX_WIDTH / float(width)
+    target_size = (PREVIEW_IMAGE_MAX_WIDTH, max(1, int(round(height * scale))))
+    return cv2.resize(frame, target_size, interpolation=cv2.INTER_AREA)
 
 
 def _preview_sample_indices(total_frames: int) -> list[int]:
