@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../config/api_config.dart';
 import '../models/task_status.dart';
 import '../services/api_service.dart';
+import '../services/map_launcher_service.dart';
 import '../services/task_storage.dart';
 import '../utils/user_facing_error.dart';
 import 'qr_scan_page.dart';
@@ -21,6 +22,7 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   final ApiService _api = ApiService();
+  final MapLauncherService _mapLauncher = const MapLauncherService();
   final TaskStorage _storage = TaskStorage();
   Map<String, dynamic>? _health;
   TaskStatus? _restoredTask;
@@ -104,6 +106,72 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  Future<void> _openNearbyCourtsSearch() async {
+    final app = await showModalBottomSheet<MapApp>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 6, 16, 18),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '查找附近羽毛球馆',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                '选择一个地图或生活服务应用，打开后搜索附近羽毛球馆',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+              ),
+              const SizedBox(height: 14),
+              _MapOptionTile(
+                icon: Icons.map_outlined,
+                title: '高德地图',
+                subtitle: '适合导航和附近搜索',
+                app: MapApp.amap,
+                color: const Color(0xFFE6F4FF),
+              ),
+              _MapOptionTile(
+                icon: Icons.explore_outlined,
+                title: '百度地图',
+                subtitle: '适合搜索场馆和路线',
+                app: MapApp.baidu,
+                color: const Color(0xFFEAF0FF),
+              ),
+              _MapOptionTile(
+                icon: Icons.storefront_outlined,
+                title: '美团',
+                subtitle: '适合查看团购和营业信息',
+                app: MapApp.meituan,
+                color: const Color(0xFFFFF6D9),
+              ),
+              _MapOptionTile(
+                icon: Icons.public_outlined,
+                title: '浏览器搜索',
+                subtitle: '没有安装地图应用时使用',
+                app: MapApp.browser,
+                color: const Color(0xFFE9F7EA),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (app == null) return;
+    final launched = await _mapLauncher.launchNearbyBadminton(app);
+    if (!mounted || launched) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('没有找到可打开的地图应用，请先安装高德地图、百度地图或美团')),
+    );
+  }
+
   @override
   void dispose() {
     _api.close();
@@ -165,6 +233,8 @@ class _HomePageState extends State<HomePage> {
                     MaterialPageRoute(builder: (_) => const QrScanPage()),
                   ),
                 ),
+                const SizedBox(height: 14),
+                _NearbyCourtEntry(onTap: _openNearbyCourtsSearch),
                 const SizedBox(height: 14),
                 Offstage(
                   offstage: true,
@@ -434,6 +504,92 @@ class _VenueScanEntry extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _NearbyCourtEntry extends StatelessWidget {
+  const _NearbyCourtEntry({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(24),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEAF7EC),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const Icon(
+                  Icons.location_on_outlined,
+                  color: Color(0xFF1B5E20),
+                ),
+              ),
+              const SizedBox(width: 14),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '附近羽毛球馆',
+                      style: TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                    SizedBox(height: 3),
+                    Text('跳转地图应用，搜索和导航到附近场馆'),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MapOptionTile extends StatelessWidget {
+  const _MapOptionTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.app,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final MapApp app;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: Container(
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Icon(icon),
+      ),
+      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
+      subtitle: Text(subtitle),
+      trailing: const Icon(Icons.open_in_new_rounded),
+      onTap: () => Navigator.of(context).pop(app),
     );
   }
 }
