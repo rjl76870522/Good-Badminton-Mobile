@@ -67,7 +67,8 @@ MAX_UPLOAD_BYTES = 200 * 1024 * 1024
 MIN_VIDEO_DURATION_SEC = 5.0
 MAX_VIDEO_DURATION_SEC = 180.0
 MIN_DETECTION_RECORDS = 3
-PREVIEW_COURT_DETECT_CANDIDATES = 3
+PREVIEW_COURT_DETECT_CANDIDATES = 1
+PREVIEW_COURT_DETECT_SIZE = (540, 360)
 MIN_PREVIEW_BRIGHTNESS = 40.0
 MIN_PREVIEW_NONBLACK_RATIO = 0.42
 MIN_PREVIEW_CENTER_NONBLACK_RATIO = 0.35
@@ -846,6 +847,7 @@ def _count_detection_records(path: str | os.PathLike[str] | None) -> int:
 
 
 def _select_preview_frame(video_path: Path, source_upload_id: str) -> dict[str, Any]:
+    started_at = time.perf_counter()
     cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
         raise_api_error(
@@ -868,6 +870,7 @@ def _select_preview_frame(video_path: Path, source_upload_id: str) -> dict[str, 
         )
 
     sample_indices = _preview_sample_indices(total_frames)
+    read_started_at = time.perf_counter()
     candidates: list[dict[str, Any]] = []
     for frame_index in sample_indices:
         cap.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
@@ -879,8 +882,10 @@ def _select_preview_frame(video_path: Path, source_upload_id: str) -> dict[str, 
             continue
         candidates.append(scored)
     cap.release()
+    read_elapsed = time.perf_counter() - read_started_at
 
     best: dict[str, Any] | None = None
+    detect_started_at = time.perf_counter()
     for candidate in sorted(candidates, key=lambda item: item["score"], reverse=True)[
         :PREVIEW_COURT_DETECT_CANDIDATES
     ]:
@@ -894,6 +899,7 @@ def _select_preview_frame(video_path: Path, source_upload_id: str) -> dict[str, 
             continue
         if best is None or scored["score"] > best["score"]:
             best = scored
+    detect_elapsed = time.perf_counter() - detect_started_at
 
     if best is None and candidates:
         best = max(candidates, key=lambda item: item["score"])
@@ -919,6 +925,14 @@ def _select_preview_frame(video_path: Path, source_upload_id: str) -> dict[str, 
             message="预览帧编码失败。",
         )
     encoded.tofile(str(image_path))
+    total_elapsed = time.perf_counter() - started_at
+    print(
+        "Preview frame selected: "
+        f"source={source_upload_id} frame={best['frame_index']} "
+        f"reason={best['reason']} candidates={len(candidates)} "
+        f"read={read_elapsed:.2f}s detect={detect_elapsed:.2f}s total={total_elapsed:.2f}s",
+        flush=True,
+    )
 
     return {
         "image_url": f"/preview-frames/{source_upload_id}.jpg",
@@ -973,7 +987,10 @@ def _score_preview_frame(
 
     raw_auto_corners = None
     if detect_court:
-        raw_auto_corners, _preview = auto_detect_preview(frame)
+        raw_auto_corners, _preview = auto_detect_preview(
+            frame,
+            fixed_size=PREVIEW_COURT_DETECT_SIZE,
+        )
     h, w = frame.shape[:2]
     auto_corners = None
     area_ratio = 0.0
