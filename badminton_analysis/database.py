@@ -49,15 +49,16 @@ def init_db(db_path: str | Path = "mobile_backend_data/badminton.db") -> None:
     _engine = create_engine(
         f"sqlite:///{db_path}",
         echo=False,
-        connect_args={"check_same_thread": False},
+        connect_args={"check_same_thread": False, "timeout": 30},
         json_serializer=lambda obj: json.dumps(obj, ensure_ascii=False),
     )
 
-    # Enable WAL mode for concurrent reads
+    # WAL permits concurrent readers; busy_timeout lets short writer bursts queue.
     @event.listens_for(_engine, "connect")
     def _set_sqlite_pragma(dbapi_connection, _connection_record):  # noqa: ANN001
         cursor = dbapi_connection.cursor()
         cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA busy_timeout=30000")
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.close()
 

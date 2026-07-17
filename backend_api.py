@@ -27,6 +27,7 @@ from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sqlalchemy import or_
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from badminton_analysis.database import (
     OutputFile,
@@ -83,10 +84,16 @@ DEFAULT_TEMPLATE_CANDIDATES = [
 
 def _recommend_analysis_workers(total_memory_mb: int, free_memory_mb: int) -> int:
     """Choose conservative GPU concurrency with room for codec and UI peaks."""
-    if total_memory_mb >= 24_000 and free_memory_mb >= 18_000:
-        return 4
-    if total_memory_mb >= 16_000 and free_memory_mb >= 12_000:
-        return 3
+    if total_memory_mb >= 24_000:
+        if free_memory_mb >= 18_000:
+            return 4
+        if free_memory_mb >= 12_000:
+            return 3
+    if total_memory_mb >= 16_000:
+        if free_memory_mb >= 12_000:
+            return 4
+        if free_memory_mb >= 8_000:
+            return 2
     if total_memory_mb >= 12_000 and free_memory_mb >= 8_000:
         return 2
     return 1
@@ -1433,9 +1440,12 @@ def _set_task(task_id: str, task_data: dict[str, Any]) -> None:
     session = get_session()
     try:
         user_id = task_data.get("user_id", DEFAULT_USER_ID)
-        if session.get(User, user_id) is None:
-            now = time.time()
-            session.add(User(user_id=user_id, created_at=now, updated_at=now))
+        now = time.time()
+        session.execute(
+            sqlite_insert(User)
+            .values(user_id=user_id, created_at=now, updated_at=now)
+            .on_conflict_do_nothing(index_elements=[User.user_id])
+        )
         task = Task(
             task_id=task_id,
             user_id=user_id,
