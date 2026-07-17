@@ -5,11 +5,16 @@ import '../services/venue_service.dart';
 import 'video_detail_page.dart';
 
 class VenueVideoPage extends StatefulWidget {
-  const VenueVideoPage(
-      {super.key, required this.venue, this.service = const VenueService()});
+  const VenueVideoPage({
+    super.key,
+    required this.venue,
+    this.service = const VenueService(),
+    this.showDemoOnOpen = false,
+  });
 
   final VenueInfo venue;
   final VenueService service;
+  final bool showDemoOnOpen;
 
   @override
   State<VenueVideoPage> createState() => _VenueVideoPageState();
@@ -24,7 +29,13 @@ class _VenueVideoPageState extends State<VenueVideoPage> {
   @override
   void initState() {
     super.initState();
-    _loadVideos();
+    if (widget.showDemoOnOpen) {
+      _videos = widget.service.getMockVideos();
+      _isLoading = false;
+      _isDemoData = true;
+    } else {
+      _loadVideos();
+    }
   }
 
   Future<void> _loadVideos() async {

@@ -20,25 +20,146 @@ class VenueService {
   const VenueService();
 
   VenueInfo parseVenueQr(String rawValue) {
+    final value = rawValue.trim();
+    if (value.isEmpty) {
+      throw const VenueQrException('二维码内容为空');
+    }
+
     try {
-      final decoded = jsonDecode(rawValue);
-      if (decoded is! Map || decoded['type']?.toString() != 'venue') {
-        throw const VenueQrException('无效的球馆二维码');
+      final decoded = jsonDecode(value);
+      if (decoded is Map) {
+        return _venueFromMap(Map<String, dynamic>.from(decoded));
       }
-      final venueId = decoded['venue_id']?.toString().trim() ?? '';
-      final venueName = decoded['venue_name']?.toString().trim() ?? '';
-      final serverUrl = decoded['server_url']?.toString().trim() ?? '';
-      if (venueId.isEmpty || venueName.isEmpty || serverUrl.isEmpty) {
-        throw const VenueQrException('无效的球馆二维码');
-      }
-      final uri = Uri.tryParse(serverUrl);
-      if (uri == null || !uri.hasScheme || !uri.hasAuthority) {
-        throw const VenueQrException('无效的球馆二维码');
-      }
-      return VenueInfo(id: venueId, name: venueName, serverUrl: serverUrl);
     } on FormatException {
+      // Many venue QR codes are URLs instead of JSON payloads.
+    } on VenueQrException {
+      rethrow;
+    }
+
+    final uri = Uri.tryParse(value);
+    if (uri == null || !uri.hasScheme || !uri.hasAuthority) {
       throw const VenueQrException('无效的球馆二维码');
     }
+    if (uri.queryParameters.isNotEmpty) {
+      return _venueFromQuery(uri);
+    }
+    if (uri.scheme == 'http' || uri.scheme == 'https') {
+      return _venueFromPlainServerUrl(uri);
+    }
+
+    throw const VenueQrException('无效的球馆二维码');
+  }
+
+  VenueInfo _venueFromMap(Map<String, dynamic> decoded) {
+    final type = decoded['type']?.toString().trim().toLowerCase();
+    if (type != null && type.isNotEmpty && type != 'venue') {
+      throw const VenueQrException('无效的球馆二维码');
+    }
+    final serverUrl = _firstNonEmpty(decoded, const [
+      'server_url',
+      'serverUrl',
+      'url',
+      'base_url',
+      'baseUrl',
+    ]);
+    return _buildVenue(
+      id: _firstNonEmpty(decoded, const ['venue_id', 'venueId', 'id']),
+      name: _firstNonEmpty(decoded, const [
+        'venue_name',
+        'venueName',
+        'name',
+        'title',
+      ]),
+      serverUrl: serverUrl,
+    );
+  }
+
+  VenueInfo _venueFromQuery(Uri uri) {
+    final params = uri.queryParameters;
+    final serverUrl = _firstNonEmpty(params, const [
+      'server_url',
+      'serverUrl',
+      'url',
+      'base_url',
+      'baseUrl',
+      'server',
+    ]);
+    if (serverUrl.isNotEmpty) {
+      return _buildVenue(
+        id: _firstNonEmpty(params, const ['venue_id', 'venueId', 'id']),
+        name: _firstNonEmpty(params, const [
+          'venue_name',
+          'venueName',
+          'name',
+          'title',
+        ]),
+        serverUrl: serverUrl,
+        fallbackId: uri.host,
+        fallbackName: uri.host,
+      );
+    }
+
+    if (uri.scheme == 'http' || uri.scheme == 'https') {
+      return _venueFromPlainServerUrl(uri);
+    }
+    throw const VenueQrException('球馆二维码缺少视频库地址');
+  }
+
+  VenueInfo _venueFromPlainServerUrl(Uri uri) {
+    final serverUri = uri.replace(query: null, fragment: null);
+    return _buildVenue(
+      id: uri.host,
+      name: uri.host,
+      serverUrl: serverUri.toString(),
+    );
+  }
+
+  VenueInfo _buildVenue({
+    required String id,
+    required String name,
+    required String serverUrl,
+    String? fallbackId,
+    String? fallbackName,
+  }) {
+    final normalizedServerUrl = _normalizeServerUrl(serverUrl);
+    final venueId = id.trim().isNotEmpty
+        ? id.trim()
+        : fallbackId?.trim().isNotEmpty == true
+            ? fallbackId!.trim()
+            : Uri.parse(normalizedServerUrl).host;
+    final venueName = name.trim().isNotEmpty
+        ? name.trim()
+        : fallbackName?.trim().isNotEmpty == true
+            ? fallbackName!.trim()
+            : venueId;
+    return VenueInfo(
+      id: venueId,
+      name: venueName,
+      serverUrl: normalizedServerUrl,
+    );
+  }
+
+  String _normalizeServerUrl(String serverUrl) {
+    final value = serverUrl.trim();
+    if (value.isEmpty) {
+      throw const VenueQrException('球馆二维码缺少视频库地址');
+    }
+    final uri = Uri.tryParse(value);
+    if (uri == null ||
+        !uri.hasScheme ||
+        !uri.hasAuthority ||
+        (uri.scheme != 'http' && uri.scheme != 'https')) {
+      throw const VenueQrException('球馆视频库地址无效');
+    }
+    return uri.replace(query: null, fragment: null).toString();
+  }
+
+  String _firstNonEmpty(Map<dynamic, dynamic> values, List<String> keys) {
+    for (final key in keys) {
+      final value = values[key]?.toString().trim();
+      if (value != null && value.isNotEmpty) return value;
+    }
+    return '';
   }
 
   Future<List<VenueVideo>> getVideos(VenueInfo venue) async {
