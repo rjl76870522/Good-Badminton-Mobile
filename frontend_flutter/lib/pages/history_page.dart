@@ -4,6 +4,7 @@ import '../config/api_config.dart';
 import '../models/history_item.dart';
 import '../services/api_service.dart';
 import '../services/user_storage.dart';
+import '../utils/user_facing_error.dart';
 import 'report_page.dart';
 import 'task_status_page.dart';
 import 'upload_page.dart';
@@ -43,7 +44,14 @@ class _HistoryPageState extends State<HistoryPage> {
       );
       if (mounted) setState(() => _tasks = tasks);
     } catch (error) {
-      if (mounted) setState(() => _error = '读取历史失败：$error');
+      if (mounted) {
+        setState(
+          () => _error = userFacingError(
+            error,
+            fallback: '暂时无法读取训练历史，请确认分析服务已启动后重试。',
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -108,7 +116,11 @@ class _HistoryPageState extends State<HistoryPage> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('删除失败：$error')),
+        SnackBar(
+          content: Text(
+            userFacingError(error, fallback: '删除训练记录失败，请稍后重试。'),
+          ),
+        ),
       );
     }
   }
@@ -201,19 +213,7 @@ class _HistoryPageState extends State<HistoryPage> {
                       ),
                     ),
                   if (_error != null)
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: const Color(0xE6FFF1F0),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Text(
-                        _error!,
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.error,
-                        ),
-                      ),
-                    ),
+                    _HistoryErrorCard(message: _error!, onRetry: _load),
                   if (!_loading && _tasks.isEmpty && _error == null)
                     Container(
                       margin: const EdgeInsets.only(top: 18),
@@ -244,6 +244,51 @@ class _HistoryPageState extends State<HistoryPage> {
                   ),
                 ],
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HistoryErrorCard extends StatelessWidget {
+  const _HistoryErrorCard({required this.message, required this.onRetry});
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xF2FFF8F7),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFFFC9C6)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.cloud_off_outlined, color: Color(0xFFC45B57)),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  '暂时无法读取训练记录',
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 4),
+                Text(message, style: const TextStyle(color: Color(0xFF69413F))),
+                const SizedBox(height: 10),
+                TextButton.icon(
+                  onPressed: onRetry,
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('重新连接'),
+                ),
+              ],
             ),
           ),
         ],

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../models/task_status.dart';
 import '../services/api_service.dart';
 import '../services/task_storage.dart';
+import '../utils/user_facing_error.dart';
 import '../widgets/app_background.dart';
 import 'report_page.dart';
 import 'upload_page.dart';
@@ -68,7 +69,12 @@ class _TaskStatusPageState extends State<TaskStatusPage>
       final isTransient = error is ApiException && error.isTransient;
       setState(() {
         _temporaryNetworkIssue = isTransient;
-        _error = isTransient ? '网络连接短暂中断，正在自动重试。' : error.toString();
+        _error = isTransient
+            ? '网络连接短暂中断，正在自动重试。'
+            : userFacingError(
+                error,
+                fallback: '暂时无法读取任务状态，请稍后重试。',
+              );
         _loading = false;
       });
     } finally {

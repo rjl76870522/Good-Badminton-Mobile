@@ -8,6 +8,7 @@ import 'package:share_plus/share_plus.dart';
 import '../config/api_config.dart';
 import '../models/report.dart';
 import '../services/api_service.dart';
+import '../utils/user_facing_error.dart';
 import '../widgets/app_background.dart';
 import '../widgets/inline_network_video.dart';
 
@@ -58,7 +59,12 @@ class _ReportPageState extends State<ReportPage> {
       setState(() => _error = '报告还未生成完成');
     } catch (error) {
       if (!mounted) return;
-      setState(() => _error = '读取报告失败：$error');
+      setState(
+        () => _error = userFacingError(
+          error,
+          fallback: '暂时无法读取训练报告，请稍后重试。',
+        ),
+      );
     } finally {
       if (mounted) {
         setState(() => _loading = false);
@@ -1203,7 +1209,12 @@ class _VideoResultState extends State<_VideoResult> {
 
       final file = File(savedPath);
       final fileSize = await file.length();
-      await Gal.putVideo(savedPath);
+      final hasAccess = await Gal.hasAccess(toAlbum: true);
+      final granted = hasAccess || await Gal.requestAccess(toAlbum: true);
+      if (!granted) {
+        throw StateError('未获得系统相册访问权限，请在系统设置中允许照片权限后重试。');
+      }
+      await Gal.putVideo(savedPath, album: 'Good-Badminton');
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
