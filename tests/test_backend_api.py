@@ -1,7 +1,9 @@
 from pathlib import Path
 import time
 
+import cv2
 from fastapi.testclient import TestClient
+import numpy as np
 
 import backend_api
 
@@ -179,6 +181,22 @@ def test_gpu_capacity_recommendation_is_conservative():
     assert backend_api._recommend_analysis_workers(16_384, 14_000) == 4
     assert backend_api._recommend_analysis_workers(24_576, 17_000) == 3
     assert backend_api._recommend_analysis_workers(24_576, 20_000) == 4
+
+
+def test_preview_score_warns_when_auto_corners_are_missing(monkeypatch):
+    frame = np.full((240, 320, 3), 100, dtype=np.uint8)
+    cv2.line(frame, (40, 60), (280, 60), (255, 255, 255), 3)
+    cv2.line(frame, (40, 180), (280, 180), (255, 255, 255), 3)
+    cv2.line(frame, (40, 60), (40, 180), (255, 255, 255), 3)
+    cv2.line(frame, (280, 60), (280, 180), (255, 255, 255), 3)
+    monkeypatch.setattr(backend_api, "auto_detect_preview", lambda *_args, **_kwargs: (None, None))
+
+    scored = backend_api._score_preview_frame(frame, 30, 30.0, detect_court=True)
+
+    assert scored["usable"] is True
+    assert scored["auto_corners"] is None
+    assert scored["scene_warning"] is not None
+    assert "手动点选" in scored["scene_warning"]
 
 
 def test_cancel_only_changes_queued_tasks(monkeypatch, tmp_path):

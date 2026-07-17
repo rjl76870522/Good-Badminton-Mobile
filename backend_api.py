@@ -1036,6 +1036,8 @@ def _score_preview_frame(
     elif raw_auto_corners and not auto_corners:
         reason = "rejected_invalid_auto_corners"
         scene_warning = "自动角点质量较低，建议放大画面后手动点选四个外侧角点。"
+    elif detect_court and not auto_corners:
+        scene_warning = "已提取预览帧，但自动角点未识别。请按左上、右上、右下、左下的顺序手动点选四个球场外侧角点。"
     return {
         "frame": frame,
         "frame_index": frame_index,

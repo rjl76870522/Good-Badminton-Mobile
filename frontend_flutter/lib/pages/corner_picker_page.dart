@@ -118,6 +118,14 @@ class _CornerPickerPageState extends State<CornerPickerPage>
                                     '可双指缩放整个页面；单击图片添加角点。',
                                     style: TextStyle(color: Colors.white60),
                                   ),
+                                  if (widget.preview.autoCorners.length != 4)
+                                    const Text(
+                                      '当前没有可用的自动角点，请直接在预览图上手动点击。',
+                                      style: TextStyle(
+                                        color: Color(0xFFFFE0B2),
+                                        height: 1.4,
+                                      ),
+                                    ),
                                   if (widget.preview.sceneWarning != null) ...[
                                     const SizedBox(height: 8),
                                     Text(
@@ -225,7 +233,11 @@ class _CornerPickerPageState extends State<CornerPickerPage>
                                             ? _useAutoCorners
                                             : null,
                                     icon: const Icon(Icons.auto_fix_high),
-                                    label: const Text('自动检测'),
+                                    label: Text(
+                                      widget.preview.autoCorners.length == 4
+                                          ? '使用自动角点'
+                                          : '未识别到自动角点',
+                                    ),
                                   ),
                                 ],
                               ),
