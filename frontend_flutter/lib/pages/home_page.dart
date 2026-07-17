@@ -4,6 +4,7 @@ import '../config/api_config.dart';
 import '../models/task_status.dart';
 import '../services/api_service.dart';
 import '../services/task_storage.dart';
+import 'qr_scan_page.dart';
 import 'report_page.dart';
 import 'task_status_page.dart';
 import 'upload_page.dart';
@@ -157,6 +158,12 @@ class _HomePageState extends State<HomePage> {
                   health: _health,
                   error: _error,
                   onCheck: _checkHealth,
+                ),
+                const SizedBox(height: 14),
+                _VenueScanEntry(
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const QrScanPage()),
+                  ),
                 ),
                 if (_restoringTask) ...[
                   const SizedBox(height: 12),
@@ -366,6 +373,72 @@ class _HeroCard extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+class _VenueScanEntry extends StatelessWidget {
+  const _VenueScanEntry({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.94),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFE0E5DD), width: 0.8),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x10000000),
+            blurRadius: 16,
+            offset: Offset(0, 7),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(24),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+            child: Row(
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: scheme.primaryContainer,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Icon(
+                    Icons.qr_code_scanner_rounded,
+                    color: scheme.onPrimaryContainer,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '扫描球馆二维码',
+                        style: TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                      SizedBox(height: 3),
+                      Text('获取合作球馆的可用比赛视频'),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.chevron_right_rounded),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

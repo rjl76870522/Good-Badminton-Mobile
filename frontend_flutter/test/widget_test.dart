@@ -13,6 +13,8 @@ void main() {
     expect(find.text('羽毛球 AI 视觉分析'), findsOneWidget);
     expect(find.byIcon(Icons.power_settings_new_rounded), findsOneWidget);
     expect(find.text('开始上传视频'), findsOneWidget);
+    expect(find.text('扫描球馆二维码'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('Demo'), 160);
     expect(find.text('Demo'), findsOneWidget);
     expect(find.text('首页'), findsOneWidget);
     expect(find.text('历史记录'), findsWidgets);

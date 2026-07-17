@@ -28,8 +28,15 @@
 	<true/>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>用于选择羽毛球比赛视频进行分析。</string>
+	<key>NSCameraUsageDescription</key>
+	<string>用于扫描合作球馆二维码并获取比赛视频。</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>用于将分析视频和精彩集锦保存到系统相册。</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

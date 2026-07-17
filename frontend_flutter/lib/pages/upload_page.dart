@@ -14,9 +14,16 @@ import 'corner_picker_page.dart';
 import 'task_status_page.dart';
 
 class UploadPage extends StatefulWidget {
-  const UploadPage({super.key, this.retryTaskId});
+  const UploadPage({
+    super.key,
+    this.retryTaskId,
+    this.initialVideoPath,
+    this.initialVideoName,
+  });
 
   final String? retryTaskId;
+  final String? initialVideoPath;
+  final String? initialVideoName;
 
   @override
   State<UploadPage> createState() => _UploadPageState();
@@ -52,7 +59,24 @@ class _UploadPageState extends State<UploadPage> {
   @override
   void initState() {
     super.initState();
-    _restoreRetryVideo();
+    _restoreInitialVideo();
+  }
+
+  Future<void> _restoreInitialVideo() async {
+    final initialPath = widget.initialVideoPath;
+    if (initialPath != null) {
+      if (!await File(initialPath).exists()) {
+        if (mounted) {
+          setState(() => _error = '下载的视频缓存不存在，请重新从球馆视频库选择');
+        }
+        return;
+      }
+      await _inspectSelectedFile(
+        XFile(initialPath, name: widget.initialVideoName ?? 'venue_video.mp4'),
+      );
+      return;
+    }
+    await _restoreRetryVideo();
   }
 
   Future<void> _restoreRetryVideo() async {
