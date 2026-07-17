@@ -48,12 +48,13 @@ class _ReportPageState extends State<ReportPage> {
       final report = widget.loadDemo
           ? await _api.getDemoReport()
           : await _api.getReport(widget.taskId!);
-      final availability = await _checkReportFiles(report);
       if (!mounted) return;
       setState(() {
         _report = report;
-        _fileAvailability = availability;
+        _fileAvailability = const {};
+        _loading = false;
       });
+      _checkReportFilesInBackground(report);
     } on ReportPendingException {
       if (!mounted) return;
       setState(() => _error = '报告还未生成完成');
@@ -66,10 +67,16 @@ class _ReportPageState extends State<ReportPage> {
         ),
       );
     } finally {
-      if (mounted) {
+      if (mounted && _report == null) {
         setState(() => _loading = false);
       }
     }
+  }
+
+  Future<void> _checkReportFilesInBackground(AnalysisReport report) async {
+    final availability = await _checkReportFiles(report);
+    if (!mounted || _report != report) return;
+    setState(() => _fileAvailability = availability);
   }
 
   Future<Map<String, bool>> _checkReportFiles(AnalysisReport report) async {

@@ -199,13 +199,23 @@ class ApiService {
   }
 
   Future<AnalysisReport> getReport(String taskId) async {
-    final response = await _client
-        .get(ApiConfig.uri('/api/tasks/$taskId/report'))
-        .timeout(const Duration(seconds: 20));
-    if (response.statusCode == 202) {
-      throw const ReportPendingException();
+    try {
+      final response = await _client
+          .get(ApiConfig.uri('/api/tasks/$taskId/report'))
+          .timeout(const Duration(seconds: 45));
+      if (response.statusCode == 202) {
+        throw const ReportPendingException();
+      }
+      return AnalysisReport.fromJson(_decodeMap(response));
+    } on ReportPendingException {
+      rethrow;
+    } on TimeoutException {
+      throw const ApiException('读取报告超时，请稍后重试', isTransient: true);
+    } on SocketException {
+      throw const ApiException('网络连接短暂中断，请稍后重试', isTransient: true);
+    } on http.ClientException {
+      throw const ApiException('网络连接短暂中断，请稍后重试', isTransient: true);
     }
-    return AnalysisReport.fromJson(_decodeMap(response));
   }
 
   Future<AnalysisReport> getDemoReport() async {
