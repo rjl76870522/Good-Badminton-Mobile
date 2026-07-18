@@ -27,11 +27,13 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>用于选择羽毛球比赛视频进行分析。</string>
+	<string>用于选择羽毛球比赛视频进行分析，以及从相册设置个人头像。</string>
 	<key>NSCameraUsageDescription</key>
 	<string>用于扫描合作球馆二维码并获取比赛视频。</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>用于将分析视频和精彩集锦保存到系统相册。</string>
+	<string>用于将分析视频、精彩集锦、热力图和轨迹图保存到系统相册。</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>用于连接同一局域网内的合作球馆设备并获取比赛视频。</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>

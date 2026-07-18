@@ -36,6 +36,9 @@ workflows:
       - name: Check iOS project configuration
         script: |
           plutil -lint ios/Runner/Info.plist
+          grep -q "com.rundon2026.goodbadminton" \
+            ios/Runner.xcodeproj/project.pbxproj
+          grep -q "NSLocalNetworkUsageDescription" ios/Runner/Info.plist
           xcodebuild -project ios/Runner.xcodeproj -scheme Runner -showBuildSettings >/dev/null
 
       - name: Analyze Flutter code
@@ -75,6 +78,13 @@ workflows:
     scripts:
       - name: Get Flutter packages
         script: flutter pub get
+
+      - name: Check iOS project configuration
+        script: |
+          plutil -lint ios/Runner/Info.plist
+          grep -q "com.rundon2026.goodbadminton" \
+            ios/Runner.xcodeproj/project.pbxproj
+          grep -q "NSLocalNetworkUsageDescription" ios/Runner/Info.plist
 
       - name: Analyze Flutter code
         script: flutter analyze
