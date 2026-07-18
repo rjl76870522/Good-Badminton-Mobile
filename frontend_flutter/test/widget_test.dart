@@ -17,13 +17,13 @@ void main() {
     expect(find.text('Demo'), findsOneWidget);
     expect(find.text('首页'), findsOneWidget);
     expect(find.text('历史记录'), findsWidgets);
-    expect(find.text('训练档案'), findsWidgets);
+    expect(find.text('我的'), findsWidgets);
 
-    await tester.tap(find.text('训练档案').last);
+    await tester.tap(find.text('我的').last);
     await tester.pump();
 
-    expect(find.text('后端游客身份'), findsOneWidget);
-    expect(find.text('查询游客身份'), findsOneWidget);
+    expect(find.text('数据身份'), findsOneWidget);
+    expect(find.text('检查数据身份'), findsOneWidget);
   });
 
   for (final device in <String, Size>{
@@ -45,9 +45,9 @@ void main() {
       expect(find.text('训练历史'), findsOneWidget);
       expect(tester.takeException(), isNull);
 
-      await tester.tap(find.text('训练档案').last);
+      await tester.tap(find.text('我的').last);
       await tester.pump(const Duration(milliseconds: 300));
-      expect(find.text('后端游客身份'), findsOneWidget);
+      expect(find.text('数据身份'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   }

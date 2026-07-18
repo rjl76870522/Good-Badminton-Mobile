@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:qr_code_dart_scan/qr_code_dart_scan.dart';
 
 import '../models/venue.dart';
 import '../services/venue_service.dart';
@@ -16,12 +16,10 @@ class QrScanPage extends StatefulWidget {
 }
 
 class _QrScanPageState extends State<QrScanPage> {
-  final MobileScannerController _controller = MobileScannerController(
-    formats: const [BarcodeFormat.qrCode],
-  );
   bool _handled = false;
   bool _checkingPermission = true;
   bool _cameraReady = false;
+  int _scannerGeneration = 0;
   String? _error;
 
   @override
@@ -37,20 +35,12 @@ class _QrScanPageState extends State<QrScanPage> {
     );
   }
 
-  Future<void> _handleBarcode(BarcodeCapture capture) async {
+  Future<void> _handleBarcode(Result result) async {
     if (_handled) return;
-    String? rawValue;
-    for (final barcode in capture.barcodes) {
-      final value = barcode.rawValue;
-      if (value != null && value.isNotEmpty) {
-        rawValue = value;
-        break;
-      }
-    }
-    if (rawValue == null || rawValue.isEmpty) return;
+    final rawValue = result.text.trim();
+    if (rawValue.isEmpty) return;
 
     setState(() => _handled = true);
-    await _controller.stop();
     try {
       final VenueInfo venue = widget.service.parseVenueQr(rawValue);
       await _openVenue(venue);
@@ -60,7 +50,6 @@ class _QrScanPageState extends State<QrScanPage> {
         _handled = false;
         _error = error.message;
       });
-      await _controller.start();
     }
   }
 
@@ -91,20 +80,28 @@ class _QrScanPageState extends State<QrScanPage> {
   Future<void> _prepareScanner() async {
     final allowed = await _requestCameraPermission();
     if (!allowed || !mounted) return;
-    setState(() => _error = null);
+    setState(() {
+      _scannerGeneration += 1;
+      _error = null;
+    });
   }
 
   Future<void> _retryScanner() async {
     setState(() {
       _handled = false;
       _error = null;
+      _cameraReady = false;
     });
-    if (!_cameraReady) {
-      await _prepareScanner();
-      return;
-    }
-    await _controller.stop();
-    await _controller.start();
+    await _prepareScanner();
+  }
+
+  void _handleCameraError(String message) {
+    if (!mounted) return;
+    setState(() {
+      _cameraReady = false;
+      _checkingPermission = false;
+      _error = _cameraErrorMessage(message);
+    });
   }
 
   Future<void> _openCameraSettings() async {
@@ -143,7 +140,6 @@ class _QrScanPageState extends State<QrScanPage> {
     if (rawValue == null || rawValue.isEmpty) return;
     try {
       final venue = widget.service.parseVenueQr(rawValue);
-      await _controller.stop();
       await _openVenue(venue);
     } on VenueQrException catch (error) {
       if (!mounted) return;
@@ -152,11 +148,6 @@ class _QrScanPageState extends State<QrScanPage> {
   }
 
   Future<void> _openDemoVenue() async {
-    try {
-      await _controller.stop();
-    } on MobileScannerException {
-      // The demo route should remain available even when camera startup failed.
-    }
     if (!mounted) return;
     await Navigator.of(context).pushReplacement(
       MaterialPageRoute(
@@ -172,35 +163,19 @@ class _QrScanPageState extends State<QrScanPage> {
     );
   }
 
-  String _scannerErrorMessage(MobileScannerException error) {
-    switch (error.errorCode) {
-      case MobileScannerErrorCode.permissionDenied:
-        return '相机权限未开启。请到系统设置里允许“智羽”使用相机，或使用手动输入。';
-      case MobileScannerErrorCode.unsupported:
-        return '当前设备不支持相机扫码，请使用手动输入。';
-      case MobileScannerErrorCode.controllerAlreadyInitialized:
-        return '相机已经在运行，请重新尝试扫码。';
-      case MobileScannerErrorCode.controllerDisposed:
-        return '扫码页面已经关闭，请返回后重新进入。';
-      case MobileScannerErrorCode.controllerUninitialized:
-        return '相机还没有启动完成，请点“重新启动相机”。';
-      case MobileScannerErrorCode.controllerInitializing:
-        return '相机正在启动，请稍等片刻。';
-      case MobileScannerErrorCode.controllerNotAttached:
-        return '相机画面还没有准备好，请点“重新启动相机”。';
-      case MobileScannerErrorCode.genericError:
-        final detail = error.errorDetails?.message;
-        if (detail != null && detail.trim().isNotEmpty) {
-          return '相机启动失败：$detail';
-        }
-        return '相机启动失败，请检查权限、关闭其他占用相机的应用后重试。';
+  String _cameraErrorMessage(String message) {
+    final normalized = message.toLowerCase();
+    if (normalized.contains('accessdenied') ||
+        normalized.contains('permission')) {
+      return '相机权限未开启，请到系统设置中允许“智羽”使用相机';
     }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
+    if (normalized.contains('camera_not_found')) {
+      return '没有找到可用的后置相机';
+    }
+    if (normalized.contains('cameraaccess') || normalized.contains('in_use')) {
+      return '相机正在被其他应用占用，请关闭其他相机应用后重试';
+    }
+    return '相机初始化失败（$message）';
   }
 
   @override
@@ -218,31 +193,15 @@ class _QrScanPageState extends State<QrScanPage> {
           fit: StackFit.expand,
           children: [
             if (_cameraReady && !_checkingPermission)
-              MobileScanner(
-                controller: _controller,
-                onDetect: _handleBarcode,
-                errorBuilder: (context, error) => _ScannerErrorPanel(
-                  message: _scannerErrorMessage(error),
-                  onRetry: _retryScanner,
-                  onManualInput: _showManualInput,
-                  onDemo: _openDemoVenue,
-                ),
-                placeholderBuilder: (context) => const ColoredBox(
-                  color: Colors.black,
-                  child: Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        CircularProgressIndicator(color: Colors.white),
-                        SizedBox(height: 16),
-                        Text(
-                          '正在启动相机',
-                          style: TextStyle(color: Colors.white),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+              QRCodeDartScanView(
+                key: ValueKey(_scannerGeneration),
+                typeCamera: TypeCamera.back,
+                typeScan: TypeScan.live,
+                formats: const [BarcodeFormat.qrCode],
+                resolutionPreset: QRCodeDartScanResolutionPreset.medium,
+                intervalScan: const Duration(milliseconds: 700),
+                onCapture: _handleBarcode,
+                onCameraError: _handleCameraError,
               )
             else
               const ColoredBox(color: Colors.black),
@@ -321,6 +280,11 @@ class _QrScanPageState extends State<QrScanPage> {
             if (!_cameraReady || _checkingPermission)
               _CameraPermissionPanel(
                 checking: _checkingPermission,
+                title: _error?.contains('权限') == true
+                    ? '需要开启相机权限'
+                    : _error != null
+                        ? '相机启动遇到问题'
+                        : '准备启动相机',
                 message: _error ?? '需要相机权限才能扫描球馆二维码',
                 onRetry: _retryScanner,
                 onOpenSettings: _openCameraSettings,
@@ -334,85 +298,10 @@ class _QrScanPageState extends State<QrScanPage> {
   }
 }
 
-class _ScannerErrorPanel extends StatelessWidget {
-  const _ScannerErrorPanel({
-    required this.message,
-    required this.onRetry,
-    required this.onManualInput,
-    required this.onDemo,
-  });
-
-  final String message;
-  final VoidCallback onRetry;
-  final VoidCallback onManualInput;
-  final VoidCallback onDemo;
-
-  @override
-  Widget build(BuildContext context) {
-    return ColoredBox(
-      color: Colors.black,
-      child: SafeArea(
-        child: Center(
-          child: Container(
-            margin: const EdgeInsets.all(24),
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(24),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(
-                  Icons.camera_alt_outlined,
-                  size: 42,
-                  color: Color(0xFFB42318),
-                ),
-                const SizedBox(height: 12),
-                const Text(
-                  '相机启动遇到问题',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  message,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Color(0xFF667085)),
-                ),
-                const SizedBox(height: 18),
-                Wrap(
-                  alignment: WrapAlignment.center,
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: [
-                    FilledButton.icon(
-                      onPressed: onRetry,
-                      icon: const Icon(Icons.refresh_rounded),
-                      label: const Text('重新启动相机'),
-                    ),
-                    OutlinedButton.icon(
-                      onPressed: onManualInput,
-                      icon: const Icon(Icons.keyboard_alt_outlined),
-                      label: const Text('手动输入'),
-                    ),
-                    TextButton(
-                      onPressed: onDemo,
-                      child: const Text('查看演示球馆'),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _CameraPermissionPanel extends StatelessWidget {
   const _CameraPermissionPanel({
     required this.checking,
+    required this.title,
     required this.message,
     required this.onRetry,
     required this.onOpenSettings,
@@ -421,6 +310,7 @@ class _CameraPermissionPanel extends StatelessWidget {
   });
 
   final bool checking;
+  final String title;
   final String message;
   final VoidCallback onRetry;
   final VoidCallback onOpenSettings;
@@ -450,7 +340,7 @@ class _CameraPermissionPanel extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  checking ? '正在检查相机权限' : '需要开启相机权限',
+                  checking ? '正在检查相机权限' : title,
                   style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w800,

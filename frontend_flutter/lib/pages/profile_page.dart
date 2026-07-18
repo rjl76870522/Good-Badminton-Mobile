@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../services/api_service.dart';
 import '../services/user_storage.dart';
@@ -13,6 +16,12 @@ class ProfilePage extends StatefulWidget {
 }
 
 class _ProfilePageState extends State<ProfilePage> {
+  static final Uri _websiteUri = Uri.parse('https://www.audacity6441.kdns.fr/');
+  static final Uri _privacyUri =
+      Uri.parse('https://www.audacity6441.kdns.fr/privacy');
+  static final Uri _supportUri =
+      Uri.parse('https://www.audacity6441.kdns.fr/support');
+
   final UserStorage _storage = UserStorage();
   final ApiService _api = ApiService();
   String _userId = '';
@@ -119,6 +128,24 @@ class _ProfilePageState extends State<ProfilePage> {
     await _load();
   }
 
+  Future<void> _copyUserId() async {
+    if (_userId.isEmpty) return;
+    await Clipboard.setData(ClipboardData(text: _userId));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('设备身份编号已复制')),
+    );
+  }
+
+  Future<void> _openExternal(Uri uri) async {
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!opened && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('无法打开链接，请稍后重试')),
+      );
+    }
+  }
+
   @override
   void dispose() {
     _api.close();
@@ -130,7 +157,7 @@ class _ProfilePageState extends State<ProfilePage> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: const Text('训练档案'),
+        title: const Text('我的'),
         backgroundColor: Colors.transparent,
       ),
       body: AppBackground(
@@ -160,11 +187,25 @@ class _ProfilePageState extends State<ProfilePage> {
                         style: Theme.of(context).textTheme.titleLarge,
                       ),
                       const SizedBox(height: 6),
-                      const Text('本地游客模式 · 无需登录'),
+                      const Text('无需登录 · 数据按本机身份保存'),
                       const SizedBox(height: 10),
-                      SelectableText(
-                        _userId.isEmpty ? '正在生成身份…' : _userId,
-                        textAlign: TextAlign.center,
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              _userId.isEmpty ? '正在生成身份…' : _userId,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: _userId.isEmpty ? null : _copyUserId,
+                            tooltip: '复制设备身份编号',
+                            icon: const Icon(Icons.copy_outlined, size: 19),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 12),
                       OutlinedButton.icon(
@@ -189,7 +230,7 @@ class _ProfilePageState extends State<ProfilePage> {
                           const SizedBox(width: 10),
                           Expanded(
                             child: Text(
-                              '后端游客身份',
+                              '数据身份',
                               style: Theme.of(context)
                                   .textTheme
                                   .titleMedium
@@ -221,7 +262,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       ),
                       const SizedBox(height: 8),
                       const Text(
-                        '登记后仍然是游客模式；上传、历史记录和报告将继续使用同一个 user_id。',
+                        '用于关联你的视频、分析任务和历史报告，更换设备后不会自动迁移',
                         style: TextStyle(height: 1.5),
                       ),
                       if (_identityError != null) ...[
@@ -242,7 +283,7 @@ class _ProfilePageState extends State<ProfilePage> {
                             onPressed:
                                 _checkingIdentity ? null : _checkRegistration,
                             icon: const Icon(Icons.manage_search),
-                            label: const Text('查询游客身份'),
+                            label: const Text('检查数据身份'),
                           ),
                           if (_registered != true)
                             FilledButton.tonalIcon(
@@ -256,7 +297,7 @@ class _ProfilePageState extends State<ProfilePage> {
                                           strokeWidth: 2),
                                     )
                                   : const Icon(Icons.how_to_reg_outlined),
-                              label: Text(_registering ? '登记中' : '登记游客身份'),
+                              label: Text(_registering ? '登记中' : '启用数据身份'),
                             ),
                         ],
                       ),
@@ -266,16 +307,64 @@ class _ProfilePageState extends State<ProfilePage> {
               ),
               const SizedBox(height: 16),
               Card(
-                child: ListTile(
-                  leading: const Icon(Icons.history),
-                  title: const Text('查看训练历史'),
-                  subtitle: const Text('历史记录按本机游客 ID 隔离'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const HistoryPage()),
-                  ),
+                child: Column(
+                  children: [
+                    ListTile(
+                      leading: const Icon(Icons.history),
+                      title: const Text('训练历史'),
+                      subtitle: const Text('查看视频、任务状态和分析报告'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const HistoryPage()),
+                      ),
+                    ),
+                    const Divider(height: 1),
+                    ListTile(
+                      leading: const Icon(Icons.camera_alt_outlined),
+                      title: const Text('相机权限'),
+                      subtitle: const Text('管理球馆二维码扫码权限'),
+                      trailing: const Icon(Icons.open_in_new),
+                      onTap: openAppSettings,
+                    ),
+                  ],
                 ),
               ),
+              const SizedBox(height: 16),
+              Card(
+                child: Column(
+                  children: [
+                    ListTile(
+                      leading: const Icon(Icons.language_outlined),
+                      title: const Text('官方网站'),
+                      trailing: const Icon(Icons.open_in_new),
+                      onTap: () => _openExternal(_websiteUri),
+                    ),
+                    const Divider(height: 1),
+                    ListTile(
+                      leading: const Icon(Icons.privacy_tip_outlined),
+                      title: const Text('隐私政策'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => _openExternal(_privacyUri),
+                    ),
+                    const Divider(height: 1),
+                    ListTile(
+                      leading: const Icon(Icons.help_outline),
+                      title: const Text('帮助与支持'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => _openExternal(_supportUri),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Card(
+                child: ListTile(
+                  leading: Icon(Icons.info_outline),
+                  title: Text('关于智羽'),
+                  subtitle: Text('版本 0.1.0 · Build 1'),
+                ),
+              ),
+              const SizedBox(height: 24),
             ],
           ),
         ),

@@ -305,7 +305,7 @@ class _HomePageState extends State<HomePage> {
                     Expanded(
                       child: _QuickAccessCard(
                         icon: Icons.person_outline_rounded,
-                        label: '训练档案',
+                        label: '我的',
                         color: const Color(0xFFE8EEF7),
                         onTap: () => widget.onSelectTab?.call(2),
                       ),
