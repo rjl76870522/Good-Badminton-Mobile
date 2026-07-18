@@ -53,6 +53,7 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
         await controller.dispose();
         return;
       }
+      controller.addListener(_onVideoChanged);
       setState(() => _controller = controller);
     } catch (_) {
       await controller.dispose();
@@ -60,6 +61,10 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
         setState(() => _previewError = '视频预览暂时不可用，请检查球馆网络。');
       }
     }
+  }
+
+  void _onVideoChanged() {
+    if (mounted) setState(() {});
   }
 
   Future<File> _downloadToCache() async {
@@ -213,6 +218,7 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
 
   @override
   void dispose() {
+    _controller?.removeListener(_onVideoChanged);
     _controller?.dispose();
     _api.close();
     super.dispose();
@@ -291,32 +297,53 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
     }
     return ClipRRect(
       borderRadius: BorderRadius.circular(20),
-      child: ColoredBox(
-        color: Colors.black,
-        child: AspectRatio(
-          aspectRatio: controller.value.aspectRatio,
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              VideoPlayer(controller),
-              IconButton.filled(
-                iconSize: 34,
-                onPressed: () {
-                  setState(() {
-                    controller.value.isPlaying
-                        ? controller.pause()
-                        : controller.play();
-                  });
-                },
-                icon: Icon(
-                  controller.value.isPlaying
-                      ? Icons.pause_rounded
-                      : Icons.play_arrow_rounded,
-                ),
+      child: Column(
+        children: [
+          GestureDetector(
+            onTap: () => controller.value.isPlaying
+                ? controller.pause()
+                : controller.play(),
+            child: ColoredBox(
+              color: Colors.black,
+              child: AspectRatio(
+                aspectRatio: controller.value.aspectRatio,
+                child: VideoPlayer(controller),
               ),
-            ],
+            ),
           ),
-        ),
+          ColoredBox(
+            color: const Color(0xFF111714),
+            child: Row(
+              children: [
+                IconButton(
+                  tooltip: controller.value.isPlaying ? '暂停' : '播放',
+                  color: Colors.white,
+                  onPressed: () => controller.value.isPlaying
+                      ? controller.pause()
+                      : controller.play(),
+                  icon: Icon(
+                    controller.value.isPlaying
+                        ? Icons.pause_rounded
+                        : Icons.play_arrow_rounded,
+                  ),
+                ),
+                Expanded(
+                  child: VideoProgressIndicator(
+                    controller,
+                    allowScrubbing: true,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    colors: const VideoProgressColors(
+                      playedColor: Color(0xFF62A76B),
+                      bufferedColor: Color(0xFF53645A),
+                      backgroundColor: Color(0xFF303A34),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 14),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

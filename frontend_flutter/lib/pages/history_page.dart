@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../config/api_config.dart';
 import '../models/history_item.dart';
 import '../services/api_service.dart';
+import '../services/offline_report_storage.dart';
 import '../services/user_storage.dart';
 import '../utils/user_facing_error.dart';
 import 'report_page.dart';
@@ -19,7 +20,9 @@ class HistoryPage extends StatefulWidget {
 class _HistoryPageState extends State<HistoryPage> {
   final ApiService _api = ApiService();
   final UserStorage _userStorage = UserStorage();
+  final OfflineReportStorage _offlineStorage = OfflineReportStorage();
   List<HistoryItem> _tasks = const [];
+  List<OfflineReportRecord> _offlineRecords = const [];
   String? _error;
   String _statusFilter = 'all';
   bool _loading = true;
@@ -35,6 +38,7 @@ class _HistoryPageState extends State<HistoryPage> {
       _loading = true;
       _error = null;
     });
+    _offlineRecords = await _offlineStorage.list();
     try {
       final userId = await _userStorage.getOrCreateUserId();
       final tasks = await _api.getHistory(
@@ -64,10 +68,57 @@ class _HistoryPageState extends State<HistoryPage> {
   }
 
   void _openTask(HistoryItem task) {
+    final offline = _offlineRecordFor(task.taskId);
     final page = task.isCompleted
-        ? ReportPage(taskId: task.taskId)
+        ? offline != null
+            ? ReportPage.offline(record: offline)
+            : ReportPage(taskId: task.taskId)
         : TaskStatusPage(taskId: task.taskId);
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
+  }
+
+  OfflineReportRecord? _offlineRecordFor(String taskId) {
+    for (final record in _offlineRecords) {
+      if (record.taskId == taskId) return record;
+    }
+    return null;
+  }
+
+  Future<void> _saveOffline(HistoryItem task) async {
+    try {
+      final record = await _offlineStorage.save(
+        api: _api,
+        taskId: task.taskId,
+        videoName: task.videoName,
+      );
+      if (!mounted) return;
+      setState(() {
+        _offlineRecords = [
+          record,
+          ..._offlineRecords.where((item) => item.taskId != task.taskId),
+        ];
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('报告和图表已保存，可在服务器离线时查看')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(userFacingError(error, fallback: '保存离线报告失败，请稍后重试。')),
+        ),
+      );
+    }
+  }
+
+  Future<void> _deleteOffline(OfflineReportRecord record) async {
+    await _offlineStorage.delete(record);
+    if (!mounted) return;
+    setState(() {
+      _offlineRecords = _offlineRecords
+          .where((item) => item.taskId != record.taskId)
+          .toList();
+    });
   }
 
   Future<void> _retryTask(HistoryItem task) async {
@@ -214,6 +265,18 @@ class _HistoryPageState extends State<HistoryPage> {
                     ),
                   if (_error != null)
                     _HistoryErrorCard(message: _error!, onRetry: _load),
+                  if (_offlineRecords.isNotEmpty) ...[
+                    _OfflineSection(
+                      records: _offlineRecords,
+                      onOpen: (record) => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => ReportPage.offline(record: record),
+                        ),
+                      ),
+                      onDelete: _deleteOffline,
+                    ),
+                    const SizedBox(height: 12),
+                  ],
                   if (!_loading && _tasks.isEmpty && _error == null)
                     Container(
                       margin: const EdgeInsets.only(top: 18),
@@ -239,6 +302,9 @@ class _HistoryPageState extends State<HistoryPage> {
                         onTap: () => _openTask(task),
                         onRetry: task.isFailed ? () => _retryTask(task) : null,
                         onDelete: () => _deleteTask(task),
+                        offlineSaved: _offlineRecordFor(task.taskId) != null,
+                        onSaveOffline:
+                            task.isCompleted ? () => _saveOffline(task) : null,
                       ),
                     ),
                   ),
@@ -302,13 +368,17 @@ class _HistoryCard extends StatelessWidget {
     required this.task,
     required this.onTap,
     required this.onDelete,
+    required this.offlineSaved,
     this.onRetry,
+    this.onSaveOffline,
   });
 
   final HistoryItem task;
   final VoidCallback onTap;
   final VoidCallback onDelete;
+  final bool offlineSaved;
   final VoidCallback? onRetry;
+  final VoidCallback? onSaveOffline;
 
   @override
   Widget build(BuildContext context) {
@@ -394,6 +464,16 @@ class _HistoryCard extends StatelessWidget {
                           icon: const Icon(Icons.refresh),
                           label: const Text('重新上传'),
                         ),
+                      if (onSaveOffline != null)
+                        OutlinedButton.icon(
+                          onPressed: offlineSaved ? null : onSaveOffline,
+                          icon: Icon(
+                            offlineSaved
+                                ? Icons.offline_pin_outlined
+                                : Icons.download_for_offline_outlined,
+                          ),
+                          label: Text(offlineSaved ? '已离线保存' : '离线保存'),
+                        ),
                       TextButton.icon(
                         onPressed: onDelete,
                         icon: const Icon(Icons.delete_outline),
@@ -417,6 +497,67 @@ class _HistoryCard extends StatelessWidget {
         'failed' => '失败',
         _ => status,
       };
+}
+
+class _OfflineSection extends StatelessWidget {
+  const _OfflineSection({
+    required this.records,
+    required this.onOpen,
+    required this.onDelete,
+  });
+
+  final List<OfflineReportRecord> records;
+  final ValueChanged<OfflineReportRecord> onOpen;
+  final ValueChanged<OfflineReportRecord> onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 8),
+      decoration: BoxDecoration(
+        color: const Color(0xF2F4FAF5),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFB6CFBA)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.offline_pin_outlined, color: Color(0xFF286B35)),
+              SizedBox(width: 8),
+              Text(
+                '手机离线报告',
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          const Text('服务器关闭后仍可查看核心指标、训练建议和图表'),
+          ...records.map(
+            (record) => ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text(
+                record.videoName.isEmpty ? '训练报告' : record.videoName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              subtitle: Text(
+                '${record.savedAt.year}-${record.savedAt.month.toString().padLeft(2, '0')}-'
+                '${record.savedAt.day.toString().padLeft(2, '0')} 已保存到本机',
+              ),
+              onTap: () => onOpen(record),
+              trailing: IconButton(
+                tooltip: '删除离线副本',
+                onPressed: () => onDelete(record),
+                icon: const Icon(Icons.delete_outline),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _MiniMetric extends StatelessWidget {

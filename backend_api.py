@@ -8,6 +8,7 @@ Run from the project root:
 from __future__ import annotations
 
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -53,6 +54,7 @@ from badminton_analysis.user_registry import (
 from webui.pipeline import prepare_court, run_analysis
 
 
+logger = logging.getLogger(__name__)
 PROJECT_ROOT = Path(__file__).resolve().parent
 UPLOAD_DIR = PROJECT_ROOT / "mobile_backend_data" / "uploads"
 PREVIEW_UPLOAD_DIR = PROJECT_ROOT / "mobile_backend_data" / "preview_uploads"
@@ -375,6 +377,8 @@ def upload_video(
         "report": None,
     }
     _set_task(task_id, task)
+    if source_upload_id:
+        _remove_preview_artifacts(source_upload_id, source_path)
     TASK_WORKER.notify()
 
     return {
@@ -827,6 +831,15 @@ def _resolve_preview_upload(source_upload_id: str) -> tuple[Path, str]:
     source_path = matches[0]
     source_name = source_path.name.removeprefix(f"{source_id}_")
     return source_path, source_name
+
+
+def _remove_preview_artifacts(source_upload_id: str, source_path: Path) -> None:
+    """Remove transient preview files after the durable task has been stored."""
+    for path in (source_path, PREVIEW_FRAME_DIR / f"{source_upload_id}.jpg"):
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            logger.warning("Unable to remove preview artifact: %s", path)
 
 
 def _count_detection_records(path: str | os.PathLike[str] | None) -> int:

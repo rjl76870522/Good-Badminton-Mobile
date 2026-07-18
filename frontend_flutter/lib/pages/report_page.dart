@@ -8,19 +8,31 @@ import 'package:share_plus/share_plus.dart';
 import '../config/api_config.dart';
 import '../models/report.dart';
 import '../services/api_service.dart';
+import '../services/offline_report_storage.dart';
 import '../utils/user_facing_error.dart';
 import '../widgets/app_background.dart';
 import '../widgets/inline_network_video.dart';
 
 class ReportPage extends StatefulWidget {
-  const ReportPage({super.key, required this.taskId}) : loadDemo = false;
+  const ReportPage({super.key, required this.taskId})
+      : loadDemo = false,
+        offlineRecord = null;
 
   const ReportPage.demo({super.key})
       : taskId = null,
-        loadDemo = true;
+        loadDemo = true,
+        offlineRecord = null;
+
+  const ReportPage.offline({
+    super.key,
+    required OfflineReportRecord record,
+  })  : taskId = null,
+        loadDemo = false,
+        offlineRecord = record;
 
   final String? taskId;
   final bool loadDemo;
+  final OfflineReportRecord? offlineRecord;
 
   @override
   State<ReportPage> createState() => _ReportPageState();
@@ -28,6 +40,7 @@ class ReportPage extends StatefulWidget {
 
 class _ReportPageState extends State<ReportPage> {
   final ApiService _api = ApiService();
+  final OfflineReportStorage _offlineStorage = OfflineReportStorage();
   AnalysisReport? _report;
   Map<String, bool> _fileAvailability = const {};
   String? _error;
@@ -45,16 +58,32 @@ class _ReportPageState extends State<ReportPage> {
       _error = null;
     });
     try {
-      final report = widget.loadDemo
-          ? await _api.getDemoReport()
-          : await _api.getReport(widget.taskId!);
+      final offlineRecord = widget.offlineRecord;
+      final report = offlineRecord != null
+          ? AnalysisReport.fromJson(
+              await _offlineStorage.readReport(offlineRecord),
+            )
+          : widget.loadDemo
+              ? await _api.getDemoReport()
+              : await _api.getReport(widget.taskId!);
       if (!mounted) return;
       setState(() {
         _report = report;
         _fileAvailability = const {};
         _loading = false;
       });
-      _checkReportFilesInBackground(report);
+      if (offlineRecord != null) {
+        setState(() {
+          _fileAvailability = {
+            'heatmap': _localFileExists(offlineRecord.heatmapPath),
+            'trajectory': _localFileExists(offlineRecord.trajectoryPath),
+            'analysis_video': false,
+            'highlight': false,
+          };
+        });
+      } else {
+        _checkReportFilesInBackground(report);
+      }
     } on ReportPendingException {
       if (!mounted) return;
       setState(() => _error = '报告还未生成完成');
@@ -72,6 +101,9 @@ class _ReportPageState extends State<ReportPage> {
       }
     }
   }
+
+  bool _localFileExists(String? path) =>
+      path != null && path.isNotEmpty && File(path).existsSync();
 
   Future<void> _checkReportFilesInBackground(AnalysisReport report) async {
     final availability = await _checkReportFiles(report);
@@ -105,7 +137,13 @@ class _ReportPageState extends State<ReportPage> {
     final report = _report;
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.loadDemo ? 'Demo 训练复盘' : '训练复盘报告'),
+        title: Text(
+          widget.offlineRecord != null
+              ? '离线训练复盘'
+              : widget.loadDemo
+                  ? 'Demo 训练复盘'
+                  : '训练复盘报告',
+        ),
         actions: [
           IconButton(
             tooltip: '退出',
@@ -166,8 +204,10 @@ class _ReportPageState extends State<ReportPage> {
                   ),
                   const SizedBox(height: 8),
                   _VisualizationSwitcher(
-                    heatmapUrl: report.files.heatmap,
-                    trajectoryUrl: report.files.trajectory,
+                    heatmapUrl: widget.offlineRecord?.heatmapPath ??
+                        report.files.heatmap,
+                    trajectoryUrl: widget.offlineRecord?.trajectoryPath ??
+                        report.files.trajectory,
                     heatmapAvailable: _fileAvailability['heatmap'] ?? false,
                     trajectoryAvailable:
                         _fileAvailability['trajectory'] ?? false,
@@ -604,7 +644,7 @@ class _VisualizationSwitcherState extends State<_VisualizationSwitcher> {
     final relativeUrl = isHeatmap ? widget.heatmapUrl : widget.trajectoryUrl;
     final available =
         isHeatmap ? widget.heatmapAvailable : widget.trajectoryAvailable;
-    final url = ApiConfig.absoluteFileUrl(relativeUrl);
+    final url = _resolveMediaUrl(relativeUrl);
     return Card(
       clipBehavior: Clip.antiAlias,
       child: Padding(
@@ -1100,6 +1140,13 @@ class _FadeNetworkImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (_isLocalPath(url)) {
+      return Image.file(
+        File(url),
+        fit: BoxFit.contain,
+        errorBuilder: (_, error, __) => _imageError(error),
+      );
+    }
     return Image.network(
       url,
       fit: BoxFit.contain,
@@ -1115,15 +1162,26 @@ class _FadeNetworkImage extends StatelessWidget {
         if (progress == null) return child;
         return const Center(child: CircularProgressIndicator());
       },
-      errorBuilder: (_, error, __) => Center(
+      errorBuilder: (_, error, __) => _imageError(error),
+    );
+  }
+
+  Widget _imageError(Object error) => Center(
         child: Text(
           '图片加载失败：$error',
           style: const TextStyle(color: Colors.white70),
         ),
-      ),
-    );
-  }
+      );
 }
+
+String? _resolveMediaUrl(String? value) {
+  if (value == null || value.trim().isEmpty) return null;
+  final path = value.trim();
+  return _isLocalPath(path) ? path : ApiConfig.absoluteFileUrl(path);
+}
+
+bool _isLocalPath(String value) =>
+    value.startsWith('/') && File(value).existsSync();
 
 Future<void> _showImagePreview(
   BuildContext context,

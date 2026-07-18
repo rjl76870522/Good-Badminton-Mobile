@@ -108,6 +108,15 @@ def test_preview_then_source_upload_matches_flutter_contract(monkeypatch, tmp_pa
         assert status["video_name"] == "training.mp4"
         task = backend_api._get_task_or_404(upload["task_id"])
         assert Path(task["upload_path"]).read_bytes() == b"video-bytes"
+        assert not list(
+            backend_api.PREVIEW_UPLOAD_DIR.glob(
+                f"{preview['source_upload_id']}_*",
+            ),
+        )
+        assert not (
+            backend_api.PREVIEW_FRAME_DIR
+            / f"{preview['source_upload_id']}.jpg"
+        ).exists()
 
         own_history = client.get("/api/history", params={"user_id": "phone-user"}).json()
         other_history = client.get("/api/history", params={"user_id": "someone-else"}).json()

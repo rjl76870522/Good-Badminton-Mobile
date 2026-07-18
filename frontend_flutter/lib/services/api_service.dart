@@ -199,6 +199,10 @@ class ApiService {
   }
 
   Future<AnalysisReport> getReport(String taskId) async {
+    return AnalysisReport.fromJson(await getReportPayload(taskId));
+  }
+
+  Future<Map<String, dynamic>> getReportPayload(String taskId) async {
     try {
       final response = await _client
           .get(ApiConfig.uri('/api/tasks/$taskId/report'))
@@ -206,7 +210,7 @@ class ApiService {
       if (response.statusCode == 202) {
         throw const ReportPendingException();
       }
-      return AnalysisReport.fromJson(_decodeMap(response));
+      return _decodeMap(response);
     } on ReportPendingException {
       rethrow;
     } on TimeoutException {
