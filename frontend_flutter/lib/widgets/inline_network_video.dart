@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
+import '../services/user_storage.dart';
+
 class InlineNetworkVideo extends StatefulWidget {
   const InlineNetworkVideo({
     super.key,
@@ -37,8 +39,11 @@ class _InlineNetworkVideoState extends State<InlineNetworkVideo> {
     final previous = _controller;
     final controller = VideoPlayerController.networkUrl(Uri.parse(widget.url));
     _controller = controller;
-    _initializing = controller.initialize().then((_) {
+    _initializing = controller.initialize().then((_) async {
       controller.setLooping(false);
+      if (await UserStorage().getAutoPlayVideos()) {
+        await controller.play();
+      }
     });
     previous?.dispose();
     if (mounted) setState(() {});

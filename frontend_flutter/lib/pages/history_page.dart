@@ -85,6 +85,29 @@ class _HistoryPageState extends State<HistoryPage> {
   }
 
   Future<void> _saveOffline(HistoryItem task) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('保存离线报告'),
+        content: const Text(
+          '将核心指标、训练建议、热力图和轨迹图保存到本机'
+          '\n\n为了节省手机存储空间，分析视频不会随离线报告保存'
+          '，有需要可以在报告中单独下载到系统相册',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(context, true),
+            icon: const Icon(Icons.download_for_offline_outlined),
+            label: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
     try {
       final record = await _offlineStorage.save(
         api: _api,

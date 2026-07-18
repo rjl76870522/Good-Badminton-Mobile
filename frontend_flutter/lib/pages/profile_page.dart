@@ -1,11 +1,13 @@
-import 'package:flutter/material.dart';
-import 'package:permission_handler/permission_handler.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'dart:io';
 
-import '../services/api_service.dart';
+import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
+
 import '../services/user_storage.dart';
 import '../widgets/app_background.dart';
 import 'history_page.dart';
+import 'settings_page.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -15,20 +17,10 @@ class ProfilePage extends StatefulWidget {
 }
 
 class _ProfilePageState extends State<ProfilePage> {
-  static final Uri _websiteUri = Uri.parse('https://www.audacity6441.kdns.fr/');
-  static final Uri _privacyUri =
-      Uri.parse('https://www.audacity6441.kdns.fr/privacy');
-  static final Uri _supportUri =
-      Uri.parse('https://www.audacity6441.kdns.fr/support');
-
   final UserStorage _storage = UserStorage();
-  final ApiService _api = ApiService();
-  String _userId = '';
+  final ImagePicker _imagePicker = ImagePicker();
   String _nickname = '';
-  String? _identityError;
-  bool? _registered;
-  bool _registering = false;
-  bool _checkingIdentity = false;
+  String? _avatarPath;
 
   @override
   void initState() {
@@ -38,63 +30,41 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Future<void> _load() async {
     final values = await Future.wait([
-      _storage.getOrCreateUserId(),
       _storage.getNickname(),
+      _storage.getAvatarPath(),
     ]);
-    if (mounted) {
-      setState(() {
-        _userId = values[0];
-        _nickname = values[1];
-      });
-    }
-    await _checkRegistration();
-  }
-
-  Future<void> _checkRegistration() async {
-    if (_userId.isEmpty) return;
-    if (mounted) {
-      setState(() {
-        _checkingIdentity = true;
-        _identityError = null;
-      });
-    }
-    try {
-      await _api.getUser(_userId);
-      if (mounted) {
-        setState(() {
-          _registered = true;
-          _identityError = null;
-        });
-      }
-    } on ApiException catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _registered = error.code == 'USER_NOT_FOUND' ? false : null;
-        _identityError =
-            error.code == 'USER_NOT_FOUND' ? null : error.toString();
-      });
-    } finally {
-      if (mounted) setState(() => _checkingIdentity = false);
-    }
-  }
-
-  Future<void> _registerIdentity() async {
+    if (!mounted) return;
     setState(() {
-      _registering = true;
-      _identityError = null;
+      _nickname = values[0] ?? '';
+      _avatarPath = values[1];
     });
-    try {
-      await _api.registerUser(_userId);
-      if (mounted) setState(() => _registered = true);
-    } on ApiException catch (error) {
-      if (error.code == 'USER_ID_TAKEN') {
-        await _checkRegistration();
-      } else if (mounted) {
-        setState(() => _identityError = error.toString());
+  }
+
+  Future<void> _pickAvatar() async {
+    final selected = await _imagePicker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 1024,
+      maxHeight: 1024,
+      imageQuality: 88,
+    );
+    if (selected == null) return;
+    final documents = await getApplicationDocumentsDirectory();
+    final directory = Directory('${documents.path}/GoodBadminton/profile');
+    await directory.create(recursive: true);
+    final extension =
+        selected.name.toLowerCase().endsWith('.png') ? 'png' : 'jpg';
+    final target = File('${directory.path}/avatar.$extension');
+    await File(selected.path).copy(target.path);
+    final previous = _avatarPath;
+    await _storage.setAvatarPath(target.path);
+    if (previous != null && previous != target.path) {
+      try {
+        await File(previous).delete();
+      } on FileSystemException {
+        // 旧头像不存在时不影响新头像。
       }
-    } finally {
-      if (mounted) setState(() => _registering = false);
     }
+    await _load();
   }
 
   Future<void> _editNickname() async {
@@ -102,12 +72,12 @@ class _ProfilePageState extends State<ProfilePage> {
     final value = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('设置本地昵称'),
+        title: const Text('修改昵称'),
         content: TextField(
           controller: controller,
           maxLength: 20,
           autofocus: true,
-          decoration: const InputDecoration(hintText: '昵称仅保存在本机'),
+          decoration: const InputDecoration(hintText: '昵称保存在本机'),
         ),
         actions: [
           TextButton(
@@ -127,23 +97,10 @@ class _ProfilePageState extends State<ProfilePage> {
     await _load();
   }
 
-  Future<void> _openExternal(Uri uri) async {
-    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
-    if (!opened && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('无法打开链接，请稍后重试')),
-      );
-    }
-  }
-
-  @override
-  void dispose() {
-    _api.close();
-    super.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
+    final avatar = _avatarPath == null ? null : File(_avatarPath!);
+    final hasAvatar = avatar?.existsSync() ?? false;
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
@@ -163,114 +120,60 @@ class _ProfilePageState extends State<ProfilePage> {
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(18),
-                  child: Column(
+                  child: Row(
                     children: [
-                      CircleAvatar(
-                        radius: 36,
-                        backgroundColor:
-                            Theme.of(context).colorScheme.primaryContainer,
-                        child: const Icon(Icons.person_outline, size: 38),
+                      InkWell(
+                        onTap: _pickAvatar,
+                        customBorder: const CircleBorder(),
+                        child: Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            CircleAvatar(
+                              radius: 38,
+                              backgroundColor: Theme.of(context)
+                                  .colorScheme
+                                  .primaryContainer,
+                              backgroundImage:
+                                  hasAvatar ? FileImage(avatar!) : null,
+                              child: hasAvatar
+                                  ? null
+                                  : const Icon(Icons.person_outline, size: 40),
+                            ),
+                            Positioned(
+                              right: -2,
+                              bottom: -2,
+                              child: CircleAvatar(
+                                radius: 14,
+                                backgroundColor:
+                                    Theme.of(context).colorScheme.primary,
+                                foregroundColor: Colors.white,
+                                child: const Icon(
+                                  Icons.camera_alt_outlined,
+                                  size: 15,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                      const SizedBox(height: 12),
-                      Text(
-                        _nickname.isEmpty ? '羽球访客' : _nickname,
-                        style: Theme.of(context).textTheme.titleLarge,
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _nickname.isEmpty ? '羽球用户' : _nickname,
+                              style: Theme.of(context).textTheme.titleLarge,
+                            ),
+                            const SizedBox(height: 5),
+                            const Text('点击头像可以从相册更换'),
+                          ],
+                        ),
                       ),
-                      const SizedBox(height: 6),
-                      const Text('数据按本机身份保存'),
-                      const SizedBox(height: 12),
-                      OutlinedButton.icon(
+                      IconButton(
+                        tooltip: '修改昵称',
                         onPressed: _editNickname,
                         icon: const Icon(Icons.edit_outlined),
-                        label: const Text('修改本地昵称'),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Icon(Icons.badge_outlined),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              '数据身份',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .titleMedium
-                                  ?.copyWith(
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                            ),
-                          ),
-                          Chip(
-                            avatar: Icon(
-                              _registered == true
-                                  ? Icons.check_circle
-                                  : _registered == false
-                                      ? Icons.person_add_alt
-                                      : Icons.cloud_off_outlined,
-                              size: 17,
-                            ),
-                            label: Text(
-                              _checkingIdentity
-                                  ? '查询中'
-                                  : _registered == true
-                                      ? '已登记'
-                                      : _registered == false
-                                          ? '未登记'
-                                          : '待查询',
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        '用于关联你的视频、分析任务和历史报告，更换设备后不会自动迁移',
-                        style: TextStyle(height: 1.5),
-                      ),
-                      if (_identityError != null) ...[
-                        const SizedBox(height: 8),
-                        Text(
-                          _identityError!,
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.error,
-                          ),
-                        ),
-                      ],
-                      const SizedBox(height: 12),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          OutlinedButton.icon(
-                            onPressed:
-                                _checkingIdentity ? null : _checkRegistration,
-                            icon: const Icon(Icons.manage_search),
-                            label: const Text('检查数据身份'),
-                          ),
-                          if (_registered != true)
-                            FilledButton.tonalIcon(
-                              onPressed:
-                                  _registering ? null : _registerIdentity,
-                              icon: _registering
-                                  ? const SizedBox(
-                                      width: 18,
-                                      height: 18,
-                                      child: CircularProgressIndicator(
-                                          strokeWidth: 2),
-                                    )
-                                  : const Icon(Icons.how_to_reg_outlined),
-                              label: Text(_registering ? '登记中' : '启用数据身份'),
-                            ),
-                        ],
                       ),
                     ],
                   ),
@@ -283,7 +186,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     ListTile(
                       leading: const Icon(Icons.history),
                       title: const Text('训练历史'),
-                      subtitle: const Text('查看视频、任务状态和分析报告'),
+                      subtitle: const Text('查看任务、报告和手机离线记录'),
                       trailing: const Icon(Icons.chevron_right),
                       onTap: () => Navigator.of(context).push(
                         MaterialPageRoute(builder: (_) => const HistoryPage()),
@@ -291,38 +194,13 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                     const Divider(height: 1),
                     ListTile(
-                      leading: const Icon(Icons.camera_alt_outlined),
-                      title: const Text('相机权限'),
-                      subtitle: const Text('管理球馆二维码扫码权限'),
-                      trailing: const Icon(Icons.open_in_new),
-                      onTap: openAppSettings,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              Card(
-                child: Column(
-                  children: [
-                    ListTile(
-                      leading: const Icon(Icons.language_outlined),
-                      title: const Text('官方网站'),
-                      trailing: const Icon(Icons.open_in_new),
-                      onTap: () => _openExternal(_websiteUri),
-                    ),
-                    const Divider(height: 1),
-                    ListTile(
-                      leading: const Icon(Icons.privacy_tip_outlined),
-                      title: const Text('隐私政策'),
+                      leading: const Icon(Icons.settings_outlined),
+                      title: const Text('设置'),
+                      subtitle: const Text('播放、存储、权限与帮助'),
                       trailing: const Icon(Icons.chevron_right),
-                      onTap: () => _openExternal(_privacyUri),
-                    ),
-                    const Divider(height: 1),
-                    ListTile(
-                      leading: const Icon(Icons.help_outline),
-                      title: const Text('帮助与支持'),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: () => _openExternal(_supportUri),
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const SettingsPage()),
+                      ),
                     ),
                   ],
                 ),
@@ -331,7 +209,7 @@ class _ProfilePageState extends State<ProfilePage> {
               const Card(
                 child: ListTile(
                   leading: Icon(Icons.info_outline),
-                  title: Text('关于智羽'),
+                  title: Text('智羽'),
                   subtitle: Text('版本 0.1.2'),
                 ),
               ),

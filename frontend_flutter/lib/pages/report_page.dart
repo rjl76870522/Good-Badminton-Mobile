@@ -81,6 +81,7 @@ class _ReportPageState extends State<ReportPage> {
             'highlight': false,
           };
         });
+        _checkRemoteVideosInBackground(report);
       } else {
         _checkReportFilesInBackground(report);
       }
@@ -104,6 +105,21 @@ class _ReportPageState extends State<ReportPage> {
 
   bool _localFileExists(String? path) =>
       path != null && path.isNotEmpty && File(path).existsSync();
+
+  Future<void> _checkRemoteVideosInBackground(AnalysisReport report) async {
+    final checks = await Future.wait([
+      _api.fileExists(report.files.analysisVideo),
+      _api.fileExists(report.files.highlight),
+    ]);
+    if (!mounted || _report != report) return;
+    setState(() {
+      _fileAvailability = {
+        ..._fileAvailability,
+        'analysis_video': checks[0],
+        'highlight': checks[1],
+      };
+    });
+  }
 
   Future<void> _checkReportFilesInBackground(AnalysisReport report) async {
     final availability = await _checkReportFiles(report);
@@ -221,6 +237,10 @@ class _ReportPageState extends State<ReportPage> {
                   const SizedBox(height: 20),
                   Text('精彩时刻', style: Theme.of(context).textTheme.titleLarge),
                   const SizedBox(height: 8),
+                  if (widget.offlineRecord != null) ...[
+                    const _OfflineVideoNotice(),
+                    const SizedBox(height: 10),
+                  ],
                   _VideoResult(
                     title: '精彩集锦',
                     relativeUrl: report.files.highlight,
@@ -637,6 +657,54 @@ class _QualityProgress extends StatelessWidget {
 
 class _VisualizationSwitcherState extends State<_VisualizationSwitcher> {
   var _selected = 0;
+  var _downloading = false;
+
+  Future<void> _saveImage(String url, String title) async {
+    setState(() => _downloading = true);
+    File? temporaryFile;
+    try {
+      String path;
+      if (_isLocalPath(url)) {
+        path = url;
+      } else {
+        final directory = await getTemporaryDirectory();
+        temporaryFile = File(
+          '${directory.path}/good_badminton_'
+          '${DateTime.now().millisecondsSinceEpoch}.png',
+        );
+        final api = ApiService();
+        try {
+          path = await api.downloadFile(url, temporaryFile.path);
+        } finally {
+          api.close();
+        }
+      }
+      final hasAccess = await Gal.hasAccess(toAlbum: true);
+      final granted = hasAccess || await Gal.requestAccess(toAlbum: true);
+      if (!granted) {
+        throw StateError('未获得系统相册访问权限');
+      }
+      await Gal.putImage(path, album: 'Good-Badminton');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$title 已保存到系统相册')),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('保存图片失败：$error')),
+        );
+      }
+    } finally {
+      try {
+        await temporaryFile?.delete();
+      } on FileSystemException {
+        // 临时文件清理失败不影响图片保存结果。
+      }
+      if (mounted) setState(() => _downloading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -711,9 +779,31 @@ class _VisualizationSwitcherState extends State<_VisualizationSwitcher> {
             ),
             if (url != null && available) ...[
               const SizedBox(height: 8),
-              const Text(
-                '点击图片全屏查看，支持双指缩放',
-                style: TextStyle(fontSize: 12, color: Colors.black54),
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      '点击图片全屏查看，支持双指缩放',
+                      style: TextStyle(fontSize: 12, color: Colors.black54),
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: _downloading
+                        ? null
+                        : () => _saveImage(
+                              url,
+                              isHeatmap ? '热力图' : '球员轨迹',
+                            ),
+                    icon: _downloading
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.download_rounded),
+                    label: Text(_downloading ? '保存中' : '保存图片'),
+                  ),
+                ],
               ),
             ],
           ],
@@ -1327,57 +1417,24 @@ class _VideoResultState extends State<_VideoResult> {
     final url = ApiConfig.absoluteFileUrl(widget.relativeUrl);
 
     if (url != null && widget.available) {
-      return Stack(
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           InlineNetworkVideo(title: widget.title, url: url),
-          Positioned(
-            top: 12,
-            right: 12,
-            child: _downloading
-                ? Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.black87,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                            value: _downloadProgress < 0.5
-                                ? null
-                                : _downloadProgress,
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        const Text(
-                          '下载中…',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ],
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: _downloading ? null : _downloadVideo,
+            icon: _downloading
+                ? SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      value: _downloadProgress < 0.5 ? null : _downloadProgress,
+                      strokeWidth: 2,
                     ),
                   )
-                : IconButton.filled(
-                    tooltip: '下载视频到本地',
-                    onPressed: _downloadVideo,
-                    icon: const Icon(Icons.download_rounded),
-                    style: IconButton.styleFrom(
-                      backgroundColor: Colors.black54,
-                      foregroundColor: Colors.white,
-                      iconSize: 22,
-                    ),
-                  ),
+                : const Icon(Icons.download_rounded),
+            label: Text(_downloading ? '正在下载视频' : '下载到系统相册'),
           ),
         ],
       );
@@ -1387,6 +1444,34 @@ class _VideoResultState extends State<_VideoResult> {
         leading: const Icon(Icons.videocam_off_outlined),
         title: Text(widget.title),
         subtitle: Text(url == null ? '暂无文件' : '文件未生成或已失效'),
+      ),
+    );
+  }
+}
+
+class _OfflineVideoNotice extends StatelessWidget {
+  const _OfflineVideoNotice();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.secondaryContainer,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: const Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.info_outline, size: 20),
+          SizedBox(width: 9),
+          Expanded(
+            child: Text(
+              '为了节省手机存储空间，离线报告不会保存分析视频'
+              '，服务器在线时仍可播放，有需要可自行下载到系统相册',
+            ),
+          ),
+        ],
       ),
     );
   }

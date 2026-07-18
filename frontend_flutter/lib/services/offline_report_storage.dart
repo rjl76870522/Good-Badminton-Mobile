@@ -145,6 +145,13 @@ class OfflineReportStorage {
     await _writeIndex(records);
   }
 
+  Future<void> clearAll() async {
+    final root = await _root();
+    if (await root.exists()) {
+      await root.delete(recursive: true);
+    }
+  }
+
   Future<String?> _downloadImage(
     ApiService api,
     dynamic relativeUrl,

@@ -22,8 +22,10 @@ void main() {
     await tester.tap(find.text('我的').last);
     await tester.pump();
 
-    expect(find.text('数据身份'), findsOneWidget);
-    expect(find.text('检查数据身份'), findsOneWidget);
+    expect(find.text('设置'), findsOneWidget);
+    expect(find.text('点击头像可以从相册更换'), findsOneWidget);
+    expect(find.text('数据身份'), findsNothing);
+    expect(find.text('检查数据身份'), findsNothing);
     expect(find.textContaining('guest_'), findsNothing);
     expect(find.textContaining('无需登录'), findsNothing);
     await tester.scrollUntilVisible(find.text('版本 0.1.2'), 180);
@@ -52,7 +54,8 @@ void main() {
 
       await tester.tap(find.text('我的').last);
       await tester.pump(const Duration(milliseconds: 300));
-      expect(find.text('数据身份'), findsOneWidget);
+      expect(find.text('设置'), findsOneWidget);
+      expect(find.text('数据身份'), findsNothing);
       expect(tester.takeException(), isNull);
     });
   }
