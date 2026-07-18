@@ -194,6 +194,7 @@ class VenueService {
               item['download_url']?.toString().trim().isNotEmpty == true
                   ? item['download_url'].toString().trim()
                   : uri.resolve('/videos/$id/download').toString(),
+          isPreparedClip: item['is_prepared_clip'] == true,
         ));
       }
       if (videos.isEmpty) {
@@ -212,16 +213,20 @@ class VenueService {
   List<VenueVideo> getMockVideos() {
     return const [
       VenueVideo(
-        id: 'video001',
+        id: 'venue24-court1-demo01',
         court: '1号场',
-        time: '2026-07-16 19:00',
-        duration: '60分钟',
+        time: '球馆录像片段 01',
+        duration: '8秒',
+        assetPath: 'assets/videos/demo01.mp4',
+        isPreparedClip: true,
       ),
       VenueVideo(
-        id: 'video002',
+        id: 'venue24-court2-demo02',
         court: '2号场',
-        time: '2026-07-16 20:00',
-        duration: '45分钟',
+        time: '球馆录像片段 02',
+        duration: '11秒',
+        assetPath: 'assets/videos/demo02.mp4',
+        isPreparedClip: true,
       ),
     ];
   }

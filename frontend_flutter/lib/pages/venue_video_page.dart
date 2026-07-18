@@ -110,9 +110,28 @@ class _VenueVideoPageState extends State<VenueVideoPage> {
           _venueHeader(context, videos: videos),
           const SizedBox(height: 16),
           if (_isDemoData)
-            const Padding(
-              padding: EdgeInsets.only(bottom: 12),
-              child: Text('当前显示演示视频，球馆网络恢复后可重新加载。'),
+            Container(
+              width: double.infinity,
+              margin: const EdgeInsets.only(bottom: 16),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE8F5E9),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFA5D6A7)),
+              ),
+              child: const Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.content_cut_rounded, color: Color(0xFF2E7D32)),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      '已从球馆存储的完整视频中截取出准备分析的视频片段',
+                      style: TextStyle(height: 1.45),
+                    ),
+                  ),
+                ],
+              ),
             ),
           Text('可用比赛视频', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 10),
@@ -218,6 +237,17 @@ class _VenueVideoPageState extends State<VenueVideoPage> {
             const SizedBox(height: 10),
             Text('时间：${video.time}'),
             Text('时长：${video.duration}'),
+            if (video.isPreparedClip) ...[
+              const SizedBox(height: 8),
+              const Row(
+                children: [
+                  Icon(Icons.check_circle_outline,
+                      size: 18, color: Color(0xFF2E7D32)),
+                  SizedBox(width: 6),
+                  Expanded(child: Text('已截取为待分析片段')),
+                ],
+              ),
+            ],
             const SizedBox(height: 12),
             Align(
               alignment: Alignment.centerRight,

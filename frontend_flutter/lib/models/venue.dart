@@ -18,6 +18,8 @@ class VenueVideo {
     required this.duration,
     this.thumbnail,
     this.downloadUrl,
+    this.assetPath,
+    this.isPreparedClip = false,
   });
 
   final String id;
@@ -26,4 +28,6 @@ class VenueVideo {
   final String duration;
   final String? thumbnail;
   final String? downloadUrl;
+  final String? assetPath;
+  final bool isPreparedClip;
 }

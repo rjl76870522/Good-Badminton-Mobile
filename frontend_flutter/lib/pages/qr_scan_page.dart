@@ -153,7 +153,7 @@ class _QrScanPageState extends State<QrScanPage> {
       MaterialPageRoute(
         builder: (_) => const VenueVideoPage(
           venue: VenueInfo(
-            id: 'demo-venue',
+            id: '24',
             name: '演示球馆',
             serverUrl: 'https://venue.example.com',
           ),

@@ -44,5 +44,9 @@ void main() {
 
     expect(videos, hasLength(2));
     expect(videos.first.court, '1号场');
+    expect(videos.first.assetPath, 'assets/videos/demo01.mp4');
+    expect(videos.last.court, '2号场');
+    expect(videos.last.assetPath, 'assets/videos/demo02.mp4');
+    expect(videos.every((video) => video.isPreparedClip), isTrue);
   });
 }
