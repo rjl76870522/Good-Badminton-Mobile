@@ -17,7 +17,6 @@ class QrScanPage extends StatefulWidget {
 
 class _QrScanPageState extends State<QrScanPage> {
   final MobileScannerController _controller = MobileScannerController(
-    autoStart: false,
     formats: const [BarcodeFormat.qrCode],
   );
   bool _handled = false;
@@ -28,7 +27,7 @@ class _QrScanPageState extends State<QrScanPage> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _startScanner());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _prepareScanner());
   }
 
   Future<void> _openVenue(VenueInfo venue) async {
@@ -61,7 +60,7 @@ class _QrScanPageState extends State<QrScanPage> {
         _handled = false;
         _error = error.message;
       });
-      await _startScanner();
+      await _controller.start();
     }
   }
 
@@ -89,20 +88,10 @@ class _QrScanPageState extends State<QrScanPage> {
     return false;
   }
 
-  Future<void> _startScanner() async {
+  Future<void> _prepareScanner() async {
     final allowed = await _requestCameraPermission();
     if (!allowed || !mounted) return;
-    try {
-      await _controller.start();
-      if (!mounted) return;
-      setState(() => _error = null);
-    } on MobileScannerException catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _cameraReady = false;
-        _error = _scannerErrorMessage(error);
-      });
-    }
+    setState(() => _error = null);
   }
 
   Future<void> _retryScanner() async {
@@ -110,7 +99,12 @@ class _QrScanPageState extends State<QrScanPage> {
       _handled = false;
       _error = null;
     });
-    await _startScanner();
+    if (!_cameraReady) {
+      await _prepareScanner();
+      return;
+    }
+    await _controller.stop();
+    await _controller.start();
   }
 
   Future<void> _openCameraSettings() async {
@@ -190,6 +184,10 @@ class _QrScanPageState extends State<QrScanPage> {
         return '扫码页面已经关闭，请返回后重新进入。';
       case MobileScannerErrorCode.controllerUninitialized:
         return '相机还没有启动完成，请点“重新启动相机”。';
+      case MobileScannerErrorCode.controllerInitializing:
+        return '相机正在启动，请稍等片刻。';
+      case MobileScannerErrorCode.controllerNotAttached:
+        return '相机画面还没有准备好，请点“重新启动相机”。';
       case MobileScannerErrorCode.genericError:
         final detail = error.errorDetails?.message;
         if (detail != null && detail.trim().isNotEmpty) {
@@ -223,13 +221,13 @@ class _QrScanPageState extends State<QrScanPage> {
               MobileScanner(
                 controller: _controller,
                 onDetect: _handleBarcode,
-                errorBuilder: (context, error, child) => _ScannerErrorPanel(
+                errorBuilder: (context, error) => _ScannerErrorPanel(
                   message: _scannerErrorMessage(error),
                   onRetry: _retryScanner,
                   onManualInput: _showManualInput,
                   onDemo: _openDemoVenue,
                 ),
-                placeholderBuilder: (context, child) => const ColoredBox(
+                placeholderBuilder: (context) => const ColoredBox(
                   color: Colors.black,
                   child: Center(
                     child: Column(
@@ -372,7 +370,7 @@ class _ScannerErrorPanel extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 const Text(
-                  '相机扫码暂时不可用',
+                  '相机启动遇到问题',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
                 ),
                 const SizedBox(height: 8),
