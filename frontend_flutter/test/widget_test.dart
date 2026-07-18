@@ -24,6 +24,11 @@ void main() {
 
     expect(find.text('数据身份'), findsOneWidget);
     expect(find.text('检查数据身份'), findsOneWidget);
+    expect(find.textContaining('guest_'), findsNothing);
+    expect(find.textContaining('无需登录'), findsNothing);
+    await tester.scrollUntilVisible(find.text('版本 0.1.2'), 180);
+    expect(find.text('版本 0.1.2'), findsOneWidget);
+    expect(find.textContaining('Build'), findsNothing);
   });
 
   for (final device in <String, Size>{

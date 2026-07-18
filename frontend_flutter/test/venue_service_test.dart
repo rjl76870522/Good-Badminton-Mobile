@@ -14,6 +14,15 @@ void main() {
     expect(venue.serverUrl, 'http://192.168.1.100');
   });
 
+  test('parses the bundled venue 24 demo QR payload', () {
+    final venue = service.parseVenueQr(
+      '{"type":"venue","venue_id":"24","venue_name":"演示球馆","server_url":"https://venue.example.com"}',
+    );
+
+    expect(venue.id, '24');
+    expect(venue.name, '演示球馆');
+  });
+
   test('parses a venue QR link with query parameters', () {
     final venue = service.parseVenueQr(
       'goodbadminton://venue?venue_id=NEU_001&venue_name=%E4%B8%9C%E5%A4%A7%E7%BE%BD%E6%AF%9B%E7%90%83%E9%A6%86&server_url=http%3A%2F%2F192.168.31.8%3A8091',

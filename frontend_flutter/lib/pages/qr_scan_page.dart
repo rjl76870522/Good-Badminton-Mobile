@@ -31,7 +31,12 @@ class _QrScanPageState extends State<QrScanPage> {
   Future<void> _openVenue(VenueInfo venue) async {
     if (!mounted) return;
     await Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => VenueVideoPage(venue: venue)),
+      MaterialPageRoute(
+        builder: (_) => VenueVideoPage(
+          venue: venue,
+          showDemoOnOpen: venue.id == '24',
+        ),
+      ),
     );
   }
 

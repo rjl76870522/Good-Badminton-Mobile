@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -128,15 +127,6 @@ class _ProfilePageState extends State<ProfilePage> {
     await _load();
   }
 
-  Future<void> _copyUserId() async {
-    if (_userId.isEmpty) return;
-    await Clipboard.setData(ClipboardData(text: _userId));
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('设备身份编号已复制')),
-    );
-  }
-
   Future<void> _openExternal(Uri uri) async {
     final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!opened && mounted) {
@@ -187,26 +177,7 @@ class _ProfilePageState extends State<ProfilePage> {
                         style: Theme.of(context).textTheme.titleLarge,
                       ),
                       const SizedBox(height: 6),
-                      const Text('无需登录 · 数据按本机身份保存'),
-                      const SizedBox(height: 10),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Flexible(
-                            child: Text(
-                              _userId.isEmpty ? '正在生成身份…' : _userId,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.bodySmall,
-                            ),
-                          ),
-                          IconButton(
-                            onPressed: _userId.isEmpty ? null : _copyUserId,
-                            tooltip: '复制设备身份编号',
-                            icon: const Icon(Icons.copy_outlined, size: 19),
-                          ),
-                        ],
-                      ),
+                      const Text('数据按本机身份保存'),
                       const SizedBox(height: 12),
                       OutlinedButton.icon(
                         onPressed: _editNickname,
@@ -361,7 +332,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 child: ListTile(
                   leading: Icon(Icons.info_outline),
                   title: Text('关于智羽'),
-                  subtitle: Text('版本 0.1.0 · Build 1'),
+                  subtitle: Text('版本 0.1.2'),
                 ),
               ),
               const SizedBox(height: 24),
