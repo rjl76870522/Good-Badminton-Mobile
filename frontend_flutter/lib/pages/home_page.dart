@@ -25,7 +25,7 @@ class _HomePageState extends State<HomePage> {
   final MapLauncherService _mapLauncher = const MapLauncherService();
   final TaskStorage _storage = TaskStorage();
   Map<String, dynamic>? _health;
-  TaskStatus? _restoredTask;
+  List<TaskStatus> _restoredTasks = const [];
   String? _error;
   bool _checking = false;
   bool _restoringTask = true;
@@ -40,16 +40,27 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _restoreActiveTask() async {
     try {
-      final taskId = await _storage.getActiveTaskId();
-      if (taskId == null) return;
-      final task = await _api.getTask(taskId);
-      if (task.isRunning) {
-        if (mounted) setState(() => _restoredTask = task);
-      } else if (task.isCompleted) {
-        await _storage.removeUpload(taskId);
-      } else {
-        await _storage.clearActiveTask(taskId);
+      final taskIds = await _storage.getActiveTaskIds();
+      final runningTasks = <TaskStatus>[];
+      for (final taskId in taskIds) {
+        try {
+          final task = await _api.getTask(taskId);
+          if (task.isRunning) {
+            runningTasks.add(task);
+          } else if (task.isCompleted) {
+            await _storage.removeUpload(taskId);
+          } else {
+            await _storage.clearActiveTask(taskId);
+          }
+        } on ApiException catch (error) {
+          if (error.statusCode == 404) {
+            await _storage.clearActiveTask(taskId);
+            continue;
+          }
+          rethrow;
+        }
       }
+      if (mounted) setState(() => _restoredTasks = runningTasks);
     } catch (error) {
       if (mounted) {
         setState(
@@ -64,9 +75,7 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  Future<void> _openRestoredTask() async {
-    final task = _restoredTask;
-    if (task == null) return;
+  Future<void> _openRestoredTask(TaskStatus task) async {
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => TaskStatusPage(taskId: task.taskId),
@@ -74,7 +83,7 @@ class _HomePageState extends State<HomePage> {
     );
     if (!mounted) return;
     setState(() {
-      _restoredTask = null;
+      _restoredTasks = const [];
       _restoringTask = true;
     });
     await _restoreActiveTask();
@@ -250,12 +259,16 @@ class _HomePageState extends State<HomePage> {
                   const SizedBox(height: 12),
                   const LinearProgressIndicator(),
                 ],
-                if (_restoredTask != null) ...[
+                if (_restoredTasks.isNotEmpty) ...[
                   const SizedBox(height: 14),
-                  _ActiveTaskCard(
-                    task: _restoredTask!,
-                    onTap: _openRestoredTask,
-                  ),
+                  for (final task in _restoredTasks)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: _ActiveTaskCard(
+                        task: task,
+                        onTap: () => _openRestoredTask(task),
+                      ),
+                    ),
                 ],
                 const SizedBox(height: 14),
                 Text(

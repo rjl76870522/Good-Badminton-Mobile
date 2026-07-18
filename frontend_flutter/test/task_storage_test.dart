@@ -16,6 +16,7 @@ void main() {
     );
 
     expect(await storage.getActiveTaskId(), 'task-1');
+    expect(await storage.getActiveTaskIds(), ['task-1']);
     final upload = await storage.getUpload('task-1');
     expect(upload, isNotNull);
     expect(upload!.videoPath, r'C:\videos\sample.mp4');
@@ -27,6 +28,29 @@ void main() {
 
     await storage.removeUpload('task-1');
     expect(await storage.getUpload('task-1'), isNull);
+  });
+
+  test('multiple active tasks are kept in newest-first order', () async {
+    SharedPreferences.setMockInitialValues({});
+    final storage = TaskStorage();
+
+    await storage.saveActiveTask(
+      taskId: 'task-1',
+      videoPath: '/tmp/one.mp4',
+      videoName: 'one.mp4',
+    );
+    await storage.saveActiveTask(
+      taskId: 'task-2',
+      videoPath: '/tmp/two.mp4',
+      videoName: 'two.mp4',
+    );
+
+    expect(await storage.getActiveTaskId(), 'task-2');
+    expect(await storage.getActiveTaskIds(), ['task-2', 'task-1']);
+
+    await storage.clearActiveTask('task-2');
+    expect(await storage.getActiveTaskId(), 'task-1');
+    expect(await storage.getActiveTaskIds(), ['task-1']);
   });
 
   test('guest user id is generated once and remains stable', () async {

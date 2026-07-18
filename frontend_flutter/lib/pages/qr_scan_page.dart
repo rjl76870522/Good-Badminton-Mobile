@@ -219,32 +219,107 @@ class _QrScanPageState extends State<QrScanPage> {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            MobileScanner(
-              controller: _controller,
-              onDetect: _handleBarcode,
-              errorBuilder: (context, error, child) => _ScannerErrorPanel(
-                message: _scannerErrorMessage(error),
-                onRetry: _retryScanner,
-                onManualInput: _showManualInput,
-                onDemo: _openDemoVenue,
-              ),
-              placeholderBuilder: (context, child) => const ColoredBox(
-                color: Colors.black,
-                child: Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      CircularProgressIndicator(color: Colors.white),
-                      SizedBox(height: 16),
-                      Text(
-                        '正在启动相机',
-                        style: TextStyle(color: Colors.white),
+            if (_cameraReady && !_checkingPermission)
+              MobileScanner(
+                controller: _controller,
+                onDetect: _handleBarcode,
+                errorBuilder: (context, error, child) => _ScannerErrorPanel(
+                  message: _scannerErrorMessage(error),
+                  onRetry: _retryScanner,
+                  onManualInput: _showManualInput,
+                  onDemo: _openDemoVenue,
+                ),
+                placeholderBuilder: (context, child) => const ColoredBox(
+                  color: Colors.black,
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        CircularProgressIndicator(color: Colors.white),
+                        SizedBox(height: 16),
+                        Text(
+                          '正在启动相机',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              )
+            else
+              const ColoredBox(color: Colors.black),
+            if (_cameraReady && !_checkingPermission)
+              Center(
+                child: SizedBox(
+                  width: MediaQuery.sizeOf(context).width * 0.72,
+                  child: AspectRatio(
+                    aspectRatio: 1,
+                    child: IgnorePointer(
+                      child: Container(
+                        constraints: const BoxConstraints(maxWidth: 320),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.white, width: 3),
+                          borderRadius: BorderRadius.circular(24),
+                        ),
                       ),
-                    ],
+                    ),
                   ),
                 ),
               ),
-            ),
+            if (_cameraReady && !_checkingPermission)
+              Positioned(
+                left: 20,
+                right: 20,
+                bottom: 28,
+                child: Column(
+                  children: [
+                    if (_error != null)
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFDECEA),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Text(
+                          _error!,
+                          style: const TextStyle(color: Color(0xFFB42318)),
+                        ),
+                      ),
+                    const Text(
+                      '将球馆提供的二维码放入取景框内',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.white, fontSize: 16),
+                    ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      alignment: WrapAlignment.center,
+                      spacing: 10,
+                      runSpacing: 10,
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: _showManualInput,
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.white,
+                            side: const BorderSide(color: Colors.white70),
+                          ),
+                          icon: const Icon(Icons.keyboard_alt_outlined),
+                          label: const Text('手动输入'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: _openDemoVenue,
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.white,
+                            side: const BorderSide(color: Colors.white70),
+                          ),
+                          icon: const Icon(Icons.sports_tennis_outlined),
+                          label: const Text('演示球馆'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
             if (!_cameraReady || _checkingPermission)
               _CameraPermissionPanel(
                 checking: _checkingPermission,
@@ -254,74 +329,6 @@ class _QrScanPageState extends State<QrScanPage> {
                 onManualInput: _showManualInput,
                 onDemo: _openDemoVenue,
               ),
-            Center(
-              child: SizedBox(
-                width: MediaQuery.sizeOf(context).width * 0.72,
-                child: AspectRatio(
-                  aspectRatio: 1,
-                  child: Container(
-                    constraints: const BoxConstraints(maxWidth: 320),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.white, width: 3),
-                      borderRadius: BorderRadius.circular(24),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            Positioned(
-              left: 20,
-              right: 20,
-              bottom: 28,
-              child: Column(
-                children: [
-                  if (_error != null)
-                    Container(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFDECEA),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Text(
-                        _error!,
-                        style: const TextStyle(color: Color(0xFFB42318)),
-                      ),
-                    ),
-                  const Text(
-                    '将球馆提供的二维码放入取景框内',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.white, fontSize: 16),
-                  ),
-                  const SizedBox(height: 12),
-                  Wrap(
-                    alignment: WrapAlignment.center,
-                    spacing: 10,
-                    runSpacing: 10,
-                    children: [
-                      OutlinedButton.icon(
-                        onPressed: _showManualInput,
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.white,
-                          side: const BorderSide(color: Colors.white70),
-                        ),
-                        icon: const Icon(Icons.keyboard_alt_outlined),
-                        label: const Text('手动输入'),
-                      ),
-                      OutlinedButton.icon(
-                        onPressed: _openDemoVenue,
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.white,
-                          side: const BorderSide(color: Colors.white70),
-                        ),
-                        icon: const Icon(Icons.sports_tennis_outlined),
-                        label: const Text('演示球馆'),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
           ],
         ),
       ),
