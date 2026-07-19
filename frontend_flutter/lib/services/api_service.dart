@@ -272,6 +272,22 @@ class ApiService {
     _decodeMap(response);
   }
 
+  Future<void> setTaskRetained(
+    String taskId, {
+    required String userId,
+    required bool retained,
+  }) async {
+    final response = await _client
+        .put(
+          ApiConfig.uri('/api/tasks/$taskId/retention', {
+            'user_id': userId,
+            'retained': retained.toString(),
+          }),
+        )
+        .timeout(const Duration(seconds: 20));
+    _decodeMap(response);
+  }
+
   Future<String> downloadFile(String url, String localPath) async {
     final response =
         await _client.get(Uri.parse(url)).timeout(const Duration(minutes: 10));

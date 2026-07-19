@@ -66,6 +66,8 @@ FRONTEND_DIR = PROJECT_ROOT / "mobile_frontend"
 DEFAULT_USER_ID = "guest"
 USER_ID_RULE_MESSAGE = "用户 ID 需要 3-32 位，只能使用小写英文字母、数字、下划线或短横线，且必须以字母或数字开头。"
 MAX_UPLOAD_BYTES = 200 * 1024 * 1024
+STORAGE_WARNING_PERCENT = float(os.getenv("STORAGE_WARNING_PERCENT", "70"))
+STORAGE_BLOCK_PERCENT = float(os.getenv("STORAGE_BLOCK_PERCENT", "80"))
 MIN_VIDEO_DURATION_SEC = 5.0
 MAX_VIDEO_DURATION_SEC = 180.0
 MIN_DETECTION_RECORDS = 3
@@ -324,6 +326,7 @@ def upload_video(
     pose_mode: str = Form(default="balanced"),
     keep_audio: bool = Form(default=True),
 ) -> dict[str, Any]:
+    _require_upload_capacity()
     if file is None and not source_upload_id:
         raise_api_error(
             status_code=400,
@@ -394,6 +397,7 @@ def create_preview_frame(
     file: UploadFile = File(...),
     user_id: str = Form(default=DEFAULT_USER_ID),
 ) -> dict[str, Any]:
+    _require_upload_capacity()
     if not file.filename:
         raise_api_error(
             status_code=400,
@@ -541,6 +545,23 @@ def delete_task(
         "task_id": task_id,
         "deleted_paths": deleted_paths,
     }
+
+
+@app.put("/api/tasks/{task_id}/retention")
+def update_task_retention(
+    task_id: str,
+    retained: bool = Query(...),
+    user_id: str | None = Query(default=None),
+) -> dict[str, Any]:
+    task = _get_task_or_404(task_id)
+    if user_id and task.get("user_id", DEFAULT_USER_ID) != _safe_user_id(user_id):
+        raise_api_error(
+            status_code=404,
+            code="TASK_NOT_FOUND",
+            message="任务不存在。",
+        )
+    _update_task(task_id, retained=retained)
+    return _public_task(_get_task_or_404(task_id))
 
 
 @app.get("/api/tasks/{task_id}/report")
@@ -1144,6 +1165,8 @@ def _public_task(task: dict[str, Any]) -> dict[str, Any]:
         "video_name": task["video_name"],
         "created_at": task["created_at"],
         "updated_at": task["updated_at"],
+        "retained": bool(task.get("retained", False)),
+        "upload_deleted": task.get("upload_deleted_at") is not None,
         "report_url": f"/api/tasks/{task['task_id']}/report",
         "queue_position": queue_position,
     }
@@ -1509,6 +1532,8 @@ def _set_task(task_id: str, task_data: dict[str, Any]) -> None:
             language=task_data.get("language", "zh"),
             pose_mode=task_data.get("pose_mode", "balanced"),
             keep_audio=bool(task_data.get("keep_audio", True)),
+            retained=bool(task_data.get("retained", False)),
+            upload_deleted_at=task_data.get("upload_deleted_at"),
             created_at=task_data.get("created_at", time.time()),
             updated_at=task_data.get("updated_at", time.time()),
         )
@@ -1710,6 +1735,7 @@ def _queue_summary() -> dict[str, Any]:
             "capacity": TASK_WORKER.capacity,
             "active_workers": TASK_WORKER.active_workers,
             "capacity_reason": ANALYSIS_CAPACITY_INFO,
+            "storage": _storage_status(),
         }
     finally:
         session.close()
@@ -1776,6 +1802,36 @@ def _parse_corners(corners_json: str | None) -> list[list[int]] | None:
 def _safe_filename(filename: str) -> str:
     name = Path(filename).name
     return "".join(ch if ch.isalnum() or ch in "._-" else "_" for ch in name)
+
+
+def _storage_status() -> dict[str, Any]:
+    usage = shutil.disk_usage(PROJECT_ROOT)
+    used_percent = (usage.used / usage.total * 100) if usage.total else 0.0
+    return {
+        "used_percent": round(used_percent, 2),
+        "free_bytes": usage.free,
+        "warning_percent": STORAGE_WARNING_PERCENT,
+        "block_percent": STORAGE_BLOCK_PERCENT,
+        "accepting_uploads": used_percent < STORAGE_BLOCK_PERCENT,
+    }
+
+
+def _require_upload_capacity() -> None:
+    storage = _storage_status()
+    used_percent = float(storage["used_percent"])
+    if used_percent >= STORAGE_BLOCK_PERCENT:
+        raise_api_error(
+            status_code=507,
+            code="STORAGE_FULL",
+            message="服务器存储空间不足，暂时停止接收新视频。",
+            hint="已有训练记录仍可查看，请稍后再试。",
+        )
+    if used_percent >= STORAGE_WARNING_PERCENT:
+        logger.warning(
+            "Storage usage %.2f%% reached warning threshold %.2f%%",
+            used_percent,
+            STORAGE_WARNING_PERCENT,
+        )
 
 
 def _validate_uploaded_video(path: Path) -> None:

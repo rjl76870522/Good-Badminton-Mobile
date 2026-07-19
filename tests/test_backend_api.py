@@ -253,6 +253,20 @@ def test_cancel_only_changes_queued_tasks(monkeypatch, tmp_path):
     assert cancelled["queue_position"] is None
 
 
+def test_task_retention_is_persisted_for_owning_user(monkeypatch, tmp_path):
+    _configure_data_dirs(monkeypatch, tmp_path)
+    _insert_queued_task(tmp_path, "keep-me", time.time())
+
+    response = backend_api.update_task_retention(
+        "keep-me",
+        retained=True,
+        user_id="queue-user",
+    )
+
+    assert response["retained"] is True
+    assert backend_api._get_task_or_404("keep-me")["retained"] is True
+
+
 def test_recovery_requeues_interrupted_tasks_without_spawning_threads(monkeypatch, tmp_path):
     _configure_data_dirs(monkeypatch, tmp_path)
     _insert_queued_task(tmp_path, "interrupted", time.time())

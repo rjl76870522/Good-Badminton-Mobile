@@ -14,6 +14,8 @@ Environment=all_proxy=
 Environment=NO_PROXY=*
 Environment=no_proxy=*
 Environment=ANALYSIS_WORKERS=4
+Environment=STORAGE_WARNING_PERCENT=70
+Environment=STORAGE_BLOCK_PERCENT=80
 ExecStart=/data/projects/Good-Badminton-1/start_backend.sh
 Restart=always
 RestartSec=5

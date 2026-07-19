@@ -99,6 +99,35 @@ sudo systemctl enable --now good-badminton-healthcheck.timer
 
 The timer logs health-check failures into journald.
 
+## Daily backup and storage retention
+
+The maintenance timer backs up SQLite and applies the production retention
+policy every day:
+
+- uploaded source videos: 30 days
+- completed reports and generated media: 90 days
+- failed or cancelled tasks: 7 days
+- abandoned preview uploads: 24 hours
+- daily database backups: 30 days
+- tasks marked `retained`: never removed automatically
+
+Install it with:
+
+```bash
+sudo cp deploy/good-badminton-maintenance.service /etc/systemd/system/
+sudo cp deploy/good-badminton-maintenance.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now good-badminton-maintenance.timer
+```
+
+Preview a cleanup without deleting anything:
+
+```bash
+.venv/bin/python -m badminton_analysis.storage_maintenance --dry-run
+```
+
+Backups are stored in `/data/backups/good-badminton/daily`.
+
 ## Optional journal limits
 
 ```bash

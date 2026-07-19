@@ -23,6 +23,8 @@ from sqlalchemy import (
     create_engine,
     event,
     func,
+    inspect,
+    text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, relationship, sessionmaker
 
@@ -63,10 +65,24 @@ def init_db(db_path: str | Path = "mobile_backend_data/badminton.db") -> None:
         cursor.close()
 
     Base.metadata.create_all(bind=_engine)
+    _ensure_task_columns()
 
     _SessionLocal = sessionmaker(bind=_engine, autoflush=False, autocommit=False)
 
     logger.info("Database initialized at %s", db_path.resolve())
+
+
+def _ensure_task_columns() -> None:
+    """Apply small additive migrations for existing SQLite databases."""
+    columns = {column["name"] for column in inspect(_engine).get_columns("tasks")}
+    additions = {
+        "retained": "BOOLEAN NOT NULL DEFAULT 0",
+        "upload_deleted_at": "FLOAT",
+    }
+    with _engine.begin() as connection:
+        for name, definition in additions.items():
+            if name not in columns:
+                connection.execute(text(f"ALTER TABLE tasks ADD COLUMN {name} {definition}"))
 
 
 def get_session() -> Session:
@@ -134,6 +150,8 @@ class Task(Base):
     language: Mapped[str] = mapped_column(String(8), default="zh")
     pose_mode: Mapped[str] = mapped_column(String(32), default="balanced")
     keep_audio: Mapped[bool] = mapped_column(default=True)
+    retained: Mapped[bool] = mapped_column(default=False)
+    upload_deleted_at: Mapped[float | None] = mapped_column(Float, default=None)
     report_json: Mapped[str | None] = mapped_column(Text, default=None)
     created_at: Mapped[float] = mapped_column(Float, default=time.time)
     updated_at: Mapped[float] = mapped_column(Float, default=time.time, onupdate=time.time)
@@ -159,6 +177,8 @@ class Task(Base):
             "language": self.language,
             "pose_mode": self.pose_mode,
             "keep_audio": self.keep_audio,
+            "retained": self.retained,
+            "upload_deleted_at": self.upload_deleted_at,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
         }
@@ -247,6 +267,8 @@ def task_to_legacy_dict(task: Task) -> dict[str, Any]:
         "language": task.language,
         "pose_mode": task.pose_mode,
         "keep_audio": task.keep_audio,
+        "retained": task.retained,
+        "upload_deleted_at": task.upload_deleted_at,
         "report": report,
         "created_at": task.created_at,
         "updated_at": task.updated_at,

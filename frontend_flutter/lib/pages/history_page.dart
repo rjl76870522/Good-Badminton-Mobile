@@ -199,6 +199,33 @@ class _HistoryPageState extends State<HistoryPage> {
     }
   }
 
+  Future<void> _setRetained(HistoryItem task) async {
+    try {
+      final userId = await _userStorage.getOrCreateUserId();
+      await _api.setTaskRetained(
+        task.taskId,
+        userId: userId,
+        retained: !task.retained,
+      );
+      await _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            task.retained ? '已恢复自动存储管理' : '已长期保留，服务器不会自动清理这条训练',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(userFacingError(error, fallback: '修改保留状态失败，请稍后重试。')),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -325,6 +352,7 @@ class _HistoryPageState extends State<HistoryPage> {
                         onTap: () => _openTask(task),
                         onRetry: task.isFailed ? () => _retryTask(task) : null,
                         onDelete: () => _deleteTask(task),
+                        onRetain: () => _setRetained(task),
                         offlineSaved: _offlineRecordFor(task.taskId) != null,
                         onSaveOffline:
                             task.isCompleted ? () => _saveOffline(task) : null,
@@ -392,6 +420,7 @@ class _HistoryCard extends StatelessWidget {
     required this.onTap,
     required this.onDelete,
     required this.offlineSaved,
+    required this.onRetain,
     this.onRetry,
     this.onSaveOffline,
   });
@@ -400,6 +429,7 @@ class _HistoryCard extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback onDelete;
   final bool offlineSaved;
+  final VoidCallback onRetain;
   final VoidCallback? onRetry;
   final VoidCallback? onSaveOffline;
 
@@ -445,6 +475,16 @@ class _HistoryCard extends StatelessWidget {
                         ),
                       ),
                       Chip(label: Text(_statusLabel(task.status))),
+                      if (task.retained) ...[
+                        const SizedBox(width: 6),
+                        const Tooltip(
+                          message: '长期保留',
+                          child: Icon(
+                            Icons.bookmark_rounded,
+                            color: Color(0xFF286B35),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                   const SizedBox(height: 8),
@@ -497,6 +537,15 @@ class _HistoryCard extends StatelessWidget {
                           ),
                           label: Text(offlineSaved ? '已离线保存' : '离线保存'),
                         ),
+                      OutlinedButton.icon(
+                        onPressed: onRetain,
+                        icon: Icon(
+                          task.retained
+                              ? Icons.bookmark_remove_outlined
+                              : Icons.bookmark_add_outlined,
+                        ),
+                        label: Text(task.retained ? '取消长期保留' : '长期保留'),
+                      ),
                       TextButton.icon(
                         onPressed: onDelete,
                         icon: const Icon(Icons.delete_outline),
