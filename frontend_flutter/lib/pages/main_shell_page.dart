@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import 'history_page.dart';
 import 'home_page.dart';
+import 'navigation_page.dart';
 import 'profile_page.dart';
 
 class MainShellPage extends StatefulWidget {
@@ -20,10 +20,8 @@ class _MainShellPageState extends State<MainShellPage> {
       body: IndexedStack(
         index: _selectedIndex,
         children: [
-          HomePage(
-            onSelectTab: (index) => setState(() => _selectedIndex = index),
-          ),
-          const HistoryPage(),
+          const HomePage(),
+          const NavigationPage(),
           const ProfilePage(),
         ],
       ),
@@ -45,14 +43,14 @@ class _MainShellPageState extends State<MainShellPage> {
                   label: '首页',
                 ),
                 NavigationDestination(
-                  icon: Icon(Icons.insights_outlined),
-                  selectedIcon: Icon(Icons.insights),
-                  label: '历史记录',
+                  icon: Icon(Icons.navigation_outlined),
+                  selectedIcon: Icon(Icons.navigation),
+                  label: '导航',
                 ),
                 NavigationDestination(
                   icon: Icon(Icons.person_outline),
                   selectedIcon: Icon(Icons.person),
-                  label: '训练档案',
+                  label: '我的',
                 ),
               ],
               onDestinationSelected: (index) {

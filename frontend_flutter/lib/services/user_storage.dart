@@ -7,6 +7,8 @@ class UserStorage {
 
   static const _userIdKey = 'guest_user_id';
   static const _nicknameKey = 'guest_nickname';
+  static const _avatarPathKey = 'profile_avatar_path';
+  static const _autoPlayVideosKey = 'auto_play_report_videos';
   final Random _random;
 
   Future<String> getOrCreateUserId() async {
@@ -20,14 +22,43 @@ class UserStorage {
     return id;
   }
 
+  /// Get local nickname (fallback values are just display hints).
   Future<String> getNickname() async {
     final preferences = await SharedPreferences.getInstance();
-    return preferences.getString(_nicknameKey) ?? '羽球访客';
+    return preferences.getString(_nicknameKey) ?? '';
   }
 
+  /// Save locally. Caller should also push to server via
+  /// ApiService.updateDisplayName().
   Future<void> setNickname(String nickname) async {
-    final value = nickname.trim().isEmpty ? '羽球访客' : nickname.trim();
+    final value = nickname.trim();
     final preferences = await SharedPreferences.getInstance();
     await preferences.setString(_nicknameKey, value);
+  }
+
+  /// Convenience: clear local nickname cache.
+  Future<void> clearNickname() async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.remove(_nicknameKey);
+  }
+
+  Future<String?> getAvatarPath() async {
+    final preferences = await SharedPreferences.getInstance();
+    return preferences.getString(_avatarPathKey);
+  }
+
+  Future<void> setAvatarPath(String path) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(_avatarPathKey, path);
+  }
+
+  Future<bool> getAutoPlayVideos() async {
+    final preferences = await SharedPreferences.getInstance();
+    return preferences.getBool(_autoPlayVideosKey) ?? false;
+  }
+
+  Future<void> setAutoPlayVideos(bool value) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setBool(_autoPlayVideosKey, value);
   }
 }

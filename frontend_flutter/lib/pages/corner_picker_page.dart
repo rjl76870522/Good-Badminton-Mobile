@@ -1,14 +1,23 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:video_player/video_player.dart';
 
 import '../config/api_config.dart';
 import '../models/preview_frame.dart';
 import '../utils/corner_mapper.dart';
 
 class CornerPickerPage extends StatefulWidget {
-  const CornerPickerPage({super.key, required this.preview});
+  const CornerPickerPage({
+    super.key,
+    required this.preview,
+    this.localVideoPath,
+  });
 
   final PreviewFrame preview;
+  final String? localVideoPath;
 
   @override
   State<CornerPickerPage> createState() => _CornerPickerPageState();
@@ -23,6 +32,8 @@ class _CornerPickerPageState extends State<CornerPickerPage>
     vsync: this,
     duration: const Duration(milliseconds: 1200),
   )..repeat(reverse: true);
+  VideoPlayerController? _localVideoController;
+  bool _localVideoReady = false;
 
   @override
   void initState() {
@@ -30,6 +41,31 @@ class _CornerPickerPageState extends State<CornerPickerPage>
     _points = widget.preview.autoCorners.length == 4
         ? List.of(widget.preview.autoCorners)
         : [];
+    _initializeLocalVideoPreview();
+  }
+
+  Future<void> _initializeLocalVideoPreview() async {
+    final path = widget.localVideoPath;
+    if (path == null || path.isEmpty || !await File(path).exists()) return;
+    final controller = VideoPlayerController.file(File(path));
+    try {
+      await controller.initialize();
+      final seekTarget = Duration(
+        milliseconds: (widget.preview.timeSec * 1000).round(),
+      );
+      await controller.seekTo(seekTarget);
+      await controller.pause();
+      if (!mounted) {
+        await controller.dispose();
+        return;
+      }
+      setState(() {
+        _localVideoController = controller;
+        _localVideoReady = true;
+      });
+    } catch (_) {
+      await controller.dispose();
+    }
   }
 
   Size get _videoSize => Size(
@@ -55,10 +91,72 @@ class _CornerPickerPageState extends State<CornerPickerPage>
     });
   }
 
+  Widget _buildPreviewImage(String imageUrl) {
+    final localController = _localVideoController;
+    if (_localVideoReady && localController != null) {
+      final size = localController.value.size;
+      return ColoredBox(
+        color: Colors.black,
+        child: FittedBox(
+          fit: BoxFit.fill,
+          child: SizedBox(
+            width: size.width == 0 ? _videoSize.width : size.width,
+            height: size.height == 0 ? _videoSize.height : size.height,
+            child: VideoPlayer(localController),
+          ),
+        ),
+      );
+    }
+
+    final dataUrl = widget.preview.imageDataUrl;
+    if (dataUrl != null && dataUrl.startsWith('data:image/')) {
+      final commaIndex = dataUrl.indexOf(',');
+      if (commaIndex > 0) {
+        try {
+          final bytes = base64Decode(dataUrl.substring(commaIndex + 1));
+          return Image.memory(
+            bytes,
+            fit: BoxFit.fill,
+            gaplessPlayback: true,
+          );
+        } on FormatException {
+          // Fall through to the network URL below.
+        }
+      }
+    }
+    return Image.network(
+      imageUrl,
+      fit: BoxFit.fill,
+      frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+        if (wasSynchronouslyLoaded || frame != null) {
+          return child;
+        }
+        return const ColoredBox(
+          color: Colors.black38,
+          child: Center(child: CircularProgressIndicator()),
+        );
+      },
+      errorBuilder: (_, error, __) => ColoredBox(
+        color: Colors.black38,
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Text(
+              '预览图加载失败：$error\n$imageUrl',
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.white70),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _pulseController.dispose();
     _transformCtrl.dispose();
+    _localVideoController?.dispose();
     super.dispose();
   }
 
@@ -115,9 +213,24 @@ class _CornerPickerPageState extends State<CornerPickerPage>
                                     style: TextStyle(color: Colors.white70),
                                   ),
                                   const Text(
+                                    '请标记完整双打场地最外侧白线的四个角，不是画面四角。',
+                                    style: TextStyle(
+                                      color: Color(0xFFFFE0B2),
+                                      height: 1.4,
+                                    ),
+                                  ),
+                                  const Text(
                                     '可双指缩放整个页面；单击图片添加角点。',
                                     style: TextStyle(color: Colors.white60),
                                   ),
+                                  if (widget.preview.autoCorners.length != 4)
+                                    const Text(
+                                      '当前没有可用的自动角点，请直接在预览图上手动点击。',
+                                      style: TextStyle(
+                                        color: Color(0xFFFFE0B2),
+                                        height: 1.4,
+                                      ),
+                                    ),
                                   if (widget.preview.sceneWarning != null) ...[
                                     const SizedBox(height: 8),
                                     Text(
@@ -162,22 +275,7 @@ class _CornerPickerPageState extends State<CornerPickerPage>
                                       child: Stack(
                                         fit: StackFit.expand,
                                         children: [
-                                          Image.network(
-                                            imageUrl,
-                                            fit: BoxFit.fill,
-                                            errorBuilder: (_, error, __) =>
-                                                ColoredBox(
-                                              color: Colors.black38,
-                                              child: Center(
-                                                child: Text(
-                                                  '预览图加载失败：$error',
-                                                  style: const TextStyle(
-                                                    color: Colors.white70,
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                          ),
+                                          _buildPreviewImage(imageUrl),
                                           AnimatedBuilder(
                                             animation: _pulseController,
                                             builder: (context, _) =>
@@ -225,7 +323,11 @@ class _CornerPickerPageState extends State<CornerPickerPage>
                                             ? _useAutoCorners
                                             : null,
                                     icon: const Icon(Icons.auto_fix_high),
-                                    label: const Text('自动检测'),
+                                    label: Text(
+                                      widget.preview.autoCorners.length == 4
+                                          ? '使用自动角点'
+                                          : '未识别到自动角点',
+                                    ),
                                   ),
                                 ],
                               ),

@@ -1,0 +1,13 @@
+# Copy to:
+#   /home/john/.cloudflared/config.yml
+#
+# Replace TUNNEL_ID after running:
+#   cloudflared tunnel create good-badminton
+
+tunnel: TUNNEL_ID
+credentials-file: /home/john/.cloudflared/TUNNEL_ID.json
+
+ingress:
+  - hostname: api.audacity6441.kdns.fr
+    service: http://127.0.0.1:8001
+  - service: http_status:404

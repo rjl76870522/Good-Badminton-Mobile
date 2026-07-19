@@ -17,6 +17,8 @@ class HistoryItem {
     this.progress = 0,
     this.stage = '',
     this.error,
+    this.retained = false,
+    this.uploadDeleted = false,
   });
 
   final String taskId;
@@ -34,6 +36,8 @@ class HistoryItem {
   final double progress;
   final String stage;
   final String? error;
+  final bool retained;
+  final bool uploadDeleted;
 
   bool get isCompleted => status == 'completed';
   bool get isFailed => status == 'failed';
@@ -67,6 +71,8 @@ class HistoryItem {
       progress: numberValue(json['progress']),
       stage: json['stage']?.toString() ?? '',
       error: nullableString(json['error']),
+      retained: json['retained'] == true,
+      uploadDeleted: json['upload_deleted'] == true,
     );
   }
 }

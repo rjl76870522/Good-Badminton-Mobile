@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:gal/gal.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
@@ -28,6 +29,8 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
   bool _downloading = false;
   double _downloadProgress = 0;
 
+  bool get _isBundledDemo => widget.video.assetPath?.isNotEmpty == true;
+
   String get _downloadUrl =>
       widget.video.downloadUrl ??
       Uri.parse(widget.venue.serverUrl)
@@ -41,14 +44,16 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
   }
 
   Future<void> _initializePreview() async {
-    final controller =
-        VideoPlayerController.networkUrl(Uri.parse(_downloadUrl));
+    final controller = _isBundledDemo
+        ? VideoPlayerController.asset(widget.video.assetPath!)
+        : VideoPlayerController.networkUrl(Uri.parse(_downloadUrl));
     try {
       await controller.initialize();
       if (!mounted) {
         await controller.dispose();
         return;
       }
+      controller.addListener(_onVideoChanged);
       setState(() => _controller = controller);
     } catch (_) {
       await controller.dispose();
@@ -56,6 +61,10 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
         setState(() => _previewError = '视频预览暂时不可用，请检查球馆网络。');
       }
     }
+  }
+
+  void _onVideoChanged() {
+    if (mounted) setState(() {});
   }
 
   Future<File> _downloadToCache() async {
@@ -67,9 +76,19 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
     }
     final fileName =
         '${widget.video.id}_${DateTime.now().millisecondsSinceEpoch}.mp4';
+    final targetPath = '${videoDirectory.path}/$fileName';
+    if (_isBundledDemo) {
+      final data = await rootBundle.load(widget.video.assetPath!);
+      final file = File(targetPath);
+      await file.writeAsBytes(
+        data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
+        flush: true,
+      );
+      return file;
+    }
     final savedPath = await _api.downloadFile(
       _downloadUrl,
-      '${videoDirectory.path}/$fileName',
+      targetPath,
     );
     return File(savedPath);
   }
@@ -199,6 +218,7 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
 
   @override
   void dispose() {
+    _controller?.removeListener(_onVideoChanged);
     _controller?.dispose();
     _api.close();
     super.dispose();
@@ -229,6 +249,23 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
                     Text('时间：${widget.video.time}'),
                     const SizedBox(height: 8),
                     Text('时长：${widget.video.duration}'),
+                    if (widget.video.isPreparedClip) ...[
+                      const SizedBox(height: 12),
+                      const Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(Icons.content_cut_rounded,
+                              size: 20, color: Color(0xFF2E7D32)),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              '已从球馆存储的完整视频中截取出准备分析的视频片段',
+                              style: TextStyle(height: 1.45),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -260,32 +297,53 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
     }
     return ClipRRect(
       borderRadius: BorderRadius.circular(20),
-      child: ColoredBox(
-        color: Colors.black,
-        child: AspectRatio(
-          aspectRatio: controller.value.aspectRatio,
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              VideoPlayer(controller),
-              IconButton.filled(
-                iconSize: 34,
-                onPressed: () {
-                  setState(() {
-                    controller.value.isPlaying
-                        ? controller.pause()
-                        : controller.play();
-                  });
-                },
-                icon: Icon(
-                  controller.value.isPlaying
-                      ? Icons.pause_rounded
-                      : Icons.play_arrow_rounded,
-                ),
+      child: Column(
+        children: [
+          GestureDetector(
+            onTap: () => controller.value.isPlaying
+                ? controller.pause()
+                : controller.play(),
+            child: ColoredBox(
+              color: Colors.black,
+              child: AspectRatio(
+                aspectRatio: controller.value.aspectRatio,
+                child: VideoPlayer(controller),
               ),
-            ],
+            ),
           ),
-        ),
+          ColoredBox(
+            color: const Color(0xFF111714),
+            child: Row(
+              children: [
+                IconButton(
+                  tooltip: controller.value.isPlaying ? '暂停' : '播放',
+                  color: Colors.white,
+                  onPressed: () => controller.value.isPlaying
+                      ? controller.pause()
+                      : controller.play(),
+                  icon: Icon(
+                    controller.value.isPlaying
+                        ? Icons.pause_rounded
+                        : Icons.play_arrow_rounded,
+                  ),
+                ),
+                Expanded(
+                  child: VideoProgressIndicator(
+                    controller,
+                    allowScrubbing: true,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    colors: const VideoProgressColors(
+                      playedColor: Color(0xFF62A76B),
+                      bufferedColor: Color(0xFF53645A),
+                      backgroundColor: Color(0xFF303A34),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 14),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

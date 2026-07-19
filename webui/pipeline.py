@@ -1,4 +1,5 @@
 import os
+import threading
 import shutil
 import subprocess
 import time
@@ -15,6 +16,7 @@ from badminton_analysis.court.mapper import (
 from badminton_analysis.system import BadmintonAnalysisSystem, load_runtime_dependencies
 
 _MAX_WEBUI_OUTPUTS = 10
+_VISUALIZATION_LOCK = threading.Lock()
 
 _dependencies_loaded = False
 
@@ -261,7 +263,10 @@ def run_analysis(video_path, template_path, corners, options, progress_cb=None):
         else:
             from badminton_analysis.visualization.player_positions_zh import analyze_player_positions
         vis_dir = os.path.join(output_dir, "position_visualizations")
-        analyze_player_positions(system.detections_path, vis_dir, fps=system.fps)
+        # Matplotlib has process-global state. Keep GPU inference concurrent but
+        # serialize the short report-rendering phase to avoid cross-task figures.
+        with _VISUALIZATION_LOCK:
+            analyze_player_positions(system.detections_path, vis_dir, fps=system.fps)
 
     web_video_path = _reencode_for_browser(system.output_video_path, output_dir)
 

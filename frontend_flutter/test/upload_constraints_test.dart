@@ -17,11 +17,11 @@ void main() {
   test('rejects unsupported, oversized, under-five-second and long videos', () {
     final unsupported = UploadConstraints.validate(
       fileName: 'match.avi',
-      fileSizeBytes: 600 * 1024 * 1024,
+      fileSizeBytes: 250 * 1024 * 1024,
       duration: const Duration(seconds: 3),
     );
     expect(unsupported.errors, contains('仅支持 MP4、MOV、M4V 格式'));
-    expect(unsupported.errors, contains('视频不能超过 500 MB'));
+    expect(unsupported.errors, contains('视频不能超过 200 MB'));
     expect(unsupported.errors, contains('视频不能短于 5 秒'));
 
     final longVideo = UploadConstraints.validate(

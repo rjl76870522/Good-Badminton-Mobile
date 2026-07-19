@@ -336,6 +336,10 @@ def _render_highlight(
                     f"{end - start:.3f}",
                     "-i",
                     str(video_path),
+                    "-map",
+                    "0:v:0",
+                    "-map",
+                    "0:a:0?",
                     "-vf",
                     "scale=trunc(iw/2)*2:trunc(ih/2)*2",
                     "-c:v",
@@ -344,7 +348,11 @@ def _render_highlight(
                     "veryfast",
                     "-crf",
                     "23",
-                    "-an",
+                    "-c:a",
+                    "aac",
+                    "-b:a",
+                    "160k",
+                    "-shortest",
                     str(clip),
                 ],
                 check=True,
@@ -361,6 +369,7 @@ def _render_highlight(
             "\n".join(f"file '{clip.resolve().as_posix()}'" for clip in clip_paths),
             encoding="utf-8",
         )
+        joined_highlight = temp_dir / "joined_highlight.mp4"
         subprocess.run(
             [
                 ffmpeg,
@@ -373,11 +382,12 @@ def _render_highlight(
                 str(concat_file),
                 "-c",
                 "copy",
-                str(highlight_path),
+                str(joined_highlight),
             ],
             check=True,
             capture_output=True,
             timeout=180,
         )
+        os.replace(joined_highlight, highlight_path)
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)

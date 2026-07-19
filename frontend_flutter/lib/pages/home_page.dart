@@ -1,19 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../config/api_config.dart';
 import '../models/task_status.dart';
 import '../services/api_service.dart';
 import '../services/task_storage.dart';
 import '../utils/user_facing_error.dart';
-import 'report_page.dart';
+import 'history_page.dart';
 import 'qr_scan_page.dart';
 import 'task_status_page.dart';
 import 'upload_page.dart';
 
 class HomePage extends StatefulWidget {
-  const HomePage({super.key, this.onSelectTab});
-
-  final ValueChanged<int>? onSelectTab;
+  const HomePage({super.key});
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -22,8 +21,9 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   final ApiService _api = ApiService();
   final TaskStorage _storage = TaskStorage();
+  static final Uri _websiteUri = Uri.parse('https://www.audacity6441.kdns.fr/');
   Map<String, dynamic>? _health;
-  TaskStatus? _restoredTask;
+  List<TaskStatus> _restoredTasks = const [];
   String? _error;
   bool _checking = false;
   bool _restoringTask = true;
@@ -38,16 +38,27 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _restoreActiveTask() async {
     try {
-      final taskId = await _storage.getActiveTaskId();
-      if (taskId == null) return;
-      final task = await _api.getTask(taskId);
-      if (task.isRunning) {
-        if (mounted) setState(() => _restoredTask = task);
-      } else if (task.isCompleted) {
-        await _storage.removeUpload(taskId);
-      } else {
-        await _storage.clearActiveTask(taskId);
+      final taskIds = await _storage.getActiveTaskIds();
+      final runningTasks = <TaskStatus>[];
+      for (final taskId in taskIds) {
+        try {
+          final task = await _api.getTask(taskId);
+          if (task.isRunning) {
+            runningTasks.add(task);
+          } else if (task.isCompleted) {
+            await _storage.removeUpload(taskId);
+          } else {
+            await _storage.clearActiveTask(taskId);
+          }
+        } on ApiException catch (error) {
+          if (error.statusCode == 404) {
+            await _storage.clearActiveTask(taskId);
+            continue;
+          }
+          rethrow;
+        }
       }
+      if (mounted) setState(() => _restoredTasks = runningTasks);
     } catch (error) {
       if (mounted) {
         setState(
@@ -62,9 +73,7 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  Future<void> _openRestoredTask() async {
-    final task = _restoredTask;
-    if (task == null) return;
+  Future<void> _openRestoredTask(TaskStatus task) async {
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => TaskStatusPage(taskId: task.taskId),
@@ -72,7 +81,7 @@ class _HomePageState extends State<HomePage> {
     );
     if (!mounted) return;
     setState(() {
-      _restoredTask = null;
+      _restoredTasks = const [];
       _restoringTask = true;
     });
     await _restoreActiveTask();
@@ -101,6 +110,17 @@ class _HomePageState extends State<HomePage> {
   void _openUpload() {
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const UploadPage()),
+    );
+  }
+
+  Future<void> _openWebsite() async {
+    final launched = await launchUrl(
+      _websiteUri,
+      mode: LaunchMode.externalApplication,
+    );
+    if (!mounted || launched) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('暂时无法打开官方网站')),
     );
   }
 
@@ -180,12 +200,16 @@ class _HomePageState extends State<HomePage> {
                   const SizedBox(height: 12),
                   const LinearProgressIndicator(),
                 ],
-                if (_restoredTask != null) ...[
+                if (_restoredTasks.isNotEmpty) ...[
                   const SizedBox(height: 14),
-                  _ActiveTaskCard(
-                    task: _restoredTask!,
-                    onTap: _openRestoredTask,
-                  ),
+                  for (final task in _restoredTasks)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: _ActiveTaskCard(
+                        task: task,
+                        onTap: () => _openRestoredTask(task),
+                      ),
+                    ),
                 ],
                 const SizedBox(height: 14),
                 Text(
@@ -199,14 +223,10 @@ class _HomePageState extends State<HomePage> {
                   children: [
                     Expanded(
                       child: _QuickAccessCard(
-                        icon: Icons.science_outlined,
-                        label: 'Demo',
+                        icon: Icons.language_outlined,
+                        label: '官网',
                         color: const Color(0xFFFFF4D9),
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const ReportPage.demo(),
-                          ),
-                        ),
+                        onTap: _openWebsite,
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -215,16 +235,11 @@ class _HomePageState extends State<HomePage> {
                         icon: Icons.insights_outlined,
                         label: '历史记录',
                         color: const Color(0xFFE2F3E3),
-                        onTap: () => widget.onSelectTab?.call(1),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _QuickAccessCard(
-                        icon: Icons.person_outline_rounded,
-                        label: '训练档案',
-                        color: const Color(0xFFE8EEF7),
-                        onTap: () => widget.onSelectTab?.call(2),
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const HistoryPage(),
+                          ),
+                        ),
                       ),
                     ),
                   ],
@@ -238,17 +253,76 @@ class _HomePageState extends State<HomePage> {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'AI 自动追踪球员移动、速度、覆盖范围与羽毛球轨迹，'
-                  '把每一次训练转化为清晰可读的数据。',
+                  '每次训练结束后，先看跑动距离、速度变化和前后场活动比例，'
+                  '了解这一场的体能投入是否均衡。再通过热力图观察常驻区域，'
+                  '通过移动轨迹检查启动、回位、左右衔接以及防守空当。'
+                  '\n\n将本场结果和自己的上一场对照，比单独追求某个数值更有意义。'
+                  '你可以从站位过深、回中偏慢、某一侧覆盖不足等具体问题开始，'
+                  '为下一次训练确定一个清晰目标。精彩片段则帮助你重看关键回合，'
+                  '把有效的移动和击球选择保留下来。',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         color: colorScheme.onSurfaceVariant,
                         height: 1.55,
                       ),
                 ),
+                const SizedBox(height: 22),
+                Text(
+                  '主要功能使用指导',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                ),
+                const SizedBox(height: 10),
+                const _UsageGuide(),
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _UsageGuide extends StatelessWidget {
+  const _UsageGuide();
+
+  @override
+  Widget build(BuildContext context) {
+    const steps = [
+      (
+        Icons.video_library_outlined,
+        '选择合适片段',
+        '优先选择一个完整回合，通常为 8 至 20 秒；去掉回合之间的休息、捡球和发球准备时间，需要观察趋势时可分别分析多个回合'
+      ),
+      (
+        Icons.crop_free_rounded,
+        '确认球场范围',
+        '球场四角是完整双打场地最外侧白线组成的四个角，不是画面四角；必要时按顺序手动标记'
+      ),
+      (Icons.hourglass_top_rounded, '等待分析完成', '可以离开任务页面继续使用 App，完成后到历史记录查看结果'),
+      (Icons.insights_outlined, '复盘并保存', '查看数据、热力图、轨迹和精彩片段，需要长期保留的内容可下载到手机'),
+    ];
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Column(
+          children: [
+            for (var index = 0; index < steps.length; index++) ...[
+              ListTile(
+                leading: CircleAvatar(
+                  child: Text('${index + 1}'),
+                ),
+                title: Text(
+                  steps[index].$2,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+                subtitle: Text(steps[index].$3),
+                trailing: Icon(steps[index].$1),
+              ),
+              if (index != steps.length - 1) const Divider(height: 1),
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -420,8 +494,10 @@ class _VenueScanEntry extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('扫描球馆二维码',
-                        style: TextStyle(fontWeight: FontWeight.w800)),
+                    Text(
+                      '扫描球馆二维码',
+                      style: TextStyle(fontWeight: FontWeight.w800),
+                    ),
                     SizedBox(height: 3),
                     Text('获取合作球馆的可用比赛视频'),
                   ],

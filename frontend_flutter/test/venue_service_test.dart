@@ -14,6 +14,33 @@ void main() {
     expect(venue.serverUrl, 'http://192.168.1.100');
   });
 
+  test('parses the bundled venue 24 demo QR payload', () {
+    final venue = service.parseVenueQr(
+      '{"type":"venue","venue_id":"24","venue_name":"演示球馆","server_url":"https://venue.example.com"}',
+    );
+
+    expect(venue.id, '24');
+    expect(venue.name, '演示球馆');
+  });
+
+  test('parses a venue QR link with query parameters', () {
+    final venue = service.parseVenueQr(
+      'goodbadminton://venue?venue_id=NEU_001&venue_name=%E4%B8%9C%E5%A4%A7%E7%BE%BD%E6%AF%9B%E7%90%83%E9%A6%86&server_url=http%3A%2F%2F192.168.31.8%3A8091',
+    );
+
+    expect(venue.id, 'NEU_001');
+    expect(venue.name, '东大羽毛球馆');
+    expect(venue.serverUrl, 'http://192.168.31.8:8091');
+  });
+
+  test('parses a plain venue server URL', () {
+    final venue = service.parseVenueQr('https://venue.example.com:8443');
+
+    expect(venue.id, 'venue.example.com');
+    expect(venue.name, 'venue.example.com');
+    expect(venue.serverUrl, 'https://venue.example.com:8443');
+  });
+
   test('rejects invalid venue QR payload', () {
     expect(
       () => service.parseVenueQr('{"type":"not-venue"}'),
@@ -26,5 +53,9 @@ void main() {
 
     expect(videos, hasLength(2));
     expect(videos.first.court, '1号场');
+    expect(videos.first.assetPath, 'assets/videos/demo01.mp4');
+    expect(videos.last.court, '2号场');
+    expect(videos.last.assetPath, 'assets/videos/demo02.mp4');
+    expect(videos.every((video) => video.isPreparedClip), isTrue);
   });
 }

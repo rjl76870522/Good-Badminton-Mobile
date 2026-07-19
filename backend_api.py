@@ -8,23 +8,38 @@ Run from the project root:
 from __future__ import annotations
 
 import json
+import logging
 import os
 import shutil
+import subprocess
 import threading
 import time
 import uuid
+import gc
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
 import cv2
 import numpy as np
-from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Query, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from sqlalchemy import or_
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
+from badminton_analysis.database import (
+    OutputFile,
+    Task,
+    User,
+    get_session,
+    init_db,
+    task_to_legacy_dict,
+)
 from badminton_analysis.highlight import generate_highlight
+from badminton_analysis.task_queue import DurableTaskWorker
 from badminton_analysis.mobile_report import build_mobile_report, load_advice_knowledge
 from badminton_analysis.court.mapper import auto_detect_preview
 from badminton_analysis.user_registry import (
@@ -33,10 +48,13 @@ from badminton_analysis.user_registry import (
     UserNotFound,
     get_user as registry_get_user,
     register_user as registry_register_user,
+    search_users_by_display_name,
+    update_display_name,
 )
 from webui.pipeline import prepare_court, run_analysis
 
 
+logger = logging.getLogger(__name__)
 PROJECT_ROOT = Path(__file__).resolve().parent
 UPLOAD_DIR = PROJECT_ROOT / "mobile_backend_data" / "uploads"
 PREVIEW_UPLOAD_DIR = PROJECT_ROOT / "mobile_backend_data" / "preview_uploads"
@@ -47,11 +65,14 @@ OUTPUTS_DIR = PROJECT_ROOT / "outputs"
 FRONTEND_DIR = PROJECT_ROOT / "mobile_frontend"
 DEFAULT_USER_ID = "guest"
 USER_ID_RULE_MESSAGE = "用户 ID 需要 3-32 位，只能使用小写英文字母、数字、下划线或短横线，且必须以字母或数字开头。"
-MAX_UPLOAD_BYTES = 500 * 1024 * 1024
+MAX_UPLOAD_BYTES = 200 * 1024 * 1024
+STORAGE_WARNING_PERCENT = float(os.getenv("STORAGE_WARNING_PERCENT", "70"))
+STORAGE_BLOCK_PERCENT = float(os.getenv("STORAGE_BLOCK_PERCENT", "80"))
 MIN_VIDEO_DURATION_SEC = 5.0
 MAX_VIDEO_DURATION_SEC = 180.0
 MIN_DETECTION_RECORDS = 3
-PREVIEW_COURT_DETECT_CANDIDATES = 3
+PREVIEW_COURT_DETECT_CANDIDATES = 1
+PREVIEW_COURT_DETECT_SIZE = (540, 360)
 MIN_PREVIEW_BRIGHTNESS = 40.0
 MIN_PREVIEW_NONBLACK_RATIO = 0.42
 MIN_PREVIEW_CENTER_NONBLACK_RATIO = 0.35
@@ -59,11 +80,68 @@ MAX_PREVIEW_DARK_RATIO = 0.65
 MIN_PREVIEW_SHARPNESS = 12.0
 MIN_PREVIEW_COURT_AREA_RATIO = 0.025
 MAX_PREVIEW_COURT_AREA_RATIO = 0.92
+PREVIEW_IMAGE_MAX_WIDTH = 480
+PREVIEW_IMAGE_JPEG_QUALITY = 65
 DEFAULT_TEMPLATE_CANDIDATES = [
     PROJECT_ROOT / "templates" / "badminton_template.png",
     PROJECT_ROOT / "templates" / "my_template.png",
     PROJECT_ROOT / "templates" / "demo.png",
 ]
+
+
+def _recommend_analysis_workers(total_memory_mb: int, free_memory_mb: int) -> int:
+    """Choose conservative GPU concurrency with room for codec and UI peaks."""
+    if total_memory_mb >= 24_000:
+        if free_memory_mb >= 18_000:
+            return 4
+        if free_memory_mb >= 12_000:
+            return 3
+    if total_memory_mb >= 16_000:
+        if free_memory_mb >= 12_000:
+            return 4
+        if free_memory_mb >= 8_000:
+            return 2
+    if total_memory_mb >= 12_000 and free_memory_mb >= 8_000:
+        return 2
+    return 1
+
+
+def _analysis_capacity() -> tuple[int, dict[str, Any]]:
+    override = os.getenv("ANALYSIS_WORKERS", "auto").strip().lower()
+    if override not in {"", "auto"}:
+        try:
+            configured = max(1, min(int(override), 4))
+            return configured, {"source": "environment", "configured": configured}
+        except ValueError:
+            pass
+    try:
+        result = subprocess.run(
+            [
+                "nvidia-smi",
+                "--query-gpu=name,memory.total,memory.free",
+                "--format=csv,noheader,nounits",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        name, total, free = [part.strip() for part in result.stdout.splitlines()[0].split(",")]
+        total_mb = int(float(total))
+        free_mb = int(float(free))
+        workers = _recommend_analysis_workers(total_mb, free_mb)
+        return workers, {
+            "source": "gpu_auto",
+            "gpu": name,
+            "memory_total_mb": total_mb,
+            "memory_free_at_start_mb": free_mb,
+            "configured": workers,
+        }
+    except Exception as exc:
+        return 1, {"source": "safe_default", "configured": 1, "reason": str(exc)}
+
+
+ANALYSIS_WORKER_COUNT, ANALYSIS_CAPACITY_INFO = _analysis_capacity()
 
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 PREVIEW_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -71,7 +149,21 @@ PREVIEW_FRAME_DIR.mkdir(parents=True, exist_ok=True)
 TASK_DIR.mkdir(parents=True, exist_ok=True)
 OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
 
-app = FastAPI(title="Good-Badminton Mobile Backend", version="0.1.0")
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    recover_persisted_tasks()
+    TASK_WORKER.start()
+    TASK_WORKER.notify()
+    try:
+        yield
+    finally:
+        TASK_WORKER.stop()
+
+
+# Initialize SQLite database (replaces JSON file storage)
+init_db(PROJECT_ROOT / "mobile_backend_data" / "badminton.db")
+
+app = FastAPI(title="Good-Badminton Mobile Backend", version="0.1.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -84,10 +176,8 @@ app.mount("/preview-frames", StaticFiles(directory=str(PREVIEW_FRAME_DIR)), name
 if FRONTEND_DIR.is_dir():
     app.mount("/app", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="mobile_frontend")
 
-TASKS: dict[str, dict[str, Any]] = {}
-TASKS_LOCK = threading.Lock()
-ANALYSIS_LOCK = threading.Lock()
 USER_REGISTRY_LOCK = threading.Lock()
+STARTUP_RECOVERY_LOCK = threading.Lock()
 
 
 class RegisterUserRequest(BaseModel):
@@ -96,11 +186,50 @@ class RegisterUserRequest(BaseModel):
 
 @app.get("/api/health")
 def health() -> dict[str, Any]:
+    queue = _queue_summary()
     return {
         "ok": True,
         "project_root": str(PROJECT_ROOT),
         "default_template": str(_default_template_path()),
+        "queue": queue,
     }
+
+
+def recover_persisted_tasks() -> None:
+    """Validate pending work and return interrupted tasks to the durable queue."""
+    with STARTUP_RECOVERY_LOCK:
+        pending = [
+            task
+            for task in _load_all_tasks()
+            if task.get("status") in {"queued", "processing"}
+        ]
+        for task in pending:
+            upload_path = Path(str(task.get("upload_path") or ""))
+            template_path = Path(str(task.get("template_path") or ""))
+            if not upload_path.is_file() or not template_path.is_file():
+                _update_task(
+                    task["task_id"],
+                    status="failed",
+                    stage="failed",
+                    progress=1.0,
+                    error=(
+                        "服务器重启后无法恢复任务：上传视频或球场模板文件已不存在。"
+                        "请重新上传视频。"
+                    ),
+                )
+                continue
+            _update_task(
+                task["task_id"],
+                status="queued",
+                stage="queued_after_restart",
+                progress=0.0,
+                error=None,
+            )
+
+
+@app.get("/api/diagnostics")
+def diagnostics() -> dict[str, Any]:
+    return _diagnostics()
 
 
 @app.get("/", include_in_schema=False)
@@ -112,10 +241,7 @@ def index() -> RedirectResponse:
 def register_mobile_user(payload: RegisterUserRequest) -> dict[str, Any]:
     with USER_REGISTRY_LOCK:
         try:
-            user = registry_register_user(
-                USER_REGISTRY_PATH,
-                user_id=payload.user_id,
-            )
+            user = registry_register_user(user_id=payload.user_id)
         except InvalidUserId:
             raise_api_error(
                 status_code=400,
@@ -136,7 +262,7 @@ def register_mobile_user(payload: RegisterUserRequest) -> dict[str, Any]:
 @app.get("/api/users/{user_id}")
 def get_mobile_user(user_id: str) -> dict[str, Any]:
     try:
-        user = registry_get_user(USER_REGISTRY_PATH, user_id)
+        user = registry_get_user(user_id)
     except InvalidUserId:
         raise_api_error(
             status_code=400,
@@ -154,9 +280,43 @@ def get_mobile_user(user_id: str) -> dict[str, Any]:
     return {"user": user}
 
 
+class UpdateDisplayNameRequest(BaseModel):
+    display_name: str
+
+
+@app.put("/api/users/{user_id}/display-name")
+def set_display_name(user_id: str, payload: UpdateDisplayNameRequest) -> dict[str, Any]:
+    """Set or change a user's display name. Names can be anything, duplicates allowed."""
+    try:
+        user = update_display_name(user_id=user_id, display_name=payload.display_name)
+    except InvalidUserId:
+        raise_api_error(
+            status_code=400,
+            code="INVALID_USER_ID",
+            message="这个用户 ID 格式不能使用。",
+            hint=USER_ID_RULE_MESSAGE,
+        )
+    except UserNotFound:
+        raise_api_error(
+            status_code=404,
+            code="USER_NOT_FOUND",
+            message="用户不存在，请先注册。",
+        )
+    return {"user": user}
+
+
+@app.get("/api/users/search")
+def search_users(
+    name: str = Query(default="", min_length=1, max_length=128),
+    limit: int = Query(default=20, ge=1, le=50),
+) -> dict[str, Any]:
+    """Search users by display name (fuzzy match)."""
+    users = search_users_by_display_name(name, limit=limit)
+    return {"users": users, "count": len(users)}
+
+
 @app.post("/api/videos/upload")
 def upload_video(
-    background_tasks: BackgroundTasks,
     file: UploadFile | None = File(default=None),
     user_id: str = Form(default=DEFAULT_USER_ID),
     source_upload_id: str | None = Form(default=None),
@@ -166,6 +326,7 @@ def upload_video(
     pose_mode: str = Form(default="balanced"),
     keep_audio: bool = Form(default=True),
 ) -> dict[str, Any]:
+    _require_upload_capacity()
     if file is None and not source_upload_id:
         raise_api_error(
             status_code=400,
@@ -210,22 +371,18 @@ def upload_video(
         "user_id": user_id,
         "upload_path": str(upload_path),
         "template_path": str(template),
+        "corners_json": json.dumps(corners) if corners else None,
+        "language": language,
+        "pose_mode": pose_mode,
+        "keep_audio": keep_audio,
         "created_at": time.time(),
         "updated_at": time.time(),
         "report": None,
     }
     _set_task(task_id, task)
-
-    background_tasks.add_task(
-        _run_analysis_task,
-        task_id=task_id,
-        video_path=str(upload_path),
-        template_path=str(template),
-        corners=corners,
-        language=language,
-        pose_mode=pose_mode,
-        keep_audio=keep_audio,
-    )
+    if source_upload_id:
+        _remove_preview_artifacts(source_upload_id, source_path)
+    TASK_WORKER.notify()
 
     return {
         "task_id": task_id,
@@ -240,6 +397,7 @@ def create_preview_frame(
     file: UploadFile = File(...),
     user_id: str = Form(default=DEFAULT_USER_ID),
 ) -> dict[str, Any]:
+    _require_upload_capacity()
     if not file.filename:
         raise_api_error(
             status_code=400,
@@ -274,6 +432,11 @@ def list_tasks(user_id: str | None = Query(default=None)) -> dict[str, Any]:
     return {"tasks": [_public_task(t) for t in tasks]}
 
 
+@app.get("/api/queue")
+def get_queue_status() -> dict[str, Any]:
+    return _queue_summary()
+
+
 @app.get("/api/history")
 def get_history(
     limit: int = Query(default=20, ge=1, le=100),
@@ -297,6 +460,59 @@ def get_task(task_id: str) -> dict[str, Any]:
     return _public_task(task)
 
 
+@app.post("/api/tasks/{task_id}/cancel")
+def cancel_task(
+    task_id: str,
+    user_id: str | None = Query(default=None),
+) -> dict[str, Any]:
+    task = _get_task_or_404(task_id)
+    if user_id and task.get("user_id", DEFAULT_USER_ID) != _safe_user_id(user_id):
+        raise_api_error(
+            status_code=404,
+            code="TASK_NOT_FOUND",
+            message="任务不存在。",
+            hint="请确认当前 user_id 和 task_id 是否匹配。",
+        )
+    if task["status"] == "cancelled":
+        return _public_task(task)
+    if task["status"] != "queued":
+        raise_api_error(
+            status_code=409,
+            code="TASK_CANNOT_CANCEL",
+            message="任务已经开始分析，当前不能取消。",
+            hint="只有仍在排队的任务可以取消。",
+        )
+
+    session = get_session()
+    try:
+        changed = (
+            session.query(Task)
+            .filter(Task.task_id == task_id, Task.status == "queued")
+            .update(
+                {
+                    Task.status: "cancelled",
+                    Task.stage: "cancelled",
+                    Task.error: None,
+                    Task.updated_at: time.time(),
+                },
+                synchronize_session=False,
+            )
+        )
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+    if not changed:
+        raise_api_error(
+            status_code=409,
+            code="TASK_CANNOT_CANCEL",
+            message="任务刚刚开始分析，当前不能取消。",
+        )
+    return _public_task(_get_task_or_404(task_id))
+
+
 @app.delete("/api/tasks/{task_id}")
 def delete_task(
     task_id: str,
@@ -312,19 +528,40 @@ def delete_task(
         )
 
     deleted_paths = _delete_task_artifacts(task)
-    with TASKS_LOCK:
-        TASKS.pop(task_id, None)
-    snapshot = TASK_DIR / f"{task_id}.json"
+    session = get_session()
     try:
-        snapshot.unlink(missing_ok=True)
-    except OSError:
-        pass
+        db_task = session.get(Task, task_id)
+        if db_task:
+            session.delete(db_task)
+            session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
 
     return {
         "ok": True,
         "task_id": task_id,
         "deleted_paths": deleted_paths,
     }
+
+
+@app.put("/api/tasks/{task_id}/retention")
+def update_task_retention(
+    task_id: str,
+    retained: bool = Query(...),
+    user_id: str | None = Query(default=None),
+) -> dict[str, Any]:
+    task = _get_task_or_404(task_id)
+    if user_id and task.get("user_id", DEFAULT_USER_ID) != _safe_user_id(user_id):
+        raise_api_error(
+            status_code=404,
+            code="TASK_NOT_FOUND",
+            message="任务不存在。",
+        )
+    _update_task(task_id, retained=retained)
+    return _public_task(_get_task_or_404(task_id))
 
 
 @app.get("/api/tasks/{task_id}/report")
@@ -336,6 +573,13 @@ def get_report(task_id: str) -> dict[str, Any]:
             code="ANALYSIS_FAILED",
             message=task["error"] or "视频分析失败。",
             hint="请检查拍摄角度、球场线是否清晰，或换一段稳定样例视频。",
+        )
+    if task["status"] == "cancelled":
+        raise_api_error(
+            status_code=409,
+            code="TASK_CANCELLED",
+            message="任务已取消。",
+            hint="请重新选择视频并创建分析任务。",
         )
     if task["status"] != "completed" or not task.get("report"):
         raise_api_error(
@@ -403,87 +647,86 @@ def _run_analysis_task(
     pose_mode: str,
     keep_audio: bool,
 ) -> None:
-    with ANALYSIS_LOCK:
-        try:
-            manual_corners = corners is not None
-            _update_task(task_id, status="processing", stage="preparing_court", progress=0.02)
-            if corners is None:
-                court = prepare_court(template_path)
-                corners = court.get("corners")
-            if not corners or len(corners) != 4:
-                raise RuntimeError("Could not resolve court corners from the template.")
+    try:
+        manual_corners = corners is not None
+        _update_task(task_id, status="processing", stage="preparing_court", progress=0.02)
+        if corners is None:
+            court = prepare_court(template_path)
+            corners = court.get("corners")
+        if not corners or len(corners) != 4:
+            raise RuntimeError("Could not resolve court corners from the template.")
 
-            options = {
-                "pose_family": "yolo-pose",
-                "pose_mode": pose_mode,
-                "language": language,
-                "audio": keep_audio,
-                "show_skeletons": True,
-                "show_player_trajectories": True,
-                "show_court_trajectory": True,
-                "show_shuttlecock_trajectory": True,
-                "show_player_stats": True,
-                "show_pose_roi": True,
-                "visualize_positions": True,
-                "always_process_court": True,
-                "court_match_threshold": 0.55,
-                "corners_coordinate_space": "video" if manual_corners else "template",
-                "yolo_pose_model": "weights/yolo11n-pose.pt",
-                "ball_model": "weights/yolo11s-ball.pt",
-            }
+        options = {
+            "pose_family": "yolo-pose",
+            "pose_mode": pose_mode,
+            "language": language,
+            "audio": keep_audio,
+            "show_skeletons": True,
+            "show_player_trajectories": True,
+            "show_court_trajectory": True,
+            "show_shuttlecock_trajectory": True,
+            "show_player_stats": True,
+            "show_pose_roi": True,
+            "visualize_positions": True,
+            "always_process_court": True,
+            "court_match_threshold": 0.55,
+            "corners_coordinate_space": "video" if manual_corners else "template",
+            "yolo_pose_model": "weights/yolo11n-pose.pt",
+            "ball_model": "weights/yolo11s-ball.pt",
+        }
 
-            def progress_cb(frame: int, total: int) -> None:
-                ratio = frame / total if total else 0.0
-                _update_task(
-                    task_id,
-                    status="processing",
-                    stage="analyzing_video",
-                    progress=round(0.05 + ratio * 0.85, 4),
-                )
-
-            result = run_analysis(
-                video_path=video_path,
-                template_path=template_path,
-                corners=corners,
-                options=options,
-                progress_cb=progress_cb,
-            )
-            detection_records = _count_detection_records(result.get("detections"))
-            result["detection_records"] = detection_records
-            if detection_records < MIN_DETECTION_RECORDS:
-                raise RuntimeError(
-                    "未检测到有效球场/球员数据。请检查视频是否完整拍到球场，"
-                    "或在上传时手动填写四个球场角点。"
-                )
-
-            _update_task(task_id, stage="building_highlight", progress=0.92)
-            highlight = generate_highlight(
-                video_path=result.get("video") or video_path,
-                detections_path=result.get("detections"),
-                output_dir=result.get("output_dir") or OUTPUTS_DIR,
-            )
-            result["highlight"] = highlight.get("video")
-            result["highlight_segments"] = highlight.get("segments", [])
-            result["highlight_error"] = highlight.get("error")
-
-            _update_task(task_id, stage="building_report", progress=0.96)
-            report = _build_report_with_urls(task_id, result)
+        def progress_cb(frame: int, total: int) -> None:
+            ratio = frame / total if total else 0.0
             _update_task(
                 task_id,
-                status="completed",
-                stage="completed",
-                progress=1.0,
-                report=report,
-                output_dir=result.get("output_dir"),
+                status="processing",
+                stage="analyzing_video",
+                progress=round(0.05 + ratio * 0.85, 4),
             )
-        except Exception as exc:
-            _update_task(
-                task_id,
-                status="failed",
-                stage="failed",
-                progress=1.0,
-                error=str(exc),
+
+        result = run_analysis(
+            video_path=video_path,
+            template_path=template_path,
+            corners=corners,
+            options=options,
+            progress_cb=progress_cb,
+        )
+        detection_records = _count_detection_records(result.get("detections"))
+        result["detection_records"] = detection_records
+        if detection_records < MIN_DETECTION_RECORDS:
+            raise RuntimeError(
+                "未检测到有效球场/球员数据。请检查视频是否完整拍到球场，"
+                "或在上传时手动填写四个球场角点。"
             )
+
+        _update_task(task_id, stage="building_highlight", progress=0.92)
+        highlight = generate_highlight(
+            video_path=result.get("video") or video_path,
+            detections_path=result.get("detections"),
+            output_dir=result.get("output_dir") or OUTPUTS_DIR,
+        )
+        result["highlight"] = highlight.get("video")
+        result["highlight_segments"] = highlight.get("segments", [])
+        result["highlight_error"] = highlight.get("error")
+
+        _update_task(task_id, stage="building_report", progress=0.96)
+        report = _build_report_with_urls(task_id, result)
+        _update_task(
+            task_id,
+            status="completed",
+            stage="completed",
+            progress=1.0,
+            report=report,
+            output_dir=result.get("output_dir"),
+        )
+    except Exception as exc:
+        _update_task(
+            task_id,
+            status="failed",
+            stage="failed",
+            progress=1.0,
+            error=str(exc),
+        )
 
 
 def _build_report_with_urls(task_id: str, result: dict[str, Any]) -> dict[str, Any]:
@@ -611,6 +854,15 @@ def _resolve_preview_upload(source_upload_id: str) -> tuple[Path, str]:
     return source_path, source_name
 
 
+def _remove_preview_artifacts(source_upload_id: str, source_path: Path) -> None:
+    """Remove transient preview files after the durable task has been stored."""
+    for path in (source_path, PREVIEW_FRAME_DIR / f"{source_upload_id}.jpg"):
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            logger.warning("Unable to remove preview artifact: %s", path)
+
+
 def _count_detection_records(path: str | os.PathLike[str] | None) -> int:
     if not path:
         return 0
@@ -631,6 +883,7 @@ def _count_detection_records(path: str | os.PathLike[str] | None) -> int:
 
 
 def _select_preview_frame(video_path: Path, source_upload_id: str) -> dict[str, Any]:
+    started_at = time.perf_counter()
     cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
         raise_api_error(
@@ -653,6 +906,7 @@ def _select_preview_frame(video_path: Path, source_upload_id: str) -> dict[str, 
         )
 
     sample_indices = _preview_sample_indices(total_frames)
+    read_started_at = time.perf_counter()
     candidates: list[dict[str, Any]] = []
     for frame_index in sample_indices:
         cap.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
@@ -664,8 +918,10 @@ def _select_preview_frame(video_path: Path, source_upload_id: str) -> dict[str, 
             continue
         candidates.append(scored)
     cap.release()
+    read_elapsed = time.perf_counter() - read_started_at
 
     best: dict[str, Any] | None = None
+    detect_started_at = time.perf_counter()
     for candidate in sorted(candidates, key=lambda item: item["score"], reverse=True)[
         :PREVIEW_COURT_DETECT_CANDIDATES
     ]:
@@ -679,6 +935,7 @@ def _select_preview_frame(video_path: Path, source_upload_id: str) -> dict[str, 
             continue
         if best is None or scored["score"] > best["score"]:
             best = scored
+    detect_elapsed = time.perf_counter() - detect_started_at
 
     if best is None and candidates:
         best = max(candidates, key=lambda item: item["score"])
@@ -696,7 +953,12 @@ def _select_preview_frame(video_path: Path, source_upload_id: str) -> dict[str, 
         )
 
     image_path = PREVIEW_FRAME_DIR / f"{source_upload_id}.jpg"
-    ok, encoded = cv2.imencode(".jpg", best["frame"], [int(cv2.IMWRITE_JPEG_QUALITY), 90])
+    preview_image = _resize_preview_image(best["frame"])
+    ok, encoded = cv2.imencode(
+        ".jpg",
+        preview_image,
+        [int(cv2.IMWRITE_JPEG_QUALITY), PREVIEW_IMAGE_JPEG_QUALITY],
+    )
     if not ok:
         raise_api_error(
             status_code=500,
@@ -704,6 +966,14 @@ def _select_preview_frame(video_path: Path, source_upload_id: str) -> dict[str, 
             message="预览帧编码失败。",
         )
     encoded.tofile(str(image_path))
+    total_elapsed = time.perf_counter() - started_at
+    print(
+        "Preview frame selected: "
+        f"source={source_upload_id} frame={best['frame_index']} "
+        f"reason={best['reason']} candidates={len(candidates)} "
+        f"read={read_elapsed:.2f}s detect={detect_elapsed:.2f}s total={total_elapsed:.2f}s",
+        flush=True,
+    )
 
     return {
         "image_url": f"/preview-frames/{source_upload_id}.jpg",
@@ -723,6 +993,15 @@ def _select_preview_frame(video_path: Path, source_upload_id: str) -> dict[str, 
             "total_frames": total_frames,
         },
     }
+
+
+def _resize_preview_image(frame: Any) -> Any:
+    height, width = frame.shape[:2]
+    if width <= PREVIEW_IMAGE_MAX_WIDTH:
+        return frame
+    scale = PREVIEW_IMAGE_MAX_WIDTH / float(width)
+    target_size = (PREVIEW_IMAGE_MAX_WIDTH, max(1, int(round(height * scale))))
+    return cv2.resize(frame, target_size, interpolation=cv2.INTER_AREA)
 
 
 def _preview_sample_indices(total_frames: int) -> list[int]:
@@ -758,7 +1037,10 @@ def _score_preview_frame(
 
     raw_auto_corners = None
     if detect_court:
-        raw_auto_corners, _preview = auto_detect_preview(frame)
+        raw_auto_corners, _preview = auto_detect_preview(
+            frame,
+            fixed_size=PREVIEW_COURT_DETECT_SIZE,
+        )
     h, w = frame.shape[:2]
     auto_corners = None
     area_ratio = 0.0
@@ -804,6 +1086,8 @@ def _score_preview_frame(
     elif raw_auto_corners and not auto_corners:
         reason = "rejected_invalid_auto_corners"
         scene_warning = "自动角点质量较低，建议放大画面后手动点选四个外侧角点。"
+    elif detect_court and not auto_corners:
+        scene_warning = "已提取预览帧，但自动角点未识别。请按左上、右上、右下、左下的顺序手动点选四个球场外侧角点。"
     return {
         "frame": frame,
         "frame_index": frame_index,
@@ -866,6 +1150,8 @@ def _first_matching(urls: list[str | None], needle: str) -> str | None:
 
 
 def _public_task(task: dict[str, Any]) -> dict[str, Any]:
+    failure = _failure_info(task.get("error"))
+    queue_position = _queue_position(task) if task.get("status") == "queued" else None
     return {
         "task_id": task["task_id"],
         "user_id": task.get("user_id", DEFAULT_USER_ID),
@@ -873,10 +1159,16 @@ def _public_task(task: dict[str, Any]) -> dict[str, Any]:
         "progress": task["progress"],
         "stage": task["stage"],
         "error": task["error"],
+        "failure_code": failure["code"] if task["status"] == "failed" else None,
+        "failure_title": failure["title"] if task["status"] == "failed" else None,
+        "failure_hint": failure["hint"] if task["status"] == "failed" else None,
         "video_name": task["video_name"],
         "created_at": task["created_at"],
         "updated_at": task["updated_at"],
+        "retained": bool(task.get("retained", False)),
+        "upload_deleted": task.get("upload_deleted_at") is not None,
         "report_url": f"/api/tasks/{task['task_id']}/report",
+        "queue_position": queue_position,
     }
 
 
@@ -900,24 +1192,6 @@ def _history_item(task: dict[str, Any]) -> dict[str, Any]:
         }
     )
     return public
-
-
-def _load_all_tasks() -> list[dict[str, Any]]:
-    tasks_by_id: dict[str, dict[str, Any]] = {}
-    for snapshot in TASK_DIR.glob("*.json"):
-        try:
-            with snapshot.open("r", encoding="utf-8") as f:
-                task = json.load(f)
-        except (OSError, json.JSONDecodeError):
-            continue
-        task_id = task.get("task_id")
-        if task_id:
-            tasks_by_id[task_id] = task
-
-    with TASKS_LOCK:
-        tasks_by_id.update(TASKS)
-
-    return list(tasks_by_id.values())
 
 
 def _filter_tasks_by_user(tasks: list[dict[str, Any]], user_id: str | None) -> list[dict[str, Any]]:
@@ -990,6 +1264,140 @@ def _safe_path_under(path_value: Any, allowed_root: Path) -> Path | None:
     if resolved == root or root not in resolved.parents:
         return None
     return resolved
+
+
+def _task_corners(task: dict[str, Any]) -> list[list[int]] | None:
+    raw = task.get("corners_json")
+    if not raw:
+        return None
+    try:
+        corners = json.loads(str(raw))
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(corners, list) or len(corners) != 4:
+        return None
+    parsed: list[list[int]] = []
+    for point in corners:
+        if not isinstance(point, list | tuple) or len(point) != 2:
+            return None
+        parsed.append([int(point[0]), int(point[1])])
+    return parsed
+
+
+def _failure_info(error: Any) -> dict[str, str]:
+    message = str(error or "")
+    lower = message.lower()
+    if "cuda" in lower or "out of memory" in lower or "显存" in message:
+        return {
+            "code": "GPU_OUT_OF_MEMORY",
+            "title": "服务器显存不足",
+            "hint": "请换更短或更低分辨率的视频，或等待当前分析结束后重试。",
+        }
+    if "model" in lower or "weights/" in lower or "no such file" in lower or "模型" in message:
+        return {
+            "code": "MODEL_MISSING",
+            "title": "服务器模型文件缺失",
+            "hint": "请在服务器上检查 weights/yolo11n-pose.pt 和 weights/yolo11s-ball.pt 是否存在。",
+        }
+    if "未检测到有效球场" in message or "球员数据" in message or "court" in lower:
+        return {
+            "code": "DETECTION_FAILED",
+            "title": "没有识别到有效比赛画面",
+            "hint": "请确认视频完整拍到球场，或重新上传并手动标记四个球场角点。",
+        }
+    if "timeout" in lower or "timed out" in lower or "超时" in message:
+        return {
+            "code": "ANALYSIS_TIMEOUT",
+            "title": "分析超时",
+            "hint": "请换更短的视频重试；服务器忙时也可以稍后再试。",
+        }
+    if "服务器重启" in message:
+        return {
+            "code": "SERVER_RESTARTED",
+            "title": "服务器重启后任务无法恢复",
+            "hint": "请重新上传视频。后续任务参数会持久化，重启后会自动恢复可恢复的任务。",
+        }
+    return {
+        "code": "ANALYSIS_ERROR",
+        "title": "本次分析未完成",
+        "hint": "请检查视频格式、拍摄角度和服务器状态后重试。",
+    }
+
+
+def _diagnostics() -> dict[str, Any]:
+    disk = shutil.disk_usage(PROJECT_ROOT)
+    checks: dict[str, Any] = {
+        "ok": True,
+        "project_root": str(PROJECT_ROOT),
+        "disk": {
+            "total_gb": round(disk.total / 1024**3, 2),
+            "free_gb": round(disk.free / 1024**3, 2),
+            "used_percent": round(disk.used / disk.total * 100, 2),
+        },
+        "models": {
+            "pose": _model_status(PROJECT_ROOT / "weights" / "yolo11n-pose.pt"),
+            "ball": _model_status(PROJECT_ROOT / "weights" / "yolo11s-ball.pt"),
+        },
+        "gpu": _gpu_status(),
+        "database": str((PROJECT_ROOT / "mobile_backend_data" / "badminton.db").resolve()),
+    }
+    checks["ok"] = (
+        checks["disk"]["free_gb"] > 5
+        and checks["models"]["pose"]["exists"]
+        and checks["models"]["ball"]["exists"]
+    )
+    return checks
+
+
+def _model_status(path: Path) -> dict[str, Any]:
+    return {
+        "path": str(path),
+        "exists": path.is_file(),
+        "size_mb": round(path.stat().st_size / 1024**2, 2) if path.is_file() else 0,
+    }
+
+
+def _gpu_status() -> dict[str, Any]:
+    status: dict[str, Any] = {"nvidia_smi": None, "torch": None}
+    try:
+        result = subprocess.run(
+            [
+                "nvidia-smi",
+                "--query-gpu=name,driver_version,memory.total,memory.free",
+                "--format=csv,noheader,nounits",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        rows = []
+        for line in result.stdout.splitlines():
+            parts = [part.strip() for part in line.split(",")]
+            if len(parts) >= 4:
+                rows.append(
+                    {
+                        "name": parts[0],
+                        "driver_version": parts[1],
+                        "memory_total_mb": int(float(parts[2])),
+                        "memory_free_mb": int(float(parts[3])),
+                    }
+                )
+        status["nvidia_smi"] = {"ok": True, "gpus": rows}
+    except Exception as exc:  # noqa: BLE001 - diagnostic endpoint should not fail hard
+        status["nvidia_smi"] = {"ok": False, "error": str(exc)}
+
+    try:
+        import torch
+
+        status["torch"] = {
+            "version": torch.__version__,
+            "cuda_available": bool(torch.cuda.is_available()),
+            "device": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
+        }
+    except Exception as exc:  # noqa: BLE001
+        status["torch"] = {"cuda_available": False, "error": str(exc)}
+    return status
 
 
 def _safe_user_id(user_id: str | None) -> str:
@@ -1093,51 +1501,245 @@ def _mock_demo_report() -> dict[str, Any]:
     }
 
 
-def _set_task(task_id: str, task: dict[str, Any]) -> None:
-    with TASKS_LOCK:
-        TASKS[task_id] = task
-    _write_task_snapshot(task_id)
+# ---------------------------------------------------------------------------
+# Task storage (SQLite via SQLAlchemy)
+# ---------------------------------------------------------------------------
+
+
+def _set_task(task_id: str, task_data: dict[str, Any]) -> None:
+    """Insert a new task row into the database."""
+    session = get_session()
+    try:
+        user_id = task_data.get("user_id", DEFAULT_USER_ID)
+        now = time.time()
+        session.execute(
+            sqlite_insert(User)
+            .values(user_id=user_id, created_at=now, updated_at=now)
+            .on_conflict_do_nothing(index_elements=[User.user_id])
+        )
+        task = Task(
+            task_id=task_id,
+            user_id=user_id,
+            status=task_data.get("status", "queued"),
+            progress=float(task_data.get("progress", 0.0)),
+            stage=task_data.get("stage", "queued"),
+            error=task_data.get("error"),
+            video_name=task_data.get("video_name", ""),
+            upload_path=task_data.get("upload_path", ""),
+            template_path=task_data.get("template_path", ""),
+            output_dir=task_data.get("output_dir"),
+            corners_json=task_data.get("corners_json"),
+            language=task_data.get("language", "zh"),
+            pose_mode=task_data.get("pose_mode", "balanced"),
+            keep_audio=bool(task_data.get("keep_audio", True)),
+            retained=bool(task_data.get("retained", False)),
+            upload_deleted_at=task_data.get("upload_deleted_at"),
+            created_at=task_data.get("created_at", time.time()),
+            updated_at=task_data.get("updated_at", time.time()),
+        )
+        session.add(task)
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
 
 
 def _update_task(task_id: str, **changes: Any) -> None:
-    with TASKS_LOCK:
-        task = TASKS[task_id]
-        task.update(changes)
-        task["updated_at"] = time.time()
-    _write_task_snapshot(task_id)
+    """Update fields on an existing task row."""
+    session = get_session()
+    try:
+        task = session.get(Task, task_id)
+        if task is None:
+            return
+        if "report" in changes:
+            report = changes.pop("report")
+            task.report = report
+            _replace_output_file_index(task, report)
+        for key, value in changes.items():
+            if hasattr(task, key):
+                setattr(task, key, value)
+        task.updated_at = time.time()
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
+def _replace_output_file_index(
+    task: Task,
+    report: dict[str, Any] | None,
+) -> None:
+    """Keep normalized output rows in sync with the report payload."""
+    task.output_files.clear()
+    if not isinstance(report, dict):
+        return
+    files = report.get("files")
+    if not isinstance(files, dict):
+        return
+
+    for file_type in (
+        "analysis_video",
+        "highlight",
+        "metadata",
+        "detections",
+        "heatmap",
+        "trajectory",
+    ):
+        url = files.get(file_type)
+        if isinstance(url, str) and url:
+            task.output_files.append(OutputFile(file_type=file_type, url=url))
+
+    visualizations = files.get("visualizations")
+    if not isinstance(visualizations, list):
+        return
+    for url in visualizations:
+        if isinstance(url, str) and url:
+            task.output_files.append(
+                OutputFile(file_type="visualization", url=url)
+            )
 
 
 def _get_task_or_404(task_id: str) -> dict[str, Any]:
-    with TASKS_LOCK:
-        task = TASKS.get(task_id)
-        if task is not None:
-            return dict(task)
+    """Fetch a task dict, raising 404-style HTTPException if missing."""
+    session = get_session()
+    try:
+        task = session.get(Task, task_id)
+        if task is None:
+            raise_api_error(
+                status_code=404,
+                code="TASK_NOT_FOUND",
+                message="任务不存在。",
+                hint="请检查 task_id 是否正确。",
+            )
+        return task_to_legacy_dict(task)
+    finally:
+        session.close()
 
-    snapshot = TASK_DIR / f"{task_id}.json"
-    if snapshot.is_file():
-        with snapshot.open("r", encoding="utf-8") as f:
-            task = json.load(f)
-        with TASKS_LOCK:
-            TASKS[task_id] = task
-        return dict(task)
 
-    raise_api_error(
-        status_code=404,
-        code="TASK_NOT_FOUND",
-        message="任务不存在。",
-        hint="请检查 task_id 是否正确。",
+def _load_all_tasks() -> list[dict[str, Any]]:
+    """Return all tasks as legacy dicts."""
+    session = get_session()
+    try:
+        return [task_to_legacy_dict(t) for t in session.query(Task).all()]
+    finally:
+        session.close()
+
+
+def _claim_next_task() -> dict[str, Any] | None:
+    """Atomically claim the oldest queued task across worker processes."""
+    while True:
+        session = get_session()
+        try:
+            candidate = (
+                session.query(Task.task_id)
+                .filter(Task.status == "queued")
+                .order_by(Task.created_at.asc(), Task.task_id.asc())
+                .first()
+            )
+            if candidate is None:
+                return None
+            now = time.time()
+            changed = (
+                session.query(Task)
+                .filter(Task.task_id == candidate[0], Task.status == "queued")
+                .update(
+                    {
+                        Task.status: "processing",
+                        Task.stage: "starting_worker",
+                        Task.progress: 0.01,
+                        Task.error: None,
+                        Task.updated_at: now,
+                    },
+                    synchronize_session=False,
+                )
+            )
+            session.commit()
+            if changed:
+                claimed = session.get(Task, candidate[0])
+                return task_to_legacy_dict(claimed) if claimed is not None else None
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
+
+def _run_claimed_task(task: dict[str, Any]) -> None:
+    try:
+        _run_analysis_task(
+            task_id=task["task_id"],
+            video_path=str(task.get("upload_path") or ""),
+            template_path=str(task.get("template_path") or ""),
+            corners=_task_corners(task),
+            language=str(task.get("language") or "zh"),
+            pose_mode=str(task.get("pose_mode") or "balanced"),
+            keep_audio=bool(task.get("keep_audio", True)),
+        )
+    finally:
+        gc.collect()
+        try:
+            import torch
+
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except Exception:
+            pass
+
+
+def _fail_unhandled_task(task_id: str, exc: Exception) -> None:
+    _update_task(
+        task_id,
+        status="failed",
+        stage="failed",
+        progress=1.0,
+        error=f"Analysis worker failed unexpectedly: {exc}",
     )
 
 
-def _write_task_snapshot(task_id: str) -> None:
-    with TASKS_LOCK:
-        task = TASKS.get(task_id)
-        if not task:
-            return
-        payload = dict(task)
-    path = TASK_DIR / f"{task_id}.json"
-    with path.open("w", encoding="utf-8") as f:
-        json.dump(payload, f, ensure_ascii=False, indent=2)
+def _queue_position(task: dict[str, Any]) -> int | None:
+    created_at = task.get("created_at")
+    task_id = task.get("task_id")
+    if created_at is None or not task_id:
+        return None
+    session = get_session()
+    try:
+        ahead = (
+            session.query(Task)
+            .filter(
+                Task.status == "queued",
+                or_(
+                    Task.created_at < float(created_at),
+                    (Task.created_at == float(created_at)) & (Task.task_id < str(task_id)),
+                ),
+            )
+            .count()
+        )
+        return ahead + 1
+    finally:
+        session.close()
+
+
+def _queue_summary() -> dict[str, Any]:
+    session = get_session()
+    try:
+        queued = session.query(Task).filter(Task.status == "queued").count()
+        processing = session.query(Task).filter(Task.status == "processing").count()
+        return {
+            "queued": queued,
+            "processing": processing,
+            "worker_running": TASK_WORKER.running,
+            "capacity": TASK_WORKER.capacity,
+            "active_workers": TASK_WORKER.active_workers,
+            "capacity_reason": ANALYSIS_CAPACITY_INFO,
+            "storage": _storage_status(),
+        }
+    finally:
+        session.close()
+
 
 
 def _resolve_template(template_path: str | None) -> Path:
@@ -1202,6 +1804,36 @@ def _safe_filename(filename: str) -> str:
     return "".join(ch if ch.isalnum() or ch in "._-" else "_" for ch in name)
 
 
+def _storage_status() -> dict[str, Any]:
+    usage = shutil.disk_usage(PROJECT_ROOT)
+    used_percent = (usage.used / usage.total * 100) if usage.total else 0.0
+    return {
+        "used_percent": round(used_percent, 2),
+        "free_bytes": usage.free,
+        "warning_percent": STORAGE_WARNING_PERCENT,
+        "block_percent": STORAGE_BLOCK_PERCENT,
+        "accepting_uploads": used_percent < STORAGE_BLOCK_PERCENT,
+    }
+
+
+def _require_upload_capacity() -> None:
+    storage = _storage_status()
+    used_percent = float(storage["used_percent"])
+    if used_percent >= STORAGE_BLOCK_PERCENT:
+        raise_api_error(
+            status_code=507,
+            code="STORAGE_FULL",
+            message="服务器存储空间不足，暂时停止接收新视频。",
+            hint="已有训练记录仍可查看，请稍后再试。",
+        )
+    if used_percent >= STORAGE_WARNING_PERCENT:
+        logger.warning(
+            "Storage usage %.2f%% reached warning threshold %.2f%%",
+            used_percent,
+            STORAGE_WARNING_PERCENT,
+        )
+
+
 def _validate_uploaded_video(path: Path) -> None:
     size = path.stat().st_size
     if size <= 0:
@@ -1216,7 +1848,7 @@ def _validate_uploaded_video(path: Path) -> None:
         raise_api_error(
             status_code=413,
             code="VIDEO_TOO_LARGE",
-            message="视频文件过大，请上传 500MB 以内的视频。",
+            message="视频文件过大，请上传 200MB 以内的视频。",
             hint="建议先使用 30 秒到 3 分钟的横屏固定机位视频。",
         )
 
@@ -1262,3 +1894,11 @@ def raise_api_error(
     if hint:
         detail["hint"] = hint
     raise HTTPException(status_code=status_code, detail=detail)
+
+
+TASK_WORKER = DurableTaskWorker(
+    claim_next=_claim_next_task,
+    run_task=_run_claimed_task,
+    fail_task=_fail_unhandled_task,
+    worker_count=ANALYSIS_WORKER_COUNT,
+)

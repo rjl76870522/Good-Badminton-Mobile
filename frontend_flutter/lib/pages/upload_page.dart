@@ -9,7 +9,6 @@ import '../models/preview_frame.dart';
 import '../services/api_service.dart';
 import '../services/task_storage.dart';
 import '../services/user_storage.dart';
-import '../utils/user_facing_error.dart';
 import '../widgets/app_background.dart';
 import 'corner_picker_page.dart';
 import 'task_status_page.dart';
@@ -68,7 +67,7 @@ class _UploadPageState extends State<UploadPage> {
     if (initialPath != null) {
       if (!await File(initialPath).exists()) {
         if (mounted) {
-          setState(() => _error = '下载的视频缓存不存在，请重新从球馆视频库选择。');
+          setState(() => _error = '下载的视频缓存不存在，请重新从球馆视频库选择');
         }
         return;
       }
@@ -101,12 +100,7 @@ class _UploadPageState extends State<UploadPage> {
       await _inspectSelectedFile(file);
     } catch (error) {
       if (!mounted) return;
-      setState(
-        () => _error = userFacingError(
-          error,
-          fallback: '选择视频失败，请重新选择后重试。',
-        ),
-      );
+      setState(() => _error = '选择视频失败：$error');
     }
   }
 
@@ -166,7 +160,7 @@ class _UploadPageState extends State<UploadPage> {
     try {
       final userId = await _userStorage.getOrCreateUserId();
       final preview = await _api.previewVideo(
-        file.path,
+        file,
         userId: userId,
         onProgress: (progress) {
           if (mounted) setState(() => _previewProgress = progress);
@@ -176,7 +170,10 @@ class _UploadPageState extends State<UploadPage> {
       setState(() => _preview = preview);
       final corners = await Navigator.of(context).push<List<CourtPoint>>(
         MaterialPageRoute(
-          builder: (_) => CornerPickerPage(preview: preview),
+          builder: (_) => CornerPickerPage(
+            preview: preview,
+            localVideoPath: file.path,
+          ),
         ),
       );
       if (!mounted) return;
@@ -188,8 +185,7 @@ class _UploadPageState extends State<UploadPage> {
       setState(() {
         _preview = null;
         _corners = null;
-        _error =
-            '${userFacingError(error, fallback: '预览帧提取失败，请检查网络后重试。')}\n仍可跳过角点直接上传原视频。';
+        _error = '预览帧提取失败：$error\n仍可跳过角点直接上传原视频。';
       });
     } finally {
       if (mounted) setState(() => _previewing = false);
@@ -200,7 +196,12 @@ class _UploadPageState extends State<UploadPage> {
     final preview = _preview;
     if (preview == null) return;
     final corners = await Navigator.of(context).push<List<CourtPoint>>(
-      MaterialPageRoute(builder: (_) => CornerPickerPage(preview: preview)),
+      MaterialPageRoute(
+        builder: (_) => CornerPickerPage(
+          preview: preview,
+          localVideoPath: _selectedFile?.path,
+        ),
+      ),
     );
     if (mounted && corners != null) {
       setState(() => _corners = corners.length == 4 ? corners : const []);
@@ -235,7 +236,7 @@ class _UploadPageState extends State<UploadPage> {
     try {
       final userId = await _userStorage.getOrCreateUserId();
       final result = await _api.uploadVideo(
-        _preview == null ? file.path : null,
+        _preview == null ? file : null,
         userId: userId,
         sourceUploadId: _preview?.sourceUploadId,
         corners: _corners?.length == 4 ? _corners : null,
@@ -264,10 +265,7 @@ class _UploadPageState extends State<UploadPage> {
       if (!mounted) return;
       setState(() {
         _uploadProgress = 0;
-        _error = userFacingError(
-          error,
-          fallback: '上传失败，请检查网络后重试。',
-        );
+        _error = '上传失败：$error';
       });
     } finally {
       if (mounted) {
@@ -308,10 +306,11 @@ class _UploadPageState extends State<UploadPage> {
                       ),
                       SizedBox(height: 8),
                       Text('格式：MP4 / MOV / M4V'),
-                      Text('大小：不超过 500 MB'),
-                      Text('时长：5 秒～3 分钟（建议 30 秒以上）'),
+                      Text('大小：不超过 200 MB'),
+                      Text('时长：5 秒～3 分钟（推荐单个完整回合，约 8～20 秒）'),
                       SizedBox(height: 6),
                       Text('建议横屏固定机位拍摄，画面尽量覆盖完整球场。'),
+                      Text('请尽量去掉休息、捡球和发球准备时间。'),
                     ],
                   ),
                 ),
@@ -339,7 +338,9 @@ class _UploadPageState extends State<UploadPage> {
                 LinearProgressIndicator(value: _previewProgress),
                 const SizedBox(height: 6),
                 Text(
-                  '正在上传并提取预览帧：${(_previewProgress * 100).round()}%',
+                  _previewProgress >= 0.92
+                      ? '上传完成，正在生成预览页'
+                      : '正在上传并提取预览帧：${(_previewProgress * 100).round()}%',
                   textAlign: TextAlign.center,
                 ),
               ],

@@ -3,23 +3,36 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:gal/gal.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../config/api_config.dart';
 import '../models/report.dart';
 import '../services/api_service.dart';
+import '../services/offline_report_storage.dart';
 import '../utils/user_facing_error.dart';
 import '../widgets/app_background.dart';
 import '../widgets/inline_network_video.dart';
 
 class ReportPage extends StatefulWidget {
-  const ReportPage({super.key, required this.taskId}) : loadDemo = false;
+  const ReportPage({super.key, required this.taskId})
+      : loadDemo = false,
+        offlineRecord = null;
 
   const ReportPage.demo({super.key})
       : taskId = null,
-        loadDemo = true;
+        loadDemo = true,
+        offlineRecord = null;
+
+  const ReportPage.offline({
+    super.key,
+    required OfflineReportRecord record,
+  })  : taskId = null,
+        loadDemo = false,
+        offlineRecord = record;
 
   final String? taskId;
   final bool loadDemo;
+  final OfflineReportRecord? offlineRecord;
 
   @override
   State<ReportPage> createState() => _ReportPageState();
@@ -27,6 +40,7 @@ class ReportPage extends StatefulWidget {
 
 class _ReportPageState extends State<ReportPage> {
   final ApiService _api = ApiService();
+  final OfflineReportStorage _offlineStorage = OfflineReportStorage();
   AnalysisReport? _report;
   Map<String, bool> _fileAvailability = const {};
   String? _error;
@@ -44,15 +58,33 @@ class _ReportPageState extends State<ReportPage> {
       _error = null;
     });
     try {
-      final report = widget.loadDemo
-          ? await _api.getDemoReport()
-          : await _api.getReport(widget.taskId!);
-      final availability = await _checkReportFiles(report);
+      final offlineRecord = widget.offlineRecord;
+      final report = offlineRecord != null
+          ? AnalysisReport.fromJson(
+              await _offlineStorage.readReport(offlineRecord),
+            )
+          : widget.loadDemo
+              ? await _api.getDemoReport()
+              : await _api.getReport(widget.taskId!);
       if (!mounted) return;
       setState(() {
         _report = report;
-        _fileAvailability = availability;
+        _fileAvailability = const {};
+        _loading = false;
       });
+      if (offlineRecord != null) {
+        setState(() {
+          _fileAvailability = {
+            'heatmap': _localFileExists(offlineRecord.heatmapPath),
+            'trajectory': _localFileExists(offlineRecord.trajectoryPath),
+            'analysis_video': false,
+            'highlight': false,
+          };
+        });
+        _checkRemoteVideosInBackground(report);
+      } else {
+        _checkReportFilesInBackground(report);
+      }
     } on ReportPendingException {
       if (!mounted) return;
       setState(() => _error = '报告还未生成完成');
@@ -65,10 +97,34 @@ class _ReportPageState extends State<ReportPage> {
         ),
       );
     } finally {
-      if (mounted) {
+      if (mounted && _report == null) {
         setState(() => _loading = false);
       }
     }
+  }
+
+  bool _localFileExists(String? path) =>
+      path != null && path.isNotEmpty && File(path).existsSync();
+
+  Future<void> _checkRemoteVideosInBackground(AnalysisReport report) async {
+    final checks = await Future.wait([
+      _api.fileExists(report.files.analysisVideo),
+      _api.fileExists(report.files.highlight),
+    ]);
+    if (!mounted || _report != report) return;
+    setState(() {
+      _fileAvailability = {
+        ..._fileAvailability,
+        'analysis_video': checks[0],
+        'highlight': checks[1],
+      };
+    });
+  }
+
+  Future<void> _checkReportFilesInBackground(AnalysisReport report) async {
+    final availability = await _checkReportFiles(report);
+    if (!mounted || _report != report) return;
+    setState(() => _fileAvailability = availability);
   }
 
   Future<Map<String, bool>> _checkReportFiles(AnalysisReport report) async {
@@ -97,7 +153,13 @@ class _ReportPageState extends State<ReportPage> {
     final report = _report;
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.loadDemo ? 'Demo 训练复盘' : '训练复盘报告'),
+        title: Text(
+          widget.offlineRecord != null
+              ? '离线训练复盘'
+              : widget.loadDemo
+                  ? 'Demo 训练复盘'
+                  : '训练复盘报告',
+        ),
         actions: [
           IconButton(
             tooltip: '退出',
@@ -158,8 +220,10 @@ class _ReportPageState extends State<ReportPage> {
                   ),
                   const SizedBox(height: 8),
                   _VisualizationSwitcher(
-                    heatmapUrl: report.files.heatmap,
-                    trajectoryUrl: report.files.trajectory,
+                    heatmapUrl: widget.offlineRecord?.heatmapPath ??
+                        report.files.heatmap,
+                    trajectoryUrl: widget.offlineRecord?.trajectoryPath ??
+                        report.files.trajectory,
                     heatmapAvailable: _fileAvailability['heatmap'] ?? false,
                     trajectoryAvailable:
                         _fileAvailability['trajectory'] ?? false,
@@ -173,6 +237,10 @@ class _ReportPageState extends State<ReportPage> {
                   const SizedBox(height: 20),
                   Text('精彩时刻', style: Theme.of(context).textTheme.titleLarge),
                   const SizedBox(height: 8),
+                  if (widget.offlineRecord != null) ...[
+                    const _OfflineVideoNotice(),
+                    const SizedBox(height: 10),
+                  ],
                   _VideoResult(
                     title: '精彩集锦',
                     relativeUrl: report.files.highlight,
@@ -589,6 +657,54 @@ class _QualityProgress extends StatelessWidget {
 
 class _VisualizationSwitcherState extends State<_VisualizationSwitcher> {
   var _selected = 0;
+  var _downloading = false;
+
+  Future<void> _saveImage(String url, String title) async {
+    setState(() => _downloading = true);
+    File? temporaryFile;
+    try {
+      String path;
+      if (_isLocalPath(url)) {
+        path = url;
+      } else {
+        final directory = await getTemporaryDirectory();
+        temporaryFile = File(
+          '${directory.path}/good_badminton_'
+          '${DateTime.now().millisecondsSinceEpoch}.png',
+        );
+        final api = ApiService();
+        try {
+          path = await api.downloadFile(url, temporaryFile.path);
+        } finally {
+          api.close();
+        }
+      }
+      final hasAccess = await Gal.hasAccess(toAlbum: true);
+      final granted = hasAccess || await Gal.requestAccess(toAlbum: true);
+      if (!granted) {
+        throw StateError('未获得系统相册访问权限');
+      }
+      await Gal.putImage(path, album: 'Good-Badminton');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$title 已保存到系统相册')),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('保存图片失败：$error')),
+        );
+      }
+    } finally {
+      try {
+        await temporaryFile?.delete();
+      } on FileSystemException {
+        // 临时文件清理失败不影响图片保存结果。
+      }
+      if (mounted) setState(() => _downloading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -596,7 +712,7 @@ class _VisualizationSwitcherState extends State<_VisualizationSwitcher> {
     final relativeUrl = isHeatmap ? widget.heatmapUrl : widget.trajectoryUrl;
     final available =
         isHeatmap ? widget.heatmapAvailable : widget.trajectoryAvailable;
-    final url = ApiConfig.absoluteFileUrl(relativeUrl);
+    final url = _resolveMediaUrl(relativeUrl);
     return Card(
       clipBehavior: Clip.antiAlias,
       child: Padding(
@@ -663,9 +779,31 @@ class _VisualizationSwitcherState extends State<_VisualizationSwitcher> {
             ),
             if (url != null && available) ...[
               const SizedBox(height: 8),
-              const Text(
-                '点击图片全屏查看，支持双指缩放',
-                style: TextStyle(fontSize: 12, color: Colors.black54),
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      '点击图片全屏查看，支持双指缩放',
+                      style: TextStyle(fontSize: 12, color: Colors.black54),
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: _downloading
+                        ? null
+                        : () => _saveImage(
+                              url,
+                              isHeatmap ? '热力图' : '球员轨迹',
+                            ),
+                    icon: _downloading
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.download_rounded),
+                    label: Text(_downloading ? '保存中' : '保存图片'),
+                  ),
+                ],
               ),
             ],
           ],
@@ -1092,6 +1230,13 @@ class _FadeNetworkImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (_isLocalPath(url)) {
+      return Image.file(
+        File(url),
+        fit: BoxFit.contain,
+        errorBuilder: (_, error, __) => _imageError(error),
+      );
+    }
     return Image.network(
       url,
       fit: BoxFit.contain,
@@ -1107,15 +1252,26 @@ class _FadeNetworkImage extends StatelessWidget {
         if (progress == null) return child;
         return const Center(child: CircularProgressIndicator());
       },
-      errorBuilder: (_, error, __) => Center(
+      errorBuilder: (_, error, __) => _imageError(error),
+    );
+  }
+
+  Widget _imageError(Object error) => Center(
         child: Text(
           '图片加载失败：$error',
           style: const TextStyle(color: Colors.white70),
         ),
-      ),
-    );
-  }
+      );
 }
+
+String? _resolveMediaUrl(String? value) {
+  if (value == null || value.trim().isEmpty) return null;
+  final path = value.trim();
+  return _isLocalPath(path) ? path : ApiConfig.absoluteFileUrl(path);
+}
+
+bool _isLocalPath(String value) =>
+    value.startsWith('/') && File(value).existsSync();
 
 Future<void> _showImagePreview(
   BuildContext context,
@@ -1214,11 +1370,6 @@ class _VideoResultState extends State<_VideoResult> {
         throw StateError('未获得系统相册访问权限，请在系统设置中允许照片权限后重试。');
       }
       await Gal.putVideo(savedPath, album: 'Good-Badminton');
-      try {
-        await file.delete();
-      } on FileSystemException {
-        // 已成功导入系统相册；清理临时文件失败不应视为下载失败。
-      }
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1227,6 +1378,14 @@ class _VideoResultState extends State<_VideoResult> {
               '✅ 已保存到系统相册：${fileSize > 1024 * 1024 ? '${(fileSize / 1024 / 1024).toStringAsFixed(1)} MB' : '${(fileSize / 1024).toStringAsFixed(0)} KB'}'),
           backgroundColor: const Color(0xFF1B5E20),
           duration: const Duration(seconds: 3),
+          action: SnackBarAction(
+            label: '分享',
+            textColor: Colors.white,
+            onPressed: () async {
+              final xFile = XFile(savedPath);
+              await Share.shareXFiles([xFile]);
+            },
+          ),
         ),
       );
     } catch (e) {
@@ -1258,57 +1417,24 @@ class _VideoResultState extends State<_VideoResult> {
     final url = ApiConfig.absoluteFileUrl(widget.relativeUrl);
 
     if (url != null && widget.available) {
-      return Stack(
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           InlineNetworkVideo(title: widget.title, url: url),
-          Positioned(
-            top: 12,
-            right: 12,
-            child: _downloading
-                ? Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.black87,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                            value: _downloadProgress < 0.5
-                                ? null
-                                : _downloadProgress,
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        const Text(
-                          '下载中…',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ],
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: _downloading ? null : _downloadVideo,
+            icon: _downloading
+                ? SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      value: _downloadProgress < 0.5 ? null : _downloadProgress,
+                      strokeWidth: 2,
                     ),
                   )
-                : IconButton.filled(
-                    tooltip: '下载视频到本地',
-                    onPressed: _downloadVideo,
-                    icon: const Icon(Icons.download_rounded),
-                    style: IconButton.styleFrom(
-                      backgroundColor: Colors.black54,
-                      foregroundColor: Colors.white,
-                      iconSize: 22,
-                    ),
-                  ),
+                : const Icon(Icons.download_rounded),
+            label: Text(_downloading ? '正在下载视频' : '下载到系统相册'),
           ),
         ],
       );
@@ -1318,6 +1444,34 @@ class _VideoResultState extends State<_VideoResult> {
         leading: const Icon(Icons.videocam_off_outlined),
         title: Text(widget.title),
         subtitle: Text(url == null ? '暂无文件' : '文件未生成或已失效'),
+      ),
+    );
+  }
+}
+
+class _OfflineVideoNotice extends StatelessWidget {
+  const _OfflineVideoNotice();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.secondaryContainer,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: const Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.info_outline, size: 20),
+          SizedBox(width: 9),
+          Expanded(
+            child: Text(
+              '为了节省手机存储空间，离线报告不会保存分析视频'
+              '，服务器在线时仍可播放，有需要可自行下载到系统相册',
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -2,6 +2,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class TaskStorage {
   static const String _activeTaskKey = 'active_task_id';
+  static const String _activeTaskIdsKey = 'active_task_ids';
   static const String _pathPrefix = 'task_video_path_';
   static const String _namePrefix = 'task_video_name_';
 
@@ -11,8 +12,15 @@ class TaskStorage {
     required String videoName,
   }) async {
     final preferences = await SharedPreferences.getInstance();
+    final ids = preferences.getStringList(_activeTaskIdsKey) ?? const [];
+    final updatedIds = [
+      taskId,
+      for (final id in ids)
+        if (id != taskId) id,
+    ];
     await Future.wait([
       preferences.setString(_activeTaskKey, taskId),
+      preferences.setStringList(_activeTaskIdsKey, updatedIds),
       preferences.setString('$_pathPrefix$taskId', videoPath),
       preferences.setString('$_namePrefix$taskId', videoName),
     ]);
@@ -21,6 +29,14 @@ class TaskStorage {
   Future<String?> getActiveTaskId() async {
     final preferences = await SharedPreferences.getInstance();
     return preferences.getString(_activeTaskKey);
+  }
+
+  Future<List<String>> getActiveTaskIds() async {
+    final preferences = await SharedPreferences.getInstance();
+    final ids = preferences.getStringList(_activeTaskIdsKey);
+    if (ids != null && ids.isNotEmpty) return ids;
+    final legacyId = preferences.getString(_activeTaskKey);
+    return legacyId == null || legacyId.isEmpty ? const [] : [legacyId];
   }
 
   Future<StoredUpload?> getUpload(String taskId) async {
@@ -36,9 +52,18 @@ class TaskStorage {
 
   Future<void> clearActiveTask(String taskId) async {
     final preferences = await SharedPreferences.getInstance();
+    final futures = <Future<void>>[];
+    final ids = preferences.getStringList(_activeTaskIdsKey) ?? const [];
+    final updatedIds = ids.where((id) => id != taskId).toList(growable: false);
+    futures.add(preferences.setStringList(_activeTaskIdsKey, updatedIds));
     if (preferences.getString(_activeTaskKey) == taskId) {
-      await preferences.remove(_activeTaskKey);
+      if (updatedIds.isEmpty) {
+        futures.add(preferences.remove(_activeTaskKey));
+      } else {
+        futures.add(preferences.setString(_activeTaskKey, updatedIds.first));
+      }
     }
+    await Future.wait(futures);
   }
 
   Future<void> removeUpload(String taskId) async {

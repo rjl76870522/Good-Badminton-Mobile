@@ -1,6 +1,8 @@
 import cv2
 import numpy as np
 from collections import deque
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib import cm
 

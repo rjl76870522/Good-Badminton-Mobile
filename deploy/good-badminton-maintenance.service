@@ -1,0 +1,11 @@
+[Unit]
+Description=Good Badminton database backup and storage cleanup
+After=good-badminton-backend.service
+
+[Service]
+Type=oneshot
+User=john
+Group=john
+WorkingDirectory=/data/projects/Good-Badminton-1
+Environment=PYTHONPATH=/data/projects/Good-Badminton-1
+ExecStart=/data/projects/Good-Badminton-1/.venv/bin/python -m badminton_analysis.storage_maintenance

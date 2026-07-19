@@ -130,7 +130,7 @@ def compute_expanded_roi(court_corners, image_shape):
     return [(x1, y1), (x2, y2)]
 
 
-def auto_detect_preview(image):
+def auto_detect_preview(image, fixed_size=(1080, 720)):
     """
     Run auto court detection and return the result without any GUI.
 
@@ -146,7 +146,6 @@ def auto_detect_preview(image):
         return None, None
 
     original_height, original_width = image.shape[:2]
-    fixed_size = (1080, 720)
     base_image = cv2.resize(image, fixed_size)
 
     auto_corners, _line_mask, auto_debug = auto_detect_court_corners(base_image)

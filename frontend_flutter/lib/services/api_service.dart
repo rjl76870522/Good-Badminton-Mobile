@@ -2,7 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
 
 import '../config/api_config.dart';
 import '../models/history_item.dart';
@@ -45,32 +47,58 @@ class ApiService {
     return MobileUser.fromJson(_nestedMap(payload, 'user'));
   }
 
+  Future<MobileUser> updateDisplayName(
+    String userId,
+    String displayName,
+  ) async {
+    final response = await _client
+        .put(
+          ApiConfig.uri('/api/users/$userId/display-name'),
+          headers: {'content-type': 'application/json'},
+          body: jsonEncode({'display_name': displayName}),
+        )
+        .timeout(const Duration(seconds: 20));
+    final payload = _decodeMap(response);
+    return MobileUser.fromJson(_nestedMap(payload, 'user'));
+  }
+
   Future<PreviewFrame> previewVideo(
-    String filePath, {
+    XFile file, {
     required String userId,
     void Function(double progress)? onProgress,
     Duration timeout = defaultUploadTimeout,
   }) async {
-    final file = File(filePath);
-    if (!await file.exists()) {
-      throw const ApiException('选择的视频文件不存在');
-    }
     onProgress?.call(0);
+    http.MultipartFile multipartFile;
+    if (kIsWeb) {
+      final bytes = await file.readAsBytes();
+      multipartFile = http.MultipartFile.fromBytes(
+        'file',
+        bytes,
+        filename: file.name,
+      );
+    } else {
+      if (!await File(file.path).exists()) {
+        throw const ApiException('选择的视频文件不存在');
+      }
+      multipartFile = await http.MultipartFile.fromPath('file', file.path);
+    }
     final request = _ProgressMultipartRequest(
       'POST',
       ApiConfig.uri('/api/videos/preview-frame'),
       onProgress: (sentBytes, totalBytes) {
         if (totalBytes > 0) {
-          onProgress?.call((sentBytes / totalBytes).clamp(0, 1));
+          onProgress?.call(((sentBytes / totalBytes) * 0.92).clamp(0, 0.92));
         }
       },
     )
       ..fields['user_id'] = userId
-      ..files.add(await http.MultipartFile.fromPath('file', filePath));
+      ..files.add(multipartFile);
     try {
       final streamed = await _client.send(request).timeout(timeout);
       final response =
           await http.Response.fromStream(streamed).timeout(timeout);
+      onProgress?.call(0.96);
       final result = PreviewFrame.fromJson(_decodeMap(response));
       onProgress?.call(1);
       return result;
@@ -86,7 +114,7 @@ class ApiService {
   }
 
   Future<UploadResult> uploadVideo(
-    String? filePath, {
+    XFile? file, {
     required String userId,
     String? sourceUploadId,
     List<CourtPoint>? corners,
@@ -98,10 +126,10 @@ class ApiService {
   }) async {
     final hasSource =
         sourceUploadId != null && sourceUploadId.trim().isNotEmpty;
-    if (!hasSource && (filePath == null || filePath.isEmpty)) {
+    if (!hasSource && file == null) {
       throw const ApiException('请提供视频文件或预览上传 ID');
     }
-    if (!hasSource && !await File(filePath!).exists()) {
+    if (!hasSource && !kIsWeb && !await File(file!.path).exists()) {
       throw const ApiException('选择的视频文件不存在');
     }
 
@@ -121,7 +149,18 @@ class ApiService {
     if (hasSource) {
       request.fields['source_upload_id'] = sourceUploadId.trim();
     } else {
-      request.files.add(await http.MultipartFile.fromPath('file', filePath!));
+      http.MultipartFile multipartFile;
+      if (kIsWeb) {
+        final bytes = await file!.readAsBytes();
+        multipartFile = http.MultipartFile.fromBytes(
+          'file',
+          bytes,
+          filename: file.name,
+        );
+      } else {
+        multipartFile = await http.MultipartFile.fromPath('file', file!.path);
+      }
+      request.files.add(multipartFile);
     }
     if (corners != null && corners.length == 4) {
       request.fields['corners_json'] =
@@ -160,13 +199,27 @@ class ApiService {
   }
 
   Future<AnalysisReport> getReport(String taskId) async {
-    final response = await _client
-        .get(ApiConfig.uri('/api/tasks/$taskId/report'))
-        .timeout(const Duration(seconds: 20));
-    if (response.statusCode == 202) {
-      throw const ReportPendingException();
+    return AnalysisReport.fromJson(await getReportPayload(taskId));
+  }
+
+  Future<Map<String, dynamic>> getReportPayload(String taskId) async {
+    try {
+      final response = await _client
+          .get(ApiConfig.uri('/api/tasks/$taskId/report'))
+          .timeout(const Duration(seconds: 45));
+      if (response.statusCode == 202) {
+        throw const ReportPendingException();
+      }
+      return _decodeMap(response);
+    } on ReportPendingException {
+      rethrow;
+    } on TimeoutException {
+      throw const ApiException('读取报告超时，请稍后重试', isTransient: true);
+    } on SocketException {
+      throw const ApiException('网络连接短暂中断，请稍后重试', isTransient: true);
+    } on http.ClientException {
+      throw const ApiException('网络连接短暂中断，请稍后重试', isTransient: true);
     }
-    return AnalysisReport.fromJson(_decodeMap(response));
   }
 
   Future<AnalysisReport> getDemoReport() async {
@@ -219,10 +272,25 @@ class ApiService {
     _decodeMap(response);
   }
 
-  Future<String> downloadFile(String url, String localPath) async {
+  Future<void> setTaskRetained(
+    String taskId, {
+    required String userId,
+    required bool retained,
+  }) async {
     final response = await _client
-        .get(Uri.parse(url))
-        .timeout(const Duration(minutes: 10));
+        .put(
+          ApiConfig.uri('/api/tasks/$taskId/retention', {
+            'user_id': userId,
+            'retained': retained.toString(),
+          }),
+        )
+        .timeout(const Duration(seconds: 20));
+    _decodeMap(response);
+  }
+
+  Future<String> downloadFile(String url, String localPath) async {
+    final response =
+        await _client.get(Uri.parse(url)).timeout(const Duration(minutes: 10));
     if (response.statusCode != 200) {
       throw ApiException('下载失败：HTTP ${response.statusCode}');
     }
