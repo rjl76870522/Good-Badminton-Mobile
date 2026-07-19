@@ -292,9 +292,13 @@ class _UsageGuide extends StatelessWidget {
       (
         Icons.video_library_outlined,
         '选择合适片段',
-        '上传横屏固定机位视频，建议保留连续 30 至 60 秒，画面应完整覆盖球场'
+        '优先选择包含两个完整回合的连续片段，通常为 20 至 35 秒；单个回合也可以分析，但跑动和场区统计仅供参考'
       ),
-      (Icons.crop_free_rounded, '确认球场范围', '查看预览画面，必要时依次标记球场四角，让后续结果更准确'),
+      (
+        Icons.crop_free_rounded,
+        '确认球场范围',
+        '球场四角是完整双打场地最外侧白线组成的四个角，不是画面四角；必要时按顺序手动标记'
+      ),
       (Icons.hourglass_top_rounded, '等待分析完成', '可以离开任务页面继续使用 App，完成后到历史记录查看结果'),
       (Icons.insights_outlined, '复盘并保存', '查看数据、热力图、轨迹和精彩片段，需要长期保留的内容可下载到手机'),
     ];

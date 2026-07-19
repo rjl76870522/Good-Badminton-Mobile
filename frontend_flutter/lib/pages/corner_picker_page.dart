@@ -213,6 +213,13 @@ class _CornerPickerPageState extends State<CornerPickerPage>
                                     style: TextStyle(color: Colors.white70),
                                   ),
                                   const Text(
+                                    '请标记完整双打场地最外侧白线的四个角，不是画面四角。',
+                                    style: TextStyle(
+                                      color: Color(0xFFFFE0B2),
+                                      height: 1.4,
+                                    ),
+                                  ),
+                                  const Text(
                                     '可双指缩放整个页面；单击图片添加角点。',
                                     style: TextStyle(color: Colors.white60),
                                   ),
