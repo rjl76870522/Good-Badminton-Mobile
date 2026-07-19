@@ -193,14 +193,6 @@ class _InlineNetworkVideoState extends State<InlineNetworkVideo> {
                 );
               },
             ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
-            child: SelectableText(
-              widget.url,
-              maxLines: 2,
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-          ),
         ],
       ),
     );
