@@ -26,14 +26,17 @@ class _NavigationPageState extends State<NavigationPage> {
     );
   }
 
-  Future<void> _launchVenue(String keyword) async {
-    setState(() => _launchingVenue = keyword);
-    final launched = await _mapLauncher.launchAmapPlace(keyword);
+  Future<void> _launchVenue(String keyword, MapApp app) async {
+    final launchKey = '${app.name}:$keyword';
+    setState(() => _launchingVenue = launchKey);
+    final launched = app == MapApp.baidu
+        ? await _mapLauncher.launchBaiduPlace(keyword)
+        : await _mapLauncher.launchAmapPlace(keyword);
     if (!mounted) return;
     setState(() => _launchingVenue = null);
     if (launched) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('暂时无法打开高德地图，请检查应用或网络')),
+      const SnackBar(content: Text('暂时无法打开地图，请检查应用或网络')),
     );
   }
 
@@ -157,8 +160,8 @@ class _NavigationPageState extends State<NavigationPage> {
                 address: '辽宁省沈阳市和平区文化路三号巷11号',
                 details: '南湖校区内场馆，学校羽毛球赛事常用场地\n'
                     '师生开放时段及预约方式请查看智慧东大或体育场馆通知',
-                loading: _launchingVenue == '东北大学南湖校区羽乒馆',
-                onNavigate: () => _launchVenue('东北大学南湖校区羽乒馆'),
+                launching: _launchingVenue,
+                onNavigate: (app) => _launchVenue('东北大学南湖校区羽乒馆', app),
               ),
               const SizedBox(height: 12),
               _VenueExampleCard(
@@ -167,8 +170,8 @@ class _NavigationPageState extends State<NavigationPage> {
                 address: '浙江省杭州市西湖区余杭塘路866号',
                 details: '校内设有10片羽毛球场，适合日常训练和校内比赛\n'
                     '校内用户请通过学校体育场馆预约渠道确认可用时段',
-                loading: _launchingVenue == '浙江大学紫金港校区风雨操场',
-                onNavigate: () => _launchVenue('浙江大学紫金港校区风雨操场'),
+                launching: _launchingVenue,
+                onNavigate: (app) => _launchVenue('浙江大学紫金港校区风雨操场', app),
               ),
             ],
           ),
@@ -184,7 +187,7 @@ class _VenueExampleCard extends StatelessWidget {
     required this.title,
     required this.address,
     required this.details,
-    required this.loading,
+    required this.launching,
     required this.onNavigate,
   });
 
@@ -192,8 +195,8 @@ class _VenueExampleCard extends StatelessWidget {
   final String title;
   final String address;
   final String details;
-  final bool loading;
-  final VoidCallback onNavigate;
+  final String? launching;
+  final ValueChanged<MapApp> onNavigate;
 
   @override
   Widget build(BuildContext context) {
@@ -231,19 +234,40 @@ class _VenueExampleCard extends StatelessWidget {
             const SizedBox(height: 8),
             _VenueInfoLine(icon: Icons.info_outline, text: details),
             const SizedBox(height: 14),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: loading ? null : onNavigate,
-                icon: loading
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.navigation_outlined),
-                label: const Text('高德地图定位与导航'),
-              ),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: launching == null
+                        ? () => onNavigate(MapApp.amap)
+                        : null,
+                    icon: launching == 'amap:$title'
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.navigation_outlined),
+                    label: const Text('高德地图'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: launching == null
+                        ? () => onNavigate(MapApp.baidu)
+                        : null,
+                    icon: launching == 'baidu:$title'
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.map_outlined),
+                    label: const Text('百度地图'),
+                  ),
+                ),
+              ],
             ),
           ],
         ),

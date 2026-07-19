@@ -292,7 +292,7 @@ class _UsageGuide extends StatelessWidget {
       (
         Icons.video_library_outlined,
         '选择合适片段',
-        '优先选择包含两个完整回合的连续片段，通常为 20 至 35 秒；单个回合也可以分析，但跑动和场区统计仅供参考'
+        '优先选择一个完整回合，通常为 8 至 20 秒；去掉回合之间的休息、捡球和发球准备时间，需要观察趋势时可分别分析多个回合'
       ),
       (
         Icons.crop_free_rounded,

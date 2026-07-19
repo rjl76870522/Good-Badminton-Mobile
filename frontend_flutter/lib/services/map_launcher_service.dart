@@ -43,6 +43,22 @@ class MapLauncherService {
     ]);
   }
 
+  Future<bool> launchBaiduPlace(String keyword) {
+    return _launchFirstAvailable([
+      Uri(
+        scheme: 'baidumap',
+        host: 'map',
+        path: '/place/search',
+        queryParameters: {
+          'query': keyword,
+          'region': '全国',
+          'src': 'good-badminton',
+        },
+      ),
+      Uri.https('map.baidu.com', '/search/$keyword'),
+    ]);
+  }
+
   Future<bool> launchNearbyBadminton(MapApp app) async {
     switch (app) {
       case MapApp.amap:

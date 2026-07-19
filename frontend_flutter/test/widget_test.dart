@@ -36,7 +36,7 @@ void main() {
     await tester.tap(find.text('我的').last);
     await tester.pump();
 
-    expect(find.text('家'), findsOneWidget);
+    expect(find.text('我的'), findsWidgets);
     expect(find.text('设置'), findsOneWidget);
     expect(find.text('点击头像可以从相册更换'), findsOneWidget);
     expect(find.text('训练与球馆'), findsOneWidget);
@@ -70,7 +70,7 @@ void main() {
 
       await tester.tap(find.text('我的').last);
       await tester.pump(const Duration(milliseconds: 300));
-      expect(find.text('家'), findsOneWidget);
+      expect(find.text('我的'), findsWidgets);
       expect(find.text('设置'), findsOneWidget);
       expect(find.text('数据身份'), findsNothing);
       expect(tester.takeException(), isNull);

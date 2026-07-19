@@ -105,7 +105,7 @@ class _ProfilePageState extends State<ProfilePage> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: const Text('家'),
+        title: const Text('我的'),
         backgroundColor: Colors.transparent,
       ),
       body: AppBackground(
