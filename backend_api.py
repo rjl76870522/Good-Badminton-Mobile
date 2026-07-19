@@ -18,7 +18,8 @@ import uuid
 import gc
 import math
 import statistics
-from contextlib import asynccontextmanager
+from collections import Counter, defaultdict, deque
+from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -68,6 +69,8 @@ FRONTEND_DIR = PROJECT_ROOT / "mobile_frontend"
 DEFAULT_USER_ID = "guest"
 USER_ID_RULE_MESSAGE = "用户 ID 需要 3-32 位，只能使用小写英文字母、数字、下划线或短横线，且必须以字母或数字开头。"
 MAX_UPLOAD_BYTES = 200 * 1024 * 1024
+MAX_QUEUED_TASKS_PER_USER = 3
+MAX_TASKS_PER_USER_PER_MINUTE = 2
 STORAGE_WARNING_PERCENT = float(os.getenv("STORAGE_WARNING_PERCENT", "70"))
 STORAGE_BLOCK_PERCENT = float(os.getenv("STORAGE_BLOCK_PERCENT", "80"))
 MIN_VIDEO_DURATION_SEC = 5.0
@@ -180,6 +183,9 @@ if FRONTEND_DIR.is_dir():
 
 USER_REGISTRY_LOCK = threading.Lock()
 STARTUP_RECOVERY_LOCK = threading.Lock()
+TASK_CREATION_LOCK = threading.Lock()
+TASK_CREATION_TIMES: dict[str, deque[float]] = defaultdict(deque)
+TASK_CREATION_RESERVATIONS: Counter[str] = Counter()
 
 
 class RegisterUserRequest(BaseModel):
@@ -317,6 +323,53 @@ def search_users(
     return {"users": users, "count": len(users)}
 
 
+@contextmanager
+def _task_creation_slot(user_id: str):
+    now = time.time()
+    with TASK_CREATION_LOCK:
+        recent = TASK_CREATION_TIMES[user_id]
+        while recent and recent[0] <= now - 60:
+            recent.popleft()
+        reservations = TASK_CREATION_RESERVATIONS[user_id]
+        if len(recent) + reservations >= MAX_TASKS_PER_USER_PER_MINUTE:
+            retry_after = max(1, round(60 - (now - recent[0]))) if recent else 60
+            raise_api_error(
+                status_code=429,
+                code="TASK_RATE_LIMITED",
+                message=f"创建任务过于频繁，请约 {retry_after} 秒后再试。",
+                hint="每位用户每分钟最多创建 2 个分析任务。",
+            )
+        session = get_session()
+        try:
+            queued = (
+                session.query(Task)
+                .filter(Task.user_id == user_id, Task.status == "queued")
+                .count()
+            )
+        finally:
+            session.close()
+        if queued + reservations >= MAX_QUEUED_TASKS_PER_USER:
+            raise_api_error(
+                status_code=429,
+                code="USER_QUEUE_FULL",
+                message="你已有 3 个视频正在等待分析，请等待其中一个开始后再上传。",
+                hint="正在分析的任务不会占用等待名额。",
+            )
+        TASK_CREATION_RESERVATIONS[user_id] += 1
+
+    succeeded = False
+    try:
+        yield
+        succeeded = True
+    finally:
+        with TASK_CREATION_LOCK:
+            TASK_CREATION_RESERVATIONS[user_id] -= 1
+            if TASK_CREATION_RESERVATIONS[user_id] <= 0:
+                TASK_CREATION_RESERVATIONS.pop(user_id, None)
+            if succeeded:
+                TASK_CREATION_TIMES[user_id].append(time.time())
+
+
 @app.post("/api/videos/upload")
 def upload_video(
     file: UploadFile | None = File(default=None),
@@ -337,6 +390,30 @@ def upload_video(
         )
 
     user_id = _safe_user_id(user_id)
+    with _task_creation_slot(user_id):
+        return _create_analysis_task(
+            file=file,
+            user_id=user_id,
+            source_upload_id=source_upload_id,
+            template_path=template_path,
+            corners_json=corners_json,
+            language=language,
+            pose_mode=pose_mode,
+            keep_audio=keep_audio,
+        )
+
+
+def _create_analysis_task(
+    *,
+    file: UploadFile | None,
+    user_id: str,
+    source_upload_id: str | None,
+    template_path: str | None,
+    corners_json: str | None,
+    language: str,
+    pose_mode: str,
+    keep_audio: bool,
+) -> dict[str, Any]:
     task_id = uuid.uuid4().hex
     if source_upload_id:
         source_path, source_name = _resolve_preview_upload(source_upload_id)

@@ -4,6 +4,7 @@ import time
 import cv2
 from fastapi.testclient import TestClient
 import numpy as np
+import pytest
 
 import backend_api
 
@@ -190,6 +191,43 @@ def test_gpu_capacity_recommendation_is_conservative():
     assert backend_api._recommend_analysis_workers(16_384, 14_000) == 4
     assert backend_api._recommend_analysis_workers(24_576, 17_000) == 3
     assert backend_api._recommend_analysis_workers(24_576, 20_000) == 4
+
+
+def test_task_creation_rate_limit_allows_two_per_minute(monkeypatch, tmp_path):
+    _configure_data_dirs(monkeypatch, tmp_path)
+    user_id = "rate-user"
+    backend_api.TASK_CREATION_TIMES.pop(user_id, None)
+
+    with backend_api._task_creation_slot(user_id):
+        pass
+    with backend_api._task_creation_slot(user_id):
+        pass
+
+    with pytest.raises(backend_api.HTTPException) as exc_info:
+        with backend_api._task_creation_slot(user_id):
+            pass
+    assert exc_info.value.status_code == 429
+    assert exc_info.value.detail["code"] == "TASK_RATE_LIMITED"
+
+
+def test_task_creation_rejects_fourth_queued_task(monkeypatch, tmp_path):
+    _configure_data_dirs(monkeypatch, tmp_path)
+    user_id = "full-queue-user"
+    backend_api.TASK_CREATION_TIMES.pop(user_id, None)
+    now = time.time()
+    for index in range(3):
+        _insert_queued_task(
+            tmp_path,
+            f"queued-{index}",
+            now + index,
+            user_id=user_id,
+        )
+
+    with pytest.raises(backend_api.HTTPException) as exc_info:
+        with backend_api._task_creation_slot(user_id):
+            pass
+    assert exc_info.value.status_code == 429
+    assert exc_info.value.detail["code"] == "USER_QUEUE_FULL"
 
 
 def test_replace_output_file_index_tracks_report_files():
