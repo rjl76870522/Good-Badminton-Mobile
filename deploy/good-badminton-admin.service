@@ -1,0 +1,16 @@
+[Unit]
+Description=Good-Badminton local admin dashboard
+After=good-badminton-backend.service
+
+[Service]
+Type=simple
+User=john
+Group=john
+WorkingDirectory=/data/projects/Good-Badminton-1
+Environment=PYTHONPATH=/data/projects/Good-Badminton-1
+ExecStart=/data/projects/Good-Badminton-1/.venv/bin/python -m badminton_analysis.admin_panel --host 127.0.0.1 --port 8765
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

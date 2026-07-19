@@ -16,6 +16,8 @@ import threading
 import time
 import uuid
 import gc
+import math
+import statistics
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -1152,6 +1154,7 @@ def _first_matching(urls: list[str | None], needle: str) -> str | None:
 def _public_task(task: dict[str, Any]) -> dict[str, Any]:
     failure = _failure_info(task.get("error"))
     queue_position = _queue_position(task) if task.get("status") == "queued" else None
+    eta_seconds = _estimated_remaining_seconds(task, queue_position)
     return {
         "task_id": task["task_id"],
         "user_id": task.get("user_id", DEFAULT_USER_ID),
@@ -1169,6 +1172,7 @@ def _public_task(task: dict[str, Any]) -> dict[str, Any]:
         "upload_deleted": task.get("upload_deleted_at") is not None,
         "report_url": f"/api/tasks/{task['task_id']}/report",
         "queue_position": queue_position,
+        "eta_seconds": eta_seconds,
     }
 
 
@@ -1721,6 +1725,41 @@ def _queue_position(task: dict[str, Any]) -> int | None:
         return ahead + 1
     finally:
         session.close()
+
+
+def _recent_average_task_seconds() -> float:
+    session = get_session()
+    try:
+        rows = (
+            session.query(Task.created_at, Task.updated_at)
+            .filter(Task.status == "completed", Task.updated_at > Task.created_at)
+            .order_by(Task.updated_at.desc())
+            .limit(30)
+            .all()
+        )
+    finally:
+        session.close()
+    durations = [
+        min(3600.0, max(10.0, float(updated) - float(created)))
+        for created, updated in rows
+    ]
+    return statistics.median(durations) if durations else 180.0
+
+
+def _estimated_remaining_seconds(
+    task: dict[str, Any],
+    queue_position: int | None = None,
+) -> int | None:
+    status = task.get("status")
+    average = _recent_average_task_seconds()
+    if status == "queued" and queue_position:
+        capacity = max(1, TASK_WORKER.capacity)
+        processing_waves = math.ceil(queue_position / capacity)
+        return max(10, round(processing_waves * average))
+    if status == "processing":
+        progress = min(0.95, max(0.0, float(task.get("progress") or 0.0)))
+        return max(5, round(average * (1.0 - progress)))
+    return None
 
 
 def _queue_summary() -> dict[str, Any]:

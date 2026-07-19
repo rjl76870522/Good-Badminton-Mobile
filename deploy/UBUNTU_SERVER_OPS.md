@@ -104,12 +104,31 @@ The timer logs health-check failures into journald.
 The maintenance timer backs up SQLite and applies the production retention
 policy every day:
 
-- uploaded source videos: 30 days
-- completed reports and generated media: 90 days
-- failed or cancelled tasks: 7 days
-- abandoned preview uploads: 24 hours
-- daily database backups: 30 days
-- tasks marked `retained`: never removed automatically
+- completed tasks, original uploads, reports, analysis videos, and charts are
+  retained indefinitely
+- failed and cancelled tasks are removed after 7 days
+- abandoned preview files are removed after 24 hours
+- SQLite backups are created daily and retained for 30 days
+
+## Local admin dashboard
+
+The dashboard is bound to loopback and is not exposed through Cloudflare:
+
+```bash
+http://127.0.0.1:8765/
+systemctl status good-badminton-admin --no-pager
+```
+
+It shows user and task counts, GPU queue state, disk usage, file categories,
+and 14-day storage growth.
+
+Install the maintenance timer with:
+
+```bash
+sudo cp deploy/good-badminton-admin.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now good-badminton-admin.service
+```
 
 Install it with:
 

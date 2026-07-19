@@ -203,6 +203,17 @@ class _TaskStatusPageState extends State<TaskStatusPage>
                             alignment: Alignment.centerLeft,
                             child: Text('视频：${task.videoName}'),
                           ),
+                          if (task.etaSeconds != null) ...[
+                            const SizedBox(height: 4),
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                task.status == 'queued'
+                                    ? '预计等待：${_formatEta(task.etaSeconds!)}'
+                                    : '预计还需：${_formatEta(task.etaSeconds!)}',
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -258,6 +269,12 @@ class _TaskStatusPageState extends State<TaskStatusPage>
         ),
       ),
     );
+  }
+
+  String _formatEta(int seconds) {
+    if (seconds < 60) return '约 $seconds 秒';
+    final minutes = (seconds / 60).ceil();
+    return '约 $minutes 分钟';
   }
 
   String _statusLabel(TaskStatus task) {

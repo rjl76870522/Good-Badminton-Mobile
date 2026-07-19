@@ -44,7 +44,7 @@ class _SettingsPageState extends State<SettingsPage> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('清除全部离线报告？'),
-        content: const Text('只删除手机中的离线副本，不会删除服务器训练记录'),
+        content: const Text('只删除手机中的离线副本，不会删除训练记录'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
