@@ -192,6 +192,39 @@ def test_gpu_capacity_recommendation_is_conservative():
     assert backend_api._recommend_analysis_workers(24_576, 20_000) == 4
 
 
+def test_replace_output_file_index_tracks_report_files():
+    task = backend_api.Task(
+        task_id="index-test",
+        user_id="tester",
+        status="completed",
+        progress=1.0,
+        stage="completed",
+        video_name="test.mp4",
+        upload_path="/tmp/test.mp4",
+        template_path="/tmp/template.png",
+    )
+    report = {
+        "files": {
+            "analysis_video": "/outputs/test/analysis.mp4",
+            "highlight": None,
+            "heatmap": "/outputs/test/heatmap.png",
+            "visualizations": [
+                "/outputs/test/scatter.png",
+                "",
+                None,
+            ],
+        }
+    }
+
+    backend_api._replace_output_file_index(task, report)
+
+    assert [(item.file_type, item.url) for item in task.output_files] == [
+        ("analysis_video", "/outputs/test/analysis.mp4"),
+        ("heatmap", "/outputs/test/heatmap.png"),
+        ("visualization", "/outputs/test/scatter.png"),
+    ]
+
+
 def test_preview_score_warns_when_auto_corners_are_missing(monkeypatch):
     frame = np.full((240, 320, 3), 100, dtype=np.uint8)
     cv2.line(frame, (40, 60), (280, 60), (255, 255, 255), 3)

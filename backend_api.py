@@ -1529,7 +1529,9 @@ def _update_task(task_id: str, **changes: Any) -> None:
         if task is None:
             return
         if "report" in changes:
-            task.report = changes.pop("report")
+            report = changes.pop("report")
+            task.report = report
+            _replace_output_file_index(task, report)
         for key, value in changes.items():
             if hasattr(task, key):
                 setattr(task, key, value)
@@ -1540,6 +1542,40 @@ def _update_task(task_id: str, **changes: Any) -> None:
         raise
     finally:
         session.close()
+
+
+def _replace_output_file_index(
+    task: Task,
+    report: dict[str, Any] | None,
+) -> None:
+    """Keep normalized output rows in sync with the report payload."""
+    task.output_files.clear()
+    if not isinstance(report, dict):
+        return
+    files = report.get("files")
+    if not isinstance(files, dict):
+        return
+
+    for file_type in (
+        "analysis_video",
+        "highlight",
+        "metadata",
+        "detections",
+        "heatmap",
+        "trajectory",
+    ):
+        url = files.get(file_type)
+        if isinstance(url, str) and url:
+            task.output_files.append(OutputFile(file_type=file_type, url=url))
+
+    visualizations = files.get("visualizations")
+    if not isinstance(visualizations, list):
+        return
+    for url in visualizations:
+        if isinstance(url, str) and url:
+            task.output_files.append(
+                OutputFile(file_type="visualization", url=url)
+            )
 
 
 def _get_task_or_404(task_id: str) -> dict[str, Any]:
