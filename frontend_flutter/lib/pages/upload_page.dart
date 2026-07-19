@@ -46,7 +46,6 @@ class _UploadPageState extends State<UploadPage> {
   bool _uploading = false;
   double _previewProgress = 0;
   double _uploadProgress = 0;
-  String? _taskId;
   String? _error;
 
   bool get _canUpload =>
@@ -114,7 +113,6 @@ class _UploadPageState extends State<UploadPage> {
       _preview = null;
       _corners = null;
       _inspectingVideo = true;
-      _taskId = null;
       _error = null;
     });
 
@@ -230,7 +228,6 @@ class _UploadPageState extends State<UploadPage> {
     setState(() {
       _uploading = true;
       _uploadProgress = 0;
-      _taskId = null;
       _error = null;
     });
     try {
@@ -255,7 +252,6 @@ class _UploadPageState extends State<UploadPage> {
         videoName: file.name,
       );
       if (!mounted) return;
-      setState(() => _taskId = result.taskId);
       await Navigator.of(context).pushReplacement(
         MaterialPageRoute(
           builder: (_) => TaskStatusPage(taskId: result.taskId),
@@ -312,6 +308,17 @@ class _UploadPageState extends State<UploadPage> {
                       Text('建议横屏固定机位拍摄，画面尽量覆盖完整球场。'),
                       Text('请尽量去掉休息、捡球和发球准备时间。'),
                     ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Card(
+                child: const ListTile(
+                  leading: Icon(Icons.queue_outlined),
+                  title: Text('任务提交说明'),
+                  subtitle: Text(
+                    '为了维护稳定流畅的使用体验，每位用户最多保留 3 个等待任务，'
+                    '每分钟最多创建 2 个任务',
                   ),
                 ),
               ),
@@ -392,10 +399,6 @@ class _UploadPageState extends State<UploadPage> {
                   '超过 5 分钟将自动停止并提示超时',
                   textAlign: TextAlign.center,
                 ),
-              ],
-              if (_taskId != null) ...[
-                const SizedBox(height: 12),
-                SelectableText('task_id：$_taskId'),
               ],
               if (_error != null) ...[
                 const SizedBox(height: 12),

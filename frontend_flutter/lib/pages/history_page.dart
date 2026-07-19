@@ -159,7 +159,7 @@ class _HistoryPageState extends State<HistoryPage> {
       builder: (context) => AlertDialog(
         title: const Text('删除训练记录？'),
         content: Text(
-          '将删除“${task.videoName.isEmpty ? task.taskId : task.videoName}”'
+          '将删除“${task.videoName.isEmpty ? '未命名训练' : task.videoName}”'
           '及后端生成的相关文件，此操作无法撤销。',
         ),
         actions: [
@@ -440,7 +440,7 @@ class _HistoryCard extends StatelessWidget {
                     children: [
                       Expanded(
                         child: Text(
-                          task.videoName.isEmpty ? task.taskId : task.videoName,
+                          task.videoName.isEmpty ? '未命名训练' : task.videoName,
                           style: Theme.of(context).textTheme.titleMedium,
                         ),
                       ),

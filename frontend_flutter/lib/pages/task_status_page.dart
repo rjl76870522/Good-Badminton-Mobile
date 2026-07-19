@@ -113,8 +113,6 @@ class _TaskStatusPageState extends State<TaskStatusPage>
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.all(16),
               children: [
-                SelectableText('task_id：${widget.taskId}'),
-                const SizedBox(height: 16),
                 if (_loading) const Center(child: CircularProgressIndicator()),
                 if (task != null) ...[
                   Card(
@@ -258,7 +256,7 @@ class _TaskStatusPageState extends State<TaskStatusPage>
                       ),
                       title: Text(_error!),
                       subtitle: _temporaryNetworkIssue
-                          ? const Text('任务编号已保留，无需重新上传。')
+                          ? const Text('当前任务已保留，无需重新上传')
                           : null,
                     ),
                   ),
