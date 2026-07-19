@@ -12,7 +12,7 @@ class _FakeVenueService extends VenueService {
 }
 
 void main() {
-  testWidgets('renders every venue video card', (tester) async {
+  testWidgets('renders the compact venue video list', (tester) async {
     await tester.pumpWidget(
       const MaterialApp(
         home: VenueVideoPage(
@@ -27,13 +27,14 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('共 2 条'), findsOneWidget);
-    expect(find.text('1号场'), findsOneWidget);
-    expect(find.text('2号场'), findsOneWidget);
-    expect(find.text('选择'), findsNWidgets(2));
+    expect(find.text('选择比赛视频'), findsOneWidget);
+    expect(find.text('2 条'), findsOneWidget);
+    expect(find.text('1号场'), findsAtLeastNWidgets(2));
+    expect(find.text('2号场'), findsAtLeastNWidgets(2));
+    expect(find.byIcon(Icons.chevron_right_rounded), findsNWidgets(2));
   });
 
-  testWidgets('demo venue shows venue 24 and prepared clip notice',
+  testWidgets('demo venue uses the same concise list presentation',
       (tester) async {
     await tester.pumpWidget(
       const MaterialApp(
@@ -50,11 +51,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('球馆编号：24'), findsOneWidget);
-    expect(
-      find.text('已从球馆存储的完整视频中截取出准备分析的视频片段'),
-      findsOneWidget,
-    );
-    expect(find.text('时间：球馆录像片段 01'), findsOneWidget);
-    expect(find.text('时间：球馆录像片段 02'), findsOneWidget);
+    expect(find.text('球馆录像片段 01 · 8秒'), findsOneWidget);
+    expect(find.text('球馆录像片段 02 · 11秒'), findsOneWidget);
   });
 }

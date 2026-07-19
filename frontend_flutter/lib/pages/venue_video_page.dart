@@ -23,8 +23,8 @@ class VenueVideoPage extends StatefulWidget {
 class _VenueVideoPageState extends State<VenueVideoPage> {
   List<VenueVideo>? _videos;
   String? _error;
+  String? _selectedCourt;
   var _isLoading = true;
-  var _isDemoData = false;
 
   @override
   void initState() {
@@ -32,7 +32,6 @@ class _VenueVideoPageState extends State<VenueVideoPage> {
     if (widget.showDemoOnOpen) {
       _videos = widget.service.getMockVideos();
       _isLoading = false;
-      _isDemoData = true;
     } else {
       _loadVideos();
     }
@@ -42,15 +41,13 @@ class _VenueVideoPageState extends State<VenueVideoPage> {
     setState(() {
       _isLoading = true;
       _error = null;
-      _isDemoData = false;
+      _selectedCourt = null;
     });
     try {
       final videos = await widget.service.getVideos(widget.venue);
-      if (!mounted) return;
-      setState(() => _videos = videos);
+      if (mounted) setState(() => _videos = videos);
     } on VenueVideoException catch (error) {
-      if (!mounted) return;
-      setState(() => _error = error.message);
+      if (mounted) setState(() => _error = error.message);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -60,91 +57,8 @@ class _VenueVideoPageState extends State<VenueVideoPage> {
     setState(() {
       _videos = widget.service.getMockVideos();
       _error = null;
-      _isDemoData = true;
+      _selectedCourt = null;
     });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('球馆视频库')),
-      body: SafeArea(
-        top: false,
-        child: _buildBody(context),
-      ),
-    );
-  }
-
-  Widget _buildBody(BuildContext context) {
-    if (_isLoading) {
-      return ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          _venueHeader(context),
-          const SizedBox(height: 16),
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 48),
-            child: Center(child: CircularProgressIndicator()),
-          ),
-        ],
-      );
-    }
-    if (_error != null) {
-      return ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          _venueHeader(context),
-          const SizedBox(height: 16),
-          _errorCard()
-        ],
-      );
-    }
-
-    final videos =
-        _videos?.isNotEmpty == true ? _videos! : widget.service.getMockVideos();
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _venueHeader(context, videos: videos),
-          const SizedBox(height: 16),
-          if (_isDemoData)
-            Container(
-              width: double.infinity,
-              margin: const EdgeInsets.only(bottom: 16),
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: const Color(0xFFE8F5E9),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFFA5D6A7)),
-              ),
-              child: const Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(Icons.content_cut_rounded, color: Color(0xFF2E7D32)),
-                  SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      '已从球馆存储的完整视频中截取出准备分析的视频片段',
-                      style: TextStyle(height: 1.45),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          Text('可用比赛视频', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 10),
-          Text('共 ${videos.length} 条',
-              style: Theme.of(context).textTheme.bodySmall),
-          const SizedBox(height: 8),
-          if (videos.isNotEmpty) _videoCard(videos[0]),
-          if (videos.length > 1) _videoCard(videos[1]),
-          if (videos.length > 2)
-            for (final video in videos.skip(2)) _videoCard(video),
-        ],
-      ),
-    );
   }
 
   void _openVideo(VenueVideo video) {
@@ -155,7 +69,38 @@ class _VenueVideoPageState extends State<VenueVideoPage> {
     );
   }
 
-  Widget _venueHeader(BuildContext context, {List<VenueVideo>? videos}) => Card(
+  int _courtOrder(String court) {
+    final match = RegExp(r'\d+').firstMatch(court);
+    return int.tryParse(match?.group(0) ?? '') ?? 999;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('球馆视频库')),
+      body: SafeArea(
+        top: false,
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            _venueCard(context),
+            const SizedBox(height: 16),
+            if (_isLoading)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 48),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (_error != null)
+              _errorCard()
+            else
+              _videoList(context, _videos ?? const []),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _venueCard(BuildContext context) => Card(
         child: Padding(
           padding: const EdgeInsets.all(18),
           child: Column(
@@ -165,29 +110,77 @@ class _VenueVideoPageState extends State<VenueVideoPage> {
                   style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 6),
               Text('球馆编号：${widget.venue.id}'),
-              if (videos != null && videos.isNotEmpty) ...[
-                const SizedBox(height: 14),
-                const Divider(),
-                const SizedBox(height: 8),
-                const Text('已加载比赛视频，可直接预览：'),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final video in videos.take(2))
-                      FilledButton.icon(
-                        onPressed: () => _openVideo(video),
-                        icon: const Icon(Icons.play_circle_outline),
-                        label: Text('预览 ${video.court}'),
-                      ),
-                  ],
-                ),
-              ],
             ],
           ),
         ),
       );
+
+  Widget _videoList(BuildContext context, List<VenueVideo> videos) {
+    final courts = videos.map((video) => video.court).toSet().toList()
+      ..sort((left, right) => _courtOrder(left).compareTo(_courtOrder(right)));
+    final filtered = _selectedCourt == null
+        ? videos
+        : videos.where((video) => video.court == _selectedCourt).toList();
+
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 10),
+            child: Row(
+              children: [
+                Text('选择比赛视频', style: Theme.of(context).textTheme.titleMedium),
+                const Spacer(),
+                Text('${filtered.length} 条',
+                    style: Theme.of(context).textTheme.bodySmall),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 0, 18, 12),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                ChoiceChip(
+                  label: Text('全部 ${videos.length}'),
+                  selected: _selectedCourt == null,
+                  onSelected: (_) => setState(() => _selectedCourt = null),
+                ),
+                for (final court in courts)
+                  ChoiceChip(
+                    label: Text(court),
+                    selected: _selectedCourt == court,
+                    onSelected: (_) => setState(() => _selectedCourt = court),
+                  ),
+              ],
+            ),
+          ),
+          if (filtered.isEmpty)
+            const Padding(
+              padding: EdgeInsets.fromLTRB(18, 8, 18, 22),
+              child: Text('该场地暂时没有可用比赛视频。'),
+            )
+          else
+            for (final video in filtered) ...[
+              const Divider(height: 1),
+              ListTile(
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
+                leading:
+                    const CircleAvatar(child: Icon(Icons.play_arrow_rounded)),
+                title: Text(video.court),
+                subtitle: Text('${video.time} · ${video.duration}'),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => _openVideo(video),
+              ),
+            ],
+        ],
+      ),
+    );
+  }
 
   Widget _errorCard() => Card(
         color: const Color(0xFFFFF7F5),
@@ -210,60 +203,6 @@ class _VenueVideoPageState extends State<VenueVideoPage> {
               ),
             ],
           ),
-        ),
-      );
-
-  Widget _videoCard(VenueVideo video) => Container(
-        key: ValueKey('venue-video-${video.id}'),
-        width: double.infinity,
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          border: Border.all(color: const Color(0xFFD5DDD2)),
-          borderRadius: BorderRadius.circular(18),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.videocam_outlined),
-                const SizedBox(width: 8),
-                Text(video.court,
-                    style: const TextStyle(fontWeight: FontWeight.w800)),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Text('时间：${video.time}'),
-            Text('时长：${video.duration}'),
-            if (video.isPreparedClip) ...[
-              const SizedBox(height: 8),
-              const Row(
-                children: [
-                  Icon(Icons.check_circle_outline,
-                      size: 18, color: Color(0xFF2E7D32)),
-                  SizedBox(width: 6),
-                  Expanded(child: Text('已截取为待分析片段')),
-                ],
-              ),
-            ],
-            const SizedBox(height: 12),
-            Align(
-              alignment: Alignment.centerRight,
-              child: FilledButton(
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => VideoDetailPage(
-                      venue: widget.venue,
-                      video: video,
-                    ),
-                  ),
-                ),
-                child: const Text('选择'),
-              ),
-            ),
-          ],
         ),
       );
 }

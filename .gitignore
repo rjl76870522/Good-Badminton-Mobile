@@ -18,6 +18,9 @@ results/
 outputs/
 *.log
 mock_venue_server/*.pid
+mock_venue_server/clips/
+mock_venue_server/venue_library.json
+mock_venue_server/videos/upload_*
 logs/
 mobile_backend_data/
 deliverables/

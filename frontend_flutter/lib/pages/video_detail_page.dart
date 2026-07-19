@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -28,6 +29,7 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
   String? _previewError;
   bool _downloading = false;
   double _downloadProgress = 0;
+  RangeValues _clipRange = const RangeValues(0, 0);
 
   bool get _isBundledDemo => widget.video.assetPath?.isNotEmpty == true;
 
@@ -36,6 +38,19 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
       Uri.parse(widget.venue.serverUrl)
           .resolve('/videos/${widget.video.id}/download')
           .toString();
+
+  Duration get _duration => _controller?.value.duration ?? Duration.zero;
+
+  double get _maximumSeconds => math
+      .max(1, _duration.inMilliseconds / Duration.millisecondsPerSecond)
+      .toDouble();
+
+  int get _startMs =>
+      (_clipRange.start * Duration.millisecondsPerSecond).round();
+  int get _endMs => (_clipRange.end * Duration.millisecondsPerSecond).round();
+
+  bool get _isFullSelection =>
+      _startMs <= 0 && _endMs >= _duration.inMilliseconds - 150;
 
   @override
   void initState() {
@@ -54,7 +69,10 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
         return;
       }
       controller.addListener(_onVideoChanged);
-      setState(() => _controller = controller);
+      setState(() {
+        _controller = controller;
+        _clipRange = RangeValues(0, _maximumSeconds);
+      });
     } catch (_) {
       await controller.dispose();
       if (mounted) {
@@ -67,16 +85,32 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
     if (mounted) setState(() {});
   }
 
-  Future<File> _downloadToCache() async {
+  String _formatTime(int milliseconds) {
+    final totalSeconds = milliseconds ~/ Duration.millisecondsPerSecond;
+    final minutes = totalSeconds ~/ 60;
+    final seconds = totalSeconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  Uri get _clipUri => Uri.parse(widget.venue.serverUrl)
+          .resolve('/videos/${widget.video.id}/clip')
+          .replace(queryParameters: {
+        'start_ms': _startMs.toString(),
+        'end_ms': _endMs.toString(),
+      });
+
+  Future<File> _downloadSelectedClip() async {
+    if (_isBundledDemo && !_isFullSelection) {
+      throw StateError('内置演示视频暂不支持截取，请选择完整视频保存或分析。');
+    }
     final directory = await getTemporaryDirectory();
     final videoDirectory =
         Directory('${directory.path}/GoodBadminton/venue_videos');
     if (!await videoDirectory.exists()) {
       await videoDirectory.create(recursive: true);
     }
-    final fileName =
-        '${widget.video.id}_${DateTime.now().millisecondsSinceEpoch}.mp4';
-    final targetPath = '${videoDirectory.path}/$fileName';
+    final suffix = '$_startMs' '_' '$_endMs';
+    final targetPath = '${videoDirectory.path}/${widget.video.id}_$suffix.mp4';
     if (_isBundledDemo) {
       final data = await rootBundle.load(widget.video.assetPath!);
       final file = File(targetPath);
@@ -86,15 +120,18 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
       );
       return file;
     }
-    final savedPath = await _api.downloadFile(
-      _downloadUrl,
-      targetPath,
-    );
+    final url = _isFullSelection ? _downloadUrl : _clipUri.toString();
+    final savedPath = await _api.downloadFile(url, targetPath);
     return File(savedPath);
   }
 
-  Future<void> _selectDownloadAction() async {
-    final action = await showModalBottomSheet<_VideoAction>(
+  void _resetClip() {
+    setState(() => _clipRange = RangeValues(0, _maximumSeconds));
+  }
+
+  Future<void> _selectClipAction() async {
+    if (_duration <= Duration.zero) return;
+    final action = await showModalBottomSheet<_ClipAction>(
       context: context,
       showDragHandle: true,
       builder: (context) => SafeArea(
@@ -104,21 +141,21 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('获取比赛视频', style: Theme.of(context).textTheme.titleLarge),
+              Text('使用选中片段', style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 6),
-              const Text('请选择视频下载后的操作。'),
+              Text('片段范围：${_formatTime(_startMs)} - ${_formatTime(_endMs)}'),
               const SizedBox(height: 12),
               ListTile(
                 leading: const Icon(Icons.photo_library_outlined),
                 title: const Text('保存到系统相册'),
-                subtitle: const Text('可在手机相册的 Good-Badminton 相簿中查看'),
-                onTap: () => Navigator.pop(context, _VideoAction.saveToGallery),
+                subtitle: const Text('保存选中的视频片段'),
+                onTap: () => Navigator.pop(context, _ClipAction.saveToGallery),
               ),
               ListTile(
                 leading: const Icon(Icons.analytics_outlined),
                 title: const Text('直接进行分析'),
-                subtitle: const Text('带入现有的视频上传与分析流程'),
-                onTap: () => Navigator.pop(context, _VideoAction.analyze),
+                subtitle: const Text('将选中片段带入现有上传和分析流程'),
+                onTap: () => Navigator.pop(context, _ClipAction.analyze),
               ),
             ],
           ),
@@ -126,10 +163,10 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
       ),
     );
     switch (action) {
-      case _VideoAction.saveToGallery:
+      case _ClipAction.saveToGallery:
         await _saveToGallery();
         return;
-      case _VideoAction.analyze:
+      case _ClipAction.analyze:
         await _downloadAndAnalyze();
         return;
       case null:
@@ -143,7 +180,7 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
       _downloadProgress = .2;
     });
     try {
-      final file = await _downloadToCache();
+      final file = await _downloadSelectedClip();
       if (!mounted) return;
       setState(() => _downloadProgress = .8);
       final hasAccess = await Gal.hasAccess(toAlbum: true);
@@ -155,19 +192,19 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
       try {
         await file.delete();
       } on FileSystemException {
-        // 已成功导入系统相册；清理临时文件失败不影响保存结果。
+        // 已成功导入系统相册；清理缓存失败不影响保存结果。
       }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('已保存到系统相册：Good-Badminton')),
+          const SnackBar(content: Text('选中片段已保存到系统相册：Good-Badminton')),
         );
       }
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(userFacingError(error, fallback: '保存视频失败，请检查网络后重试。')),
-          ),
+              content:
+                  Text(userFacingError(error, fallback: '保存视频片段失败，请检查网络后重试。'))),
         );
       }
     } finally {
@@ -186,7 +223,7 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
       _downloadProgress = .2;
     });
     try {
-      final file = await _downloadToCache();
+      final file = await _downloadSelectedClip();
       if (!mounted) return;
       setState(() => _downloadProgress = 1);
       await Navigator.of(context).push(
@@ -201,9 +238,8 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content:
-                Text(userFacingError(error, fallback: '下载视频失败，请检查球馆网络后重试。')),
-          ),
+              content: Text(
+                  userFacingError(error, fallback: '获取视频片段失败，请检查球馆网络后重试。'))),
         );
       }
     } finally {
@@ -228,65 +264,95 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
   Widget build(BuildContext context) {
     final controller = _controller;
     return Scaffold(
-      appBar: AppBar(title: const Text('选择视频')),
+      appBar: AppBar(title: const Text('视频预览')),
       body: SafeArea(
         top: false,
         child: ListView(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(16),
           children: [
             _previewCard(controller),
             const SizedBox(height: 16),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('球馆：${widget.venue.name}'),
-                    const SizedBox(height: 8),
-                    Text('视频：${widget.video.court}'),
-                    const SizedBox(height: 8),
-                    Text('时间：${widget.video.time}'),
-                    const SizedBox(height: 8),
-                    Text('时长：${widget.video.duration}'),
-                    if (widget.video.isPreparedClip) ...[
-                      const SizedBox(height: 12),
-                      const Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Icon(Icons.content_cut_rounded,
-                              size: 20, color: Color(0xFF2E7D32)),
-                          SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              '已从球馆存储的完整视频中截取出准备分析的视频片段',
-                              style: TextStyle(height: 1.45),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
+            Text(widget.video.court,
+                style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: 4),
+            Text('${widget.video.time} · ${widget.video.duration}'),
+            const SizedBox(height: 18),
+            if (controller != null) _clipSelector(context),
             if (_downloading) ...[
+              const SizedBox(height: 16),
               LinearProgressIndicator(value: _downloadProgress),
               const SizedBox(height: 8),
-              const Text('正在获取球馆视频…'),
-              const SizedBox(height: 12),
+              const Text('正在准备选中片段…'),
             ],
-            FilledButton.icon(
-              onPressed: _downloading ? null : _selectDownloadAction,
-              icon: const Icon(Icons.download_rounded),
-              label: const Text('获取视频'),
-            ),
           ],
         ),
       ),
     );
   }
+
+  Widget _clipSelector(BuildContext context) => Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.content_cut_rounded),
+                  const SizedBox(width: 8),
+                  Text('截取视频片段',
+                      style: Theme.of(context).textTheme.titleMedium),
+                  const Spacer(),
+                  TextButton(onPressed: _resetClip, child: const Text('完整视频')),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text('拖动两端选择要保存或分析的时间范围。',
+                  style: Theme.of(context).textTheme.bodySmall),
+              RangeSlider(
+                values: _clipRange,
+                min: 0,
+                max: _maximumSeconds,
+                divisions:
+                    math.min(120, _maximumSeconds.ceil()).clamp(1, 120).toInt(),
+                labels: RangeLabels(_formatTime(_startMs), _formatTime(_endMs)),
+                onChanged: _downloading
+                    ? null
+                    : (values) {
+                        final minSpan =
+                            _maximumSeconds > 1 ? 1.0 : _maximumSeconds;
+                        var start = values.start;
+                        var end = values.end;
+                        if (end - start < minSpan) {
+                          if (end + minSpan <= _maximumSeconds) {
+                            end = start + minSpan;
+                          } else {
+                            start = end - minSpan;
+                          }
+                        }
+                        setState(() => _clipRange = RangeValues(start, end));
+                      },
+              ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(_formatTime(_startMs)),
+                  Text(_formatTime(_endMs))
+                ],
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: _downloading ? null : _selectClipAction,
+                  icon: const Icon(Icons.content_cut_rounded),
+                  label: const Text('使用选中片段'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
 
   Widget _previewCard(VideoPlayerController? controller) {
     if (_previewError != null) {
@@ -321,11 +387,9 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
                   onPressed: () => controller.value.isPlaying
                       ? controller.pause()
                       : controller.play(),
-                  icon: Icon(
-                    controller.value.isPlaying
-                        ? Icons.pause_rounded
-                        : Icons.play_arrow_rounded,
-                  ),
+                  icon: Icon(controller.value.isPlaying
+                      ? Icons.pause_rounded
+                      : Icons.play_arrow_rounded),
                 ),
                 Expanded(
                   child: VideoProgressIndicator(
@@ -366,4 +430,4 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
       );
 }
 
-enum _VideoAction { saveToGallery, analyze }
+enum _ClipAction { saveToGallery, analyze }
