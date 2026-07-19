@@ -1,20 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../config/api_config.dart';
 import '../models/task_status.dart';
 import '../services/api_service.dart';
-import '../services/map_launcher_service.dart';
 import '../services/task_storage.dart';
 import '../utils/user_facing_error.dart';
+import 'history_page.dart';
 import 'qr_scan_page.dart';
-import 'report_page.dart';
 import 'task_status_page.dart';
 import 'upload_page.dart';
 
 class HomePage extends StatefulWidget {
-  const HomePage({super.key, this.onSelectTab});
-
-  final ValueChanged<int>? onSelectTab;
+  const HomePage({super.key});
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -22,8 +20,8 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   final ApiService _api = ApiService();
-  final MapLauncherService _mapLauncher = const MapLauncherService();
   final TaskStorage _storage = TaskStorage();
+  static final Uri _websiteUri = Uri.parse('https://www.audacity6441.kdns.fr/');
   Map<String, dynamic>? _health;
   List<TaskStatus> _restoredTasks = const [];
   String? _error;
@@ -115,69 +113,14 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Future<void> _openNearbyCourtsSearch() async {
-    final app = await showModalBottomSheet<MapApp>(
-      context: context,
-      showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 6, 16, 18),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '查找附近羽毛球馆',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                '选择一个地图或生活服务应用，打开后搜索附近羽毛球馆',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-              ),
-              const SizedBox(height: 14),
-              _MapOptionTile(
-                icon: Icons.map_outlined,
-                title: '高德地图',
-                subtitle: '适合导航和附近搜索',
-                app: MapApp.amap,
-                color: const Color(0xFFE6F4FF),
-              ),
-              _MapOptionTile(
-                icon: Icons.explore_outlined,
-                title: '百度地图',
-                subtitle: '适合搜索场馆和路线',
-                app: MapApp.baidu,
-                color: const Color(0xFFEAF0FF),
-              ),
-              _MapOptionTile(
-                icon: Icons.storefront_outlined,
-                title: '美团',
-                subtitle: '适合查看团购和营业信息',
-                app: MapApp.meituan,
-                color: const Color(0xFFFFF6D9),
-              ),
-              _MapOptionTile(
-                icon: Icons.public_outlined,
-                title: '浏览器搜索',
-                subtitle: '没有安装地图应用时使用',
-                app: MapApp.browser,
-                color: const Color(0xFFE9F7EA),
-              ),
-            ],
-          ),
-        ),
-      ),
+  Future<void> _openWebsite() async {
+    final launched = await launchUrl(
+      _websiteUri,
+      mode: LaunchMode.externalApplication,
     );
-    if (app == null) return;
-    final launched = await _mapLauncher.launchNearbyBadminton(app);
     if (!mounted || launched) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('没有找到可打开的地图应用，请先安装高德地图、百度地图或美团')),
+      const SnackBar(content: Text('暂时无法打开官方网站')),
     );
   }
 
@@ -243,8 +186,6 @@ class _HomePageState extends State<HomePage> {
                   ),
                 ),
                 const SizedBox(height: 14),
-                _NearbyCourtEntry(onTap: _openNearbyCourtsSearch),
-                const SizedBox(height: 14),
                 Offstage(
                   offstage: true,
                   child: _ConnectionCard(
@@ -282,14 +223,10 @@ class _HomePageState extends State<HomePage> {
                   children: [
                     Expanded(
                       child: _QuickAccessCard(
-                        icon: Icons.science_outlined,
-                        label: 'Demo',
+                        icon: Icons.language_outlined,
+                        label: '官网',
                         color: const Color(0xFFFFF4D9),
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const ReportPage.demo(),
-                          ),
-                        ),
+                        onTap: _openWebsite,
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -298,16 +235,11 @@ class _HomePageState extends State<HomePage> {
                         icon: Icons.insights_outlined,
                         label: '历史记录',
                         color: const Color(0xFFE2F3E3),
-                        onTap: () => widget.onSelectTab?.call(1),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _QuickAccessCard(
-                        icon: Icons.person_outline_rounded,
-                        label: '我的',
-                        color: const Color(0xFFE8EEF7),
-                        onTap: () => widget.onSelectTab?.call(2),
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const HistoryPage(),
+                          ),
+                        ),
                       ),
                     ),
                   ],
@@ -321,8 +253,11 @@ class _HomePageState extends State<HomePage> {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'AI 自动追踪球员移动、速度、覆盖范围与羽毛球轨迹，'
-                  '把每一次训练转化为清晰可读的数据。',
+                  '完成一次训练或比赛后，你可以回看全场跑动距离、'
+                  '最高速度、平均速度、前后场活动比例和场区覆盖范围。'
+                  '\n\n热力图能看出你最常停留的位置，移动轨迹能帮助你检查'
+                  '启动、回位和左右场衔接。精彩集锦保留关键回合，训练建议则结合'
+                  '本场表现，帮助你发现体能分配、站位习惯和场地覆盖上的改进方向。',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         color: colorScheme.onSurfaceVariant,
                         height: 1.55,
@@ -517,92 +452,6 @@ class _VenueScanEntry extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-class _NearbyCourtEntry extends StatelessWidget {
-  const _NearbyCourtEntry({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: InkWell(
-        borderRadius: BorderRadius.circular(24),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-          child: Row(
-            children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEAF7EC),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: const Icon(
-                  Icons.location_on_outlined,
-                  color: Color(0xFF1B5E20),
-                ),
-              ),
-              const SizedBox(width: 14),
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '附近羽毛球馆',
-                      style: TextStyle(fontWeight: FontWeight.w800),
-                    ),
-                    SizedBox(height: 3),
-                    Text('跳转地图应用，搜索和导航到附近场馆'),
-                  ],
-                ),
-              ),
-              const Icon(Icons.chevron_right_rounded),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _MapOptionTile extends StatelessWidget {
-  const _MapOptionTile({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.app,
-    required this.color,
-  });
-
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final MapApp app;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      leading: Container(
-        width: 44,
-        height: 44,
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Icon(icon),
-      ),
-      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
-      subtitle: Text(subtitle),
-      trailing: const Icon(Icons.open_in_new_rounded),
-      onTap: () => Navigator.of(context).pop(app),
     );
   }
 }

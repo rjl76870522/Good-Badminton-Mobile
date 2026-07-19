@@ -13,15 +13,23 @@ void main() {
     expect(find.text('羽毛球 AI 视觉分析'), findsOneWidget);
     expect(find.text('开始上传视频'), findsOneWidget);
     expect(find.text('扫描球馆二维码'), findsOneWidget);
-    await tester.scrollUntilVisible(find.text('Demo'), 160);
-    expect(find.text('Demo'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('官网'), 160);
+    expect(find.text('官网'), findsOneWidget);
+    expect(find.text('Demo'), findsNothing);
+    expect(find.text('附近羽毛球馆'), findsNothing);
     expect(find.text('首页'), findsOneWidget);
-    expect(find.text('历史记录'), findsWidgets);
+    expect(find.text('导航'), findsOneWidget);
     expect(find.text('我的'), findsWidgets);
+
+    await tester.tap(find.text('导航'));
+    await tester.pump();
+    expect(find.text('附近羽毛球馆'), findsOneWidget);
+    expect(find.text('高德地图'), findsOneWidget);
 
     await tester.tap(find.text('我的').last);
     await tester.pump();
 
+    expect(find.text('家'), findsOneWidget);
     expect(find.text('设置'), findsOneWidget);
     expect(find.text('点击头像可以从相册更换'), findsOneWidget);
     expect(find.text('数据身份'), findsNothing);
@@ -47,13 +55,14 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
       expect(tester.takeException(), isNull);
 
-      await tester.tap(find.text('历史记录').last);
+      await tester.tap(find.text('导航'));
       await tester.pump(const Duration(milliseconds: 300));
-      expect(find.text('训练历史'), findsOneWidget);
+      expect(find.text('附近羽毛球馆'), findsOneWidget);
       expect(tester.takeException(), isNull);
 
       await tester.tap(find.text('我的').last);
       await tester.pump(const Duration(milliseconds: 300));
+      expect(find.text('家'), findsOneWidget);
       expect(find.text('设置'), findsOneWidget);
       expect(find.text('数据身份'), findsNothing);
       expect(tester.takeException(), isNull);
