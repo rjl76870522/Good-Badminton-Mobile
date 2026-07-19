@@ -122,7 +122,7 @@ systemctl status good-badminton-admin --no-pager
 It shows user and task counts, GPU queue state, disk usage, file categories,
 and 14-day storage growth.
 
-Install the maintenance timer with:
+Install the local dashboard with:
 
 ```bash
 sudo cp deploy/good-badminton-admin.service /etc/systemd/system/
@@ -130,7 +130,7 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now good-badminton-admin.service
 ```
 
-Install it with:
+Install the maintenance timer with:
 
 ```bash
 sudo cp deploy/good-badminton-maintenance.service /etc/systemd/system/
