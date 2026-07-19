@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import '../services/user_storage.dart';
 import '../widgets/app_background.dart';
 import 'history_page.dart';
+import 'qr_scan_page.dart';
 import 'settings_page.dart';
 
 class ProfilePage extends StatefulWidget {
@@ -180,6 +181,13 @@ class _ProfilePageState extends State<ProfilePage> {
                 ),
               ),
               const SizedBox(height: 16),
+              Text(
+                '训练与球馆',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+              ),
+              const SizedBox(height: 8),
               Card(
                 child: Column(
                   children: [
@@ -194,6 +202,29 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                     const Divider(height: 1),
                     ListTile(
+                      leading: const Icon(Icons.qr_code_scanner_rounded),
+                      title: const Text('连接合作球馆'),
+                      subtitle: const Text('扫描球馆二维码，选择已经截取好的训练片段'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const QrScanPage()),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                '偏好与支持',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+              ),
+              const SizedBox(height: 8),
+              Card(
+                child: Column(
+                  children: [
+                    ListTile(
                       leading: const Icon(Icons.settings_outlined),
                       title: const Text('设置'),
                       subtitle: const Text('播放、存储、权限与帮助'),
@@ -201,6 +232,12 @@ class _ProfilePageState extends State<ProfilePage> {
                       onTap: () => Navigator.of(context).push(
                         MaterialPageRoute(builder: (_) => const SettingsPage()),
                       ),
+                    ),
+                    const Divider(height: 1),
+                    const ListTile(
+                      leading: Icon(Icons.shield_outlined),
+                      title: Text('个人内容保存在本机'),
+                      subtitle: Text('昵称、头像和离线报告由你管理，可在设置中清理'),
                     ),
                   ],
                 ),

@@ -14,6 +14,35 @@ class MapLauncherService {
 
   static const _keyword = '羽毛球馆';
 
+  Future<bool> launchAmapPlace(String keyword) {
+    return _launchFirstAvailable([
+      if (Platform.isIOS)
+        Uri(
+          scheme: 'iosamap',
+          host: 'poi',
+          queryParameters: {
+            'sourceApplication': 'good-badminton',
+            'keywords': keyword,
+            'dev': '0',
+          },
+        )
+      else
+        Uri(
+          scheme: 'androidamap',
+          host: 'poi',
+          queryParameters: {
+            'sourceApplication': 'good-badminton',
+            'keywords': keyword,
+            'dev': '0',
+          },
+        ),
+      Uri.https('uri.amap.com', '/search', {
+        'keyword': keyword,
+        'callnative': '1',
+      }),
+    ]);
+  }
+
   Future<bool> launchNearbyBadminton(MapApp app) async {
     switch (app) {
       case MapApp.amap:

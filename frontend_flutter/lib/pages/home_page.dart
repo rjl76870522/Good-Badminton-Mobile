@@ -253,20 +253,72 @@ class _HomePageState extends State<HomePage> {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  '完成一次训练或比赛后，你可以回看全场跑动距离、'
-                  '最高速度、平均速度、前后场活动比例和场区覆盖范围。'
-                  '\n\n热力图能看出你最常停留的位置，移动轨迹能帮助你检查'
-                  '启动、回位和左右场衔接。精彩集锦保留关键回合，训练建议则结合'
-                  '本场表现，帮助你发现体能分配、站位习惯和场地覆盖上的改进方向。',
+                  '每次训练结束后，先看跑动距离、速度变化和前后场活动比例，'
+                  '了解这一场的体能投入是否均衡。再通过热力图观察常驻区域，'
+                  '通过移动轨迹检查启动、回位、左右衔接以及防守空当。'
+                  '\n\n将本场结果和自己的上一场对照，比单独追求某个数值更有意义。'
+                  '你可以从站位过深、回中偏慢、某一侧覆盖不足等具体问题开始，'
+                  '为下一次训练确定一个清晰目标。精彩片段则帮助你重看关键回合，'
+                  '把有效的移动和击球选择保留下来。',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         color: colorScheme.onSurfaceVariant,
                         height: 1.55,
                       ),
                 ),
+                const SizedBox(height: 22),
+                Text(
+                  '主要功能使用指导',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                ),
+                const SizedBox(height: 10),
+                const _UsageGuide(),
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _UsageGuide extends StatelessWidget {
+  const _UsageGuide();
+
+  @override
+  Widget build(BuildContext context) {
+    const steps = [
+      (
+        Icons.video_library_outlined,
+        '选择合适片段',
+        '上传横屏固定机位视频，建议保留连续 30 至 60 秒，画面应完整覆盖球场'
+      ),
+      (Icons.crop_free_rounded, '确认球场范围', '查看预览画面，必要时依次标记球场四角，让后续结果更准确'),
+      (Icons.hourglass_top_rounded, '等待分析完成', '可以离开任务页面继续使用 App，完成后到历史记录查看结果'),
+      (Icons.insights_outlined, '复盘并保存', '查看数据、热力图、轨迹和精彩片段，需要长期保留的内容可下载到手机'),
+    ];
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Column(
+          children: [
+            for (var index = 0; index < steps.length; index++) ...[
+              ListTile(
+                leading: CircleAvatar(
+                  child: Text('${index + 1}'),
+                ),
+                title: Text(
+                  steps[index].$2,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+                subtitle: Text(steps[index].$3),
+                trailing: Icon(steps[index].$1),
+              ),
+              if (index != steps.length - 1) const Divider(height: 1),
+            ],
+          ],
+        ),
       ),
     );
   }

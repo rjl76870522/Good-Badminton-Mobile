@@ -13,6 +13,7 @@ class NavigationPage extends StatefulWidget {
 class _NavigationPageState extends State<NavigationPage> {
   final MapLauncherService _mapLauncher = const MapLauncherService();
   MapApp? _launching;
+  String? _launchingVenue;
 
   Future<void> _launch(MapApp app) async {
     setState(() => _launching = app);
@@ -22,6 +23,17 @@ class _NavigationPageState extends State<NavigationPage> {
     if (launched) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('没有找到可打开的地图服务，请检查应用或网络')),
+    );
+  }
+
+  Future<void> _launchVenue(String keyword) async {
+    setState(() => _launchingVenue = keyword);
+    final launched = await _mapLauncher.launchAmapPlace(keyword);
+    if (!mounted) return;
+    setState(() => _launchingVenue = null);
+    if (launched) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('暂时无法打开高德地图，请检查应用或网络')),
     );
   }
 
@@ -126,10 +138,135 @@ class _NavigationPageState extends State<NavigationPage> {
                 loading: _launching == MapApp.browser,
                 onTap: () => _launch(MapApp.browser),
               ),
+              const SizedBox(height: 24),
+              Text(
+                '校园场馆示例',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                '校内场馆通常需要校园身份或提前预约，开放安排以学校当天通知为准',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 10),
+              _VenueExampleCard(
+                city: '沈阳',
+                title: '东北大学南湖校区羽乒馆',
+                address: '辽宁省沈阳市和平区文化路三号巷11号',
+                details: '南湖校区内场馆，学校羽毛球赛事常用场地\n'
+                    '师生开放时段及预约方式请查看智慧东大或体育场馆通知',
+                loading: _launchingVenue == '东北大学南湖校区羽乒馆',
+                onNavigate: () => _launchVenue('东北大学南湖校区羽乒馆'),
+              ),
+              const SizedBox(height: 12),
+              _VenueExampleCard(
+                city: '杭州',
+                title: '浙江大学紫金港校区风雨操场',
+                address: '浙江省杭州市西湖区余杭塘路866号',
+                details: '校内设有10片羽毛球场，适合日常训练和校内比赛\n'
+                    '校内用户请通过学校体育场馆预约渠道确认可用时段',
+                loading: _launchingVenue == '浙江大学紫金港校区风雨操场',
+                onNavigate: () => _launchVenue('浙江大学紫金港校区风雨操场'),
+              ),
             ],
           ),
         ),
       ),
+    );
+  }
+}
+
+class _VenueExampleCard extends StatelessWidget {
+  const _VenueExampleCard({
+    required this.city,
+    required this.title,
+    required this.address,
+    required this.details,
+    required this.loading,
+    required this.onNavigate,
+  });
+
+  final String city;
+  final String title;
+  final String address;
+  final String details;
+  final bool loading;
+  final VoidCallback onNavigate;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.primaryContainer,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(city),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            _VenueInfoLine(icon: Icons.location_on_outlined, text: address),
+            const SizedBox(height: 8),
+            _VenueInfoLine(icon: Icons.info_outline, text: details),
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: loading ? null : onNavigate,
+                icon: loading
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.navigation_outlined),
+                label: const Text('高德地图定位与导航'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _VenueInfoLine extends StatelessWidget {
+  const _VenueInfoLine({required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 20, color: Theme.of(context).colorScheme.primary),
+        const SizedBox(width: 8),
+        Expanded(child: Text(text, style: const TextStyle(height: 1.45))),
+      ],
     );
   }
 }
