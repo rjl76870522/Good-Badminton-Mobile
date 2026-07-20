@@ -29,6 +29,10 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
   String? _previewError;
   bool _downloading = false;
   bool _resettingAtClipEnd = false;
+  bool _playingSelectedClip = false;
+  bool _scrubbing = false;
+  bool _wasPlayingBeforeScrub = false;
+  double _scrubSeconds = 0;
   double _downloadProgress = 0;
   RangeValues _clipRange = const RangeValues(0, 0);
 
@@ -98,6 +102,7 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
   void _onVideoChanged() {
     final controller = _controller;
     if (controller != null &&
+        _playingSelectedClip &&
         controller.value.isPlaying &&
         !_resettingAtClipEnd &&
         controller.value.position.inMilliseconds >= _endMs) {
@@ -105,7 +110,10 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
       controller.pause().then(
             (_) => controller
                 .seekTo(Duration(milliseconds: _startMs))
-                .whenComplete(() => _resettingAtClipEnd = false),
+                .whenComplete(() {
+              _playingSelectedClip = false;
+              _resettingAtClipEnd = false;
+            }),
           );
     }
     if (mounted) setState(() {});
@@ -179,6 +187,7 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
     if (controller == null) return;
     await controller.pause();
     await controller.seekTo(Duration(milliseconds: _startMs));
+    _playingSelectedClip = true;
     await controller.play();
   }
 
@@ -186,14 +195,55 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
     final controller = _controller;
     if (controller == null) return;
     if (controller.value.isPlaying) {
+      _playingSelectedClip = false;
       await controller.pause();
       return;
     }
+    _playingSelectedClip = false;
     final position = controller.value.position.inMilliseconds;
     if (position < _startMs || position >= _endMs) {
       await controller.seekTo(Duration(milliseconds: _startMs));
     }
     await controller.play();
+  }
+
+  void _startScrubbing(double value) {
+    final controller = _controller;
+    if (controller == null) return;
+    _playingSelectedClip = false;
+    _wasPlayingBeforeScrub = controller.value.isPlaying;
+    setState(() {
+      _scrubbing = true;
+      _scrubSeconds = value;
+    });
+  }
+
+  void _scrubTo(double value) {
+    final controller = _controller;
+    if (controller == null) return;
+    setState(() => _scrubSeconds = value);
+    controller.seekTo(
+      Duration(
+        milliseconds: (value * Duration.millisecondsPerSecond).round(),
+      ),
+    );
+  }
+
+  Future<void> _finishScrubbing(double value) async {
+    final controller = _controller;
+    if (controller == null) return;
+    await controller.seekTo(
+      Duration(
+        milliseconds: (value * Duration.millisecondsPerSecond).round(),
+      ),
+    );
+    if (_wasPlayingBeforeScrub) await controller.play();
+    if (mounted) {
+      setState(() {
+        _scrubbing = false;
+        _scrubSeconds = value;
+      });
+    }
   }
 
   Future<void> _selectDownloadAction() async {
@@ -479,38 +529,69 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
           ),
           ColoredBox(
             color: const Color(0xFF111714),
-            child: Row(
+            child: Column(
               children: [
-                IconButton(
-                  tooltip: controller.value.isPlaying ? '暂停' : '播放',
-                  color: Colors.white,
-                  onPressed: _togglePlayback,
-                  icon: Icon(
-                    controller.value.isPlaying
-                        ? Icons.pause_rounded
-                        : Icons.play_arrow_rounded,
-                  ),
-                ),
-                Expanded(
-                  child: VideoProgressIndicator(
-                    controller,
-                    allowScrubbing: true,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    colors: const VideoProgressColors(
-                      playedColor: Color(0xFF62A76B),
-                      bufferedColor: Color(0xFF53645A),
-                      backgroundColor: Color(0xFF303A34),
+                Row(
+                  children: [
+                    IconButton(
+                      tooltip: controller.value.isPlaying ? '暂停' : '播放',
+                      color: Colors.white,
+                      onPressed: _togglePlayback,
+                      icon: Icon(
+                        controller.value.isPlaying
+                            ? Icons.pause_rounded
+                            : Icons.play_arrow_rounded,
+                      ),
                     ),
-                  ),
+                    Expanded(
+                      child: Slider(
+                        value: (_scrubbing
+                                ? _scrubSeconds
+                                : controller.value.position.inMilliseconds /
+                                    Duration.millisecondsPerSecond)
+                            .clamp(0, _maximumSeconds),
+                        min: 0,
+                        max: _maximumSeconds,
+                        label: _formatTime(
+                          ((_scrubbing
+                                      ? _scrubSeconds
+                                      : controller
+                                              .value.position.inMilliseconds /
+                                          Duration.millisecondsPerSecond) *
+                                  Duration.millisecondsPerSecond)
+                              .round(),
+                        ),
+                        onChangeStart: _startScrubbing,
+                        onChanged: _scrubTo,
+                        onChangeEnd: _finishScrubbing,
+                      ),
+                    ),
+                  ],
                 ),
                 Padding(
-                  padding: const EdgeInsets.only(left: 8),
-                  child: Text(
-                    _formatTime(controller.value.position.inMilliseconds),
-                    style: const TextStyle(color: Colors.white70),
+                  padding: const EdgeInsets.fromLTRB(52, 0, 16, 10),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        _formatTime(
+                          ((_scrubbing
+                                      ? _scrubSeconds
+                                      : controller
+                                              .value.position.inMilliseconds /
+                                          Duration.millisecondsPerSecond) *
+                                  Duration.millisecondsPerSecond)
+                              .round(),
+                        ),
+                        style: const TextStyle(color: Colors.white70),
+                      ),
+                      Text(
+                        _formatTime(_duration.inMilliseconds),
+                        style: const TextStyle(color: Colors.white70),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(width: 14),
               ],
             ),
           ),
