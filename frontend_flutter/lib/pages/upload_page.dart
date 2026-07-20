@@ -35,10 +35,8 @@ class _UploadPageState extends State<UploadPage> {
   final UserStorage _userStorage = UserStorage();
   final ImagePicker _picker = ImagePicker();
   XFile? _selectedFile;
-  int? _selectedFileSize;
   Duration? _selectedDuration;
   List<String> _validationErrors = const [];
-  List<String> _validationWarnings = const [];
   PreviewFrame? _preview;
   List<CourtPoint>? _corners;
   bool _inspectingVideo = false;
@@ -106,44 +104,48 @@ class _UploadPageState extends State<UploadPage> {
   Future<void> _inspectSelectedFile(XFile file) async {
     setState(() {
       _selectedFile = file;
-      _selectedFileSize = null;
       _selectedDuration = null;
       _validationErrors = const [];
-      _validationWarnings = const [];
       _preview = null;
       _corners = null;
       _inspectingVideo = true;
       _error = null;
     });
 
-    final size = await file.length();
-    Duration? duration;
-    VideoPlayerController? controller;
     try {
-      controller = VideoPlayerController.file(File(file.path));
-      await controller.initialize().timeout(const Duration(seconds: 20));
-      duration = controller.value.duration;
-    } catch (_) {
-      duration = null;
-    } finally {
-      await controller?.dispose();
-    }
+      final size = await file.length();
+      Duration? duration;
+      VideoPlayerController? controller;
+      try {
+        controller = VideoPlayerController.file(File(file.path));
+        await controller.initialize().timeout(const Duration(seconds: 20));
+        duration = controller.value.duration;
+      } catch (_) {
+        duration = null;
+      } finally {
+        await controller?.dispose();
+      }
 
-    final validation = UploadConstraints.validate(
-      fileName: file.name,
-      fileSizeBytes: size,
-      duration: duration,
-    );
-    if (!mounted) return;
-    setState(() {
-      _selectedFileSize = size;
-      _selectedDuration = duration;
-      _validationErrors = validation.errors;
-      _validationWarnings = validation.warnings;
-      _inspectingVideo = false;
-    });
-    if (validation.isValid) {
-      await _createPreview();
+      final validation = UploadConstraints.validate(
+        fileName: file.name,
+        fileSizeBytes: size,
+        duration: duration,
+      );
+      if (!mounted) return;
+      setState(() {
+        _selectedDuration = duration;
+        _validationErrors = validation.errors;
+        _inspectingVideo = false;
+      });
+      if (validation.isValid) {
+        await _createPreview();
+      }
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _inspectingVideo = false;
+        _error = '无法读取所选视频，请重新选择：$error';
+      });
     }
   }
 
@@ -324,15 +326,16 @@ class _UploadPageState extends State<UploadPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '视频要求',
+                        '推荐上传内容',
                         style: TextStyle(
                             fontWeight: FontWeight.bold, fontSize: 18),
                       ),
                       SizedBox(height: 8),
-                      Text('时长：5 秒～3 分钟（推荐单个完整回合，约 8～20 秒）'),
+                      Text('只上传一个完整回合，通常约 8～20 秒'),
                       SizedBox(height: 6),
                       Text('建议横屏固定机位拍摄，画面尽量覆盖完整球场。'),
-                      Text('请尽量去掉休息、捡球和发球准备时间。'),
+                      Text('不要上传休息、捡球和发球准备片段。'),
+                      Text('片段越精简，数据越准确，分析等待时间越短。'),
                     ],
                   ),
                 ),
@@ -350,7 +353,9 @@ class _UploadPageState extends State<UploadPage> {
               ),
               const SizedBox(height: 12),
               OutlinedButton.icon(
-                onPressed: _uploading || _inspectingVideo ? null : _pickVideo,
+                onPressed: _uploading || _inspectingVideo || _previewing
+                    ? null
+                    : _pickVideo,
                 icon: const Icon(Icons.video_library_outlined),
                 label: const Text('选择视频'),
               ),
@@ -360,11 +365,9 @@ class _UploadPageState extends State<UploadPage> {
               else
                 _SelectedVideoCard(
                   fileName: _selectedFile!.name,
-                  fileSize: _selectedFileSize,
                   duration: _selectedDuration,
                   inspecting: _inspectingVideo,
                   errors: _validationErrors,
-                  warnings: _validationWarnings,
                 ),
               if (_previewing) ...[
                 const SizedBox(height: 12),
@@ -444,19 +447,15 @@ class _UploadPageState extends State<UploadPage> {
 class _SelectedVideoCard extends StatelessWidget {
   const _SelectedVideoCard({
     required this.fileName,
-    required this.fileSize,
     required this.duration,
     required this.inspecting,
     required this.errors,
-    required this.warnings,
   });
 
   final String fileName;
-  final int? fileSize;
   final Duration? duration;
   final bool inspecting;
   final List<String> errors;
-  final List<String> warnings;
 
   @override
   Widget build(BuildContext context) {
@@ -483,13 +482,6 @@ class _SelectedVideoCard extends StatelessWidget {
                 icon: Icons.check_circle,
                 text: '视频检查通过，可以上传',
                 isError: false,
-              ),
-              ...warnings.map(
-                (message) => _ValidationMessage(
-                  icon: Icons.info_outline,
-                  text: message,
-                  isError: false,
-                ),
               ),
             ] else ...[
               const SizedBox(height: 8),

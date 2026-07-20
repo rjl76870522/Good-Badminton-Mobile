@@ -138,6 +138,46 @@ def test_upload_rejects_unsupported_video(monkeypatch, tmp_path):
     assert response.json()["detail"]["code"] == "VIDEO_UNREADABLE"
 
 
+def test_invalid_corners_do_not_leave_an_orphan_upload(monkeypatch, tmp_path):
+    _configure_data_dirs(monkeypatch, tmp_path)
+    monkeypatch.setattr(backend_api, "_validate_uploaded_video", lambda _path: None)
+
+    with TestClient(backend_api.app) as client:
+        response = client.post(
+            "/api/videos/upload",
+            data={
+                "user_id": "cleanup-user",
+                "corners_json": "[[1,2]]",
+            },
+            files={"file": ("match.mp4", b"video-bytes", "video/mp4")},
+        )
+
+    assert response.status_code == 400
+    assert not [path for path in backend_api.UPLOAD_DIR.rglob("*") if path.is_file()]
+
+
+def test_preview_failure_removes_temporary_upload(monkeypatch, tmp_path):
+    _configure_data_dirs(monkeypatch, tmp_path)
+    monkeypatch.setattr(backend_api, "_validate_uploaded_video", lambda _path: None)
+    monkeypatch.setattr(
+        backend_api,
+        "_select_preview_frame",
+        lambda *_args: (_ for _ in ()).throw(RuntimeError("preview failed")),
+    )
+
+    with pytest.raises(RuntimeError, match="preview failed"):
+        with TestClient(backend_api.app) as client:
+            client.post(
+                "/api/videos/preview-frame",
+                data={"user_id": "cleanup-user"},
+                files={"file": ("match.mp4", b"video-bytes", "video/mp4")},
+            )
+
+    assert not [
+        path for path in backend_api.PREVIEW_UPLOAD_DIR.rglob("*") if path.is_file()
+    ]
+
+
 def test_legacy_direct_file_upload_still_works(monkeypatch, tmp_path):
     _configure_data_dirs(monkeypatch, tmp_path)
     monkeypatch.setattr(backend_api, "_validate_uploaded_video", lambda _path: None)

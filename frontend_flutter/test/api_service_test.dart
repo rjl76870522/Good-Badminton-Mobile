@@ -161,6 +161,57 @@ void main() {
       service.close();
     }
   });
+
+  test('download replaces the target only after a complete response', () async {
+    final directory =
+        await Directory.systemTemp.createTemp('gb_download_test_');
+    final target =
+        File('${directory.path}${Platform.pathSeparator}analysis.mp4');
+    await target.writeAsBytes([9, 9, 9]);
+    final progress = <double>[];
+    final service = ApiService(client: _DownloadClient());
+
+    try {
+      final savedPath = await service.downloadFile(
+        'https://example.test/analysis.mp4',
+        target.path,
+        onProgress: progress.add,
+      );
+
+      expect(savedPath, target.path);
+      expect(await target.readAsBytes(), [1, 2, 3, 4]);
+      expect(await File('${target.path}.part').exists(), isFalse);
+      expect(progress.last, 1);
+    } finally {
+      service.close();
+      await directory.delete(recursive: true);
+    }
+  });
+
+  test('interrupted download removes the partial file and keeps old target',
+      () async {
+    final directory =
+        await Directory.systemTemp.createTemp('gb_download_failure_test_');
+    final target =
+        File('${directory.path}${Platform.pathSeparator}analysis.mp4');
+    await target.writeAsBytes([9, 9, 9]);
+    final service = ApiService(client: _InterruptedDownloadClient());
+
+    try {
+      await expectLater(
+        service.downloadFile(
+          'https://example.test/analysis.mp4',
+          target.path,
+        ),
+        throwsA(isA<SocketException>()),
+      );
+      expect(await target.readAsBytes(), [9, 9, 9]);
+      expect(await File('${target.path}.part').exists(), isFalse);
+    } finally {
+      service.close();
+      await directory.delete(recursive: true);
+    }
+  });
 }
 
 class _SuccessfulUploadClient extends http.BaseClient {
@@ -271,5 +322,31 @@ class _DeleteTaskClient extends http.BaseClient {
       'deleted_paths': [],
     });
     return http.StreamedResponse(Stream.value(utf8.encode(body)), 200);
+  }
+}
+
+class _DownloadClient extends http.BaseClient {
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    return http.StreamedResponse(
+      Stream.fromIterable([
+        [1, 2],
+        [3, 4],
+      ]),
+      200,
+      contentLength: 4,
+    );
+  }
+}
+
+class _InterruptedDownloadClient extends http.BaseClient {
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    final stream = Stream<List<int>>.multi((controller) {
+      controller.add([1, 2]);
+      controller.addError(const SocketException('连接中断'));
+      controller.close();
+    });
+    return http.StreamedResponse(stream, 200, contentLength: 4);
   }
 }

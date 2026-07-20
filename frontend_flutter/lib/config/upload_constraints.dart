@@ -3,7 +3,6 @@ class UploadConstraints {
 
   static const int maxFileSizeBytes = 200 * 1024 * 1024;
   static const Duration minDuration = Duration(seconds: 5);
-  static const Duration recommendedDuration = Duration(seconds: 30);
   static const Duration maxDuration = Duration(minutes: 3);
   static const Set<String> supportedExtensions = {'mp4', 'mov', 'm4v'};
 
@@ -42,13 +41,7 @@ class UploadConstraints {
         errors.add('视频不能超过 3 分钟');
       }
     }
-    final warnings = <String>[];
-    if (duration != null &&
-        duration >= minDuration &&
-        duration < recommendedDuration) {
-      warnings.add('建议上传 30 秒以上的视频，以获得更完整的分析结果');
-    }
-    return UploadValidationResult(errors, warnings: warnings);
+    return UploadValidationResult(errors);
   }
 
   static String formatBytes(int bytes) {

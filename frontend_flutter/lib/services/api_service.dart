@@ -284,21 +284,37 @@ class ApiService {
       throw ApiException('下载失败：HTTP ${response.statusCode}');
     }
     final file = File(localPath);
-    final sink = file.openWrite();
+    final temporaryFile = File('$localPath.part');
+    if (await temporaryFile.exists()) {
+      await temporaryFile.delete();
+    }
+    final sink = temporaryFile.openWrite();
     final totalBytes = response.contentLength ?? 0;
     var receivedBytes = 0;
     try {
-      await for (final chunk
-          in response.stream.timeout(const Duration(minutes: 10))) {
-        sink.add(chunk);
-        receivedBytes += chunk.length;
-        if (totalBytes > 0) {
-          onProgress?.call((receivedBytes / totalBytes).clamp(0, 1));
+      try {
+        await for (final chunk
+            in response.stream.timeout(const Duration(minutes: 10))) {
+          sink.add(chunk);
+          receivedBytes += chunk.length;
+          if (totalBytes > 0) {
+            onProgress?.call((receivedBytes / totalBytes).clamp(0, 1));
+          }
         }
+        await sink.flush();
+      } finally {
+        await sink.close();
       }
-    } finally {
-      await sink.close();
+    } catch (_) {
+      try {
+        await temporaryFile.delete();
+      } on FileSystemException {
+        // The original download error is more useful to the caller.
+      }
+      rethrow;
     }
+    if (await file.exists()) await file.delete();
+    await temporaryFile.rename(file.path);
     onProgress?.call(1);
     return file.path;
   }

@@ -32,14 +32,14 @@ void main() {
     expect(longVideo.errors, contains('视频不能超过 3 分钟'));
   });
 
-  test('allows short clips but recommends at least 30 seconds', () {
+  test('allows a short single-rally clip without a duration warning', () {
     final result = UploadConstraints.validate(
       fileName: 'short.mp4',
       fileSizeBytes: 1024,
       duration: const Duration(seconds: 10),
     );
     expect(result.isValid, isTrue);
-    expect(result.warnings, isNotEmpty);
+    expect(result.warnings, isEmpty);
   });
 
   test('rejects empty or unreadable videos', () {

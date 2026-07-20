@@ -438,36 +438,40 @@ def _create_analysis_task(
     user_upload_dir.mkdir(parents=True, exist_ok=True)
     upload_path = user_upload_dir / f"{task_id}_{video_name}"
 
-    if source_upload_id:
-        shutil.copyfile(source_path, upload_path)
-    else:
-        with upload_path.open("wb") as out:
-            shutil.copyfileobj(file.file, out)
-    _validate_uploaded_video(upload_path)
+    try:
+        if source_upload_id:
+            shutil.copyfile(source_path, upload_path)
+        else:
+            with upload_path.open("wb") as out:
+                shutil.copyfileobj(file.file, out)
+        _validate_uploaded_video(upload_path)
 
-    template = _resolve_template(template_path)
-    corners = _parse_corners(corners_json)
-    if corners:
-        _validate_corners_for_video(corners, upload_path)
-    task = {
-        "task_id": task_id,
-        "status": "queued",
-        "progress": 0.0,
-        "stage": "queued",
-        "error": None,
-        "video_name": video_name,
-        "user_id": user_id,
-        "upload_path": str(upload_path),
-        "template_path": str(template),
-        "corners_json": json.dumps(corners) if corners else None,
-        "language": language,
-        "pose_mode": pose_mode,
-        "keep_audio": keep_audio,
-        "created_at": time.time(),
-        "updated_at": time.time(),
-        "report": None,
-    }
-    _set_task(task_id, task)
+        template = _resolve_template(template_path)
+        corners = _parse_corners(corners_json)
+        if corners:
+            _validate_corners_for_video(corners, upload_path)
+        task = {
+            "task_id": task_id,
+            "status": "queued",
+            "progress": 0.0,
+            "stage": "queued",
+            "error": None,
+            "video_name": video_name,
+            "user_id": user_id,
+            "upload_path": str(upload_path),
+            "template_path": str(template),
+            "corners_json": json.dumps(corners) if corners else None,
+            "language": language,
+            "pose_mode": pose_mode,
+            "keep_audio": keep_audio,
+            "created_at": time.time(),
+            "updated_at": time.time(),
+            "report": None,
+        }
+        _set_task(task_id, task)
+    except Exception:
+        upload_path.unlink(missing_ok=True)
+        raise
     if source_upload_id:
         _remove_preview_artifacts(source_upload_id, source_path)
     TASK_WORKER.notify()
@@ -497,11 +501,14 @@ def create_preview_frame(
     source_upload_id = uuid.uuid4().hex
     safe_name = _safe_filename(file.filename)
     source_path = PREVIEW_UPLOAD_DIR / f"{source_upload_id}_{safe_name}"
-    with source_path.open("wb") as out:
-        shutil.copyfileobj(file.file, out)
-    _validate_uploaded_video(source_path)
-
-    preview = _select_preview_frame(source_path, source_upload_id)
+    try:
+        with source_path.open("wb") as out:
+            shutil.copyfileobj(file.file, out)
+        _validate_uploaded_video(source_path)
+        preview = _select_preview_frame(source_path, source_upload_id)
+    except Exception:
+        _remove_preview_artifacts(source_upload_id, source_path)
+        raise
     preview.update(
         {
             "source_upload_id": source_upload_id,
@@ -2004,7 +2011,7 @@ def _validate_uploaded_video(path: Path) -> None:
             status_code=413,
             code="VIDEO_TOO_LARGE",
             message="视频文件过大，请上传 200MB 以内的视频。",
-            hint="建议先使用 30 秒到 3 分钟的横屏固定机位视频。",
+            hint="建议只保留一个完整回合，并去掉休息和捡球片段。",
         )
 
     cap = cv2.VideoCapture(str(path))
@@ -2026,7 +2033,7 @@ def _validate_uploaded_video(path: Path) -> None:
             status_code=400,
             code="VIDEO_TOO_SHORT",
             message="视频太短，请上传至少 5 秒的视频。",
-            hint="正式训练复盘建议上传 30 秒到 3 分钟的视频。",
+            hint="请选择包含完整对打过程的单个回合。",
         )
     if duration > MAX_VIDEO_DURATION_SEC:
         path.unlink(missing_ok=True)

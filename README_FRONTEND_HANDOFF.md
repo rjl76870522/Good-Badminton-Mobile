@@ -245,7 +245,7 @@ Suggested pages:
 For MVP testing:
 
 - Use short videos first: 8 seconds to 1 minute.
-- Later enforce 30 seconds to 3 minutes.
+- Prefer one complete rally without rest or shuttle-pickup footage.
 - Avoid 4K/large videos during early testing.
 - Fixed horizontal camera angle gives much better results.
 - The backend processes one AI job at a time for stability.

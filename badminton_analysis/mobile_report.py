@@ -287,7 +287,7 @@ def generate_coaching(detection_summary: dict[str, Any]) -> dict[str, list[dict[
                 "它适合评价这一回合，不适合代表整场训练。"
             ),
             detail="当前片段强度不低，问题不是训练轻，而是样本时间短，结论更偏向单回合复盘。",
-            training_focus="如果要做训练趋势或体能判断，建议上传 30 秒以上连续固定机位片段；如果只看这一回合，就重点看启动和回中。",
+            training_focus="当前结果只代表这一回合，复盘时重点观察启动、到位和回中衔接。",
         )
     if zone_bias >= 0.35 and coverage_area >= 8:
         add_coaching_item(
