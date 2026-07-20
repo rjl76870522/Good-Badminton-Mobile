@@ -70,9 +70,12 @@ def _court_id(value: str) -> int:
 def _default_library() -> list[dict]:
     """Provide one complete camera recording for each example court."""
     recordings: list[dict] = []
+    durations: dict[str, int | None] = {}
     base_time = datetime.now().strftime("%Y-%m-%d")
     for court_id, filename in DEFAULT_COURT_RECORDINGS.items():
-        duration = _probe_duration_seconds(VIDEOS_DIR / filename)
+        if filename not in durations:
+            durations[filename] = _probe_duration_seconds(VIDEOS_DIR / filename)
+        duration = durations[filename]
         source_number = Path(filename).stem
         recordings.append(
             {
@@ -255,7 +258,9 @@ def download_clip(
         CLIPS_DIR / f"{video_id}_{source.stem}_{start_ms}_{end_ms}.mp4"
     )
     if not clip_path.is_file():
-        temporary_path = clip_path.with_suffix(".tmp.mp4")
+        temporary_path = clip_path.with_name(
+            f"{clip_path.stem}.{uuid.uuid4().hex}.tmp.mp4"
+        )
         command = [
             "ffmpeg",
             "-y",
@@ -290,7 +295,10 @@ def download_clip(
         if not temporary_path.is_file() or temporary_path.stat().st_size == 0:
             temporary_path.unlink(missing_ok=True)
             raise HTTPException(status_code=500, detail="生成视频片段失败")
-        temporary_path.replace(clip_path)
+        try:
+            temporary_path.replace(clip_path)
+        finally:
+            temporary_path.unlink(missing_ok=True)
 
     return FileResponse(clip_path, media_type="video/mp4", filename=f"{video_id}_{start_ms}_{end_ms}.mp4")
 

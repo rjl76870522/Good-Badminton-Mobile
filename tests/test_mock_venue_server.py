@@ -1,3 +1,7 @@
+import subprocess
+import threading
+from concurrent.futures import ThreadPoolExecutor
+
 from fastapi.testclient import TestClient
 
 from mock_venue_server import main as venue_server
@@ -64,3 +68,42 @@ def test_operator_can_add_multiple_recordings_at_different_times(
     assert first.status_code == 200
     assert second.status_code == 200
     assert len(response.json()["items"]) == 3
+
+
+def test_same_clip_can_be_generated_concurrently(monkeypatch, tmp_path):
+    source = tmp_path / "source.mp4"
+    source.write_bytes(b"source")
+    clips_dir = tmp_path / "clips"
+    output_paths = []
+    generation_barrier = threading.Barrier(2)
+
+    monkeypatch.setattr(venue_server, "CLIPS_DIR", clips_dir)
+    monkeypatch.setattr(venue_server, "_find_video", lambda _video_id: {})
+    monkeypatch.setattr(venue_server, "_video_path", lambda _video: source)
+    monkeypatch.setattr(venue_server, "_probe_duration_seconds", lambda _path: 30)
+
+    def fake_run(command, **_kwargs):
+        output_path = command[-1]
+        output_paths.append(output_path)
+        venue_server.Path(output_path).write_bytes(b"clip")
+        generation_barrier.wait(timeout=2)
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(venue_server.subprocess, "run", fake_run)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        responses = list(
+            executor.map(
+                lambda _: venue_server.download_clip(
+                    "court1-full-recording",
+                    start_ms=1000,
+                    end_ms=6000,
+                ),
+                range(2),
+            )
+        )
+
+    assert len(responses) == 2
+    assert len(set(output_paths)) == 2
+    assert all(path.endswith(".tmp.mp4") for path in output_paths)
+    assert not list(clips_dir.glob("*.tmp.mp4"))

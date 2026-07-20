@@ -158,7 +158,9 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
     if (mounted) setState(() {});
   }
 
-  Future<File> _downloadToCache() async {
+  Future<File> _downloadToCache({
+    void Function(double progress)? onProgress,
+  }) async {
     if (!_videoReady) {
       throw StateError('完整视频仍在缓存，请稍候。');
     }
@@ -177,6 +179,7 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
         data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
         flush: true,
       );
+      onProgress?.call(1);
       return file;
     }
     final previewCache = _previewCacheFile;
@@ -184,11 +187,23 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
         previewCache != null &&
         await previewCache.exists() &&
         await previewCache.length() > 0) {
-      return previewCache.copy(targetPath);
+      final file = await previewCache.copy(targetPath);
+      onProgress?.call(1);
+      return file;
     }
     final url = _isFullSelection ? _downloadUrl : _clipUri.toString();
-    final savedPath = await _api.downloadFile(url, targetPath);
+    final savedPath = await _api.downloadFile(
+      url,
+      targetPath,
+      onProgress: onProgress,
+    );
     return File(savedPath);
+  }
+
+  void _showDownloadProgress(double progress) {
+    if (!mounted) return;
+    final normalized = progress.clamp(0.0, 1.0).toDouble();
+    setState(() => _downloadProgress = .05 + normalized * .85);
   }
 
   String _formatTime(int milliseconds) {
@@ -363,12 +378,12 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
   Future<void> _saveToGallery() async {
     setState(() {
       _downloading = true;
-      _downloadProgress = .2;
+      _downloadProgress = .05;
     });
     try {
-      final file = await _downloadToCache();
+      final file = await _downloadToCache(onProgress: _showDownloadProgress);
       if (!mounted) return;
-      setState(() => _downloadProgress = .8);
+      setState(() => _downloadProgress = .95);
       final hasAccess = await Gal.hasAccess(toAlbum: true);
       final granted = hasAccess || await Gal.requestAccess(toAlbum: true);
       if (!granted) {
@@ -409,10 +424,10 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
   Future<void> _downloadAndAnalyze() async {
     setState(() {
       _downloading = true;
-      _downloadProgress = .2;
+      _downloadProgress = .05;
     });
     try {
-      final file = await _downloadToCache();
+      final file = await _downloadToCache(onProgress: _showDownloadProgress);
       if (!mounted) return;
       setState(() => _downloadProgress = 1);
       await Navigator.of(context).push(

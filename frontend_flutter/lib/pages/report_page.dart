@@ -1337,6 +1337,7 @@ class _VideoResultState extends State<_VideoResult> {
   Future<void> _downloadVideo() async {
     final url = ApiConfig.absoluteFileUrl(widget.relativeUrl);
     if (url == null) return;
+    File? downloadedFile;
 
     setState(() {
       _downloading = true;
@@ -1356,12 +1357,23 @@ class _VideoResultState extends State<_VideoResult> {
       final localPath = '${videoDir.path}/${_filename(url)}';
 
       if (!mounted) return;
-      setState(() => _downloadProgress = 0.3);
-      final savedPath = await _api.downloadFile(url, localPath);
+      setState(() => _downloadProgress = 0.05);
+      final savedPath = await _api.downloadFile(
+        url,
+        localPath,
+        onProgress: (progress) {
+          if (!mounted) return;
+          final normalized = progress.clamp(0.0, 1.0).toDouble();
+          setState(
+            () => _downloadProgress = 0.05 + normalized * 0.85,
+          );
+        },
+      );
       if (!mounted) return;
-      setState(() => _downloadProgress = 1.0);
+      setState(() => _downloadProgress = 0.95);
 
       final file = File(savedPath);
+      downloadedFile = file;
       final fileSize = await file.length();
       final hasAccess = await Gal.hasAccess(toAlbum: true);
       final granted = hasAccess || await Gal.requestAccess(toAlbum: true);
@@ -1370,6 +1382,7 @@ class _VideoResultState extends State<_VideoResult> {
       }
       await Gal.putVideo(savedPath, album: 'Good-Badminton');
       if (!mounted) return;
+      setState(() => _downloadProgress = 1);
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1388,6 +1401,11 @@ class _VideoResultState extends State<_VideoResult> {
         ),
       );
     } finally {
+      try {
+        await downloadedFile?.delete();
+      } on FileSystemException {
+        // 已导入相册，临时文件清理失败不影响用户保存结果。
+      }
       if (mounted) {
         setState(() {
           _downloading = false;
