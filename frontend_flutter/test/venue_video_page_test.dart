@@ -18,7 +18,7 @@ void main() {
         home: VenueVideoPage(
           venue: VenueInfo(
             id: 'SZ_BADMINTON_001',
-            name: '智慧羽毛球馆',
+            name: '合作球馆',
             serverUrl: 'https://venue.example.com',
           ),
           service: _FakeVenueService(),
@@ -39,14 +39,14 @@ void main() {
     expect(find.text('选择'), findsOneWidget);
   });
 
-  testWidgets('demo venue shows venue 24 and prepared clip notice',
+  testWidgets('example venue hides its internal id and shows clip notice',
       (tester) async {
     await tester.pumpWidget(
       const MaterialApp(
         home: VenueVideoPage(
           venue: VenueInfo(
-            id: '24',
-            name: '演示球馆',
+            id: 'example',
+            name: '示例球场',
             serverUrl: 'https://venue.example.com',
           ),
           showDemoOnOpen: true,
@@ -55,7 +55,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('球馆编号：24'), findsOneWidget);
+    expect(find.textContaining('球馆编号'), findsNothing);
     expect(
       find.text('已从球馆存储的完整视频中截取出准备分析的视频片段'),
       findsOneWidget,

@@ -210,8 +210,10 @@ class _VenueVideoPageState extends State<VenueVideoPage> {
             children: [
               Text(widget.venue.name,
                   style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: 6),
-              Text('球馆编号：${widget.venue.id}'),
+              if (widget.venue.id != 'example') ...[
+                const SizedBox(height: 6),
+                Text('球馆编号：${widget.venue.id}'),
+              ],
               if (videos != null && videos.isNotEmpty) ...[
                 const SizedBox(height: 14),
                 const Divider(),

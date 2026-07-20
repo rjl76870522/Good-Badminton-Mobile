@@ -224,7 +224,7 @@ class VenueService {
   List<VenueVideo> getMockVideos() {
     return const [
       VenueVideo(
-        id: 'venue24-court1-demo01',
+        id: 'example-court1-demo01',
         court: '1号场',
         time: '球馆录像片段 01',
         duration: '8秒',
@@ -232,7 +232,7 @@ class VenueService {
         isPreparedClip: true,
       ),
       VenueVideo(
-        id: 'venue24-court2-demo02',
+        id: 'example-court2-demo02',
         court: '2号场',
         time: '球馆录像片段 02',
         duration: '11秒',

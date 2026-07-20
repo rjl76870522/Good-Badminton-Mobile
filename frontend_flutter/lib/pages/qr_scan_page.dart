@@ -34,7 +34,6 @@ class _QrScanPageState extends State<QrScanPage> {
       MaterialPageRoute(
         builder: (_) => VenueVideoPage(
           venue: venue,
-          showDemoOnOpen: venue.id == '24',
         ),
       ),
     );
@@ -113,53 +112,14 @@ class _QrScanPageState extends State<QrScanPage> {
     await openAppSettings();
   }
 
-  Future<void> _showManualInput() async {
-    final textController = TextEditingController();
-    final rawValue = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('手动输入二维码内容'),
-        content: TextField(
-          controller: textController,
-          minLines: 3,
-          maxLines: 6,
-          decoration: const InputDecoration(
-            hintText: '粘贴球馆二维码里的 JSON 或链接',
-            border: OutlineInputBorder(),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () =>
-                Navigator.of(context).pop(textController.text.trim()),
-            child: const Text('进入球馆'),
-          ),
-        ],
-      ),
-    );
-    textController.dispose();
-    if (rawValue == null || rawValue.isEmpty) return;
-    try {
-      final venue = widget.service.parseVenueQr(rawValue);
-      await _openVenue(venue);
-    } on VenueQrException catch (error) {
-      if (!mounted) return;
-      setState(() => _error = error.message);
-    }
-  }
-
   Future<void> _openDemoVenue() async {
     if (!mounted) return;
     await Navigator.of(context).pushReplacement(
       MaterialPageRoute(
         builder: (_) => const VenueVideoPage(
           venue: VenueInfo(
-            id: '24',
-            name: '虚拟球馆',
+            id: 'example',
+            name: '示例球场',
             serverUrl: 'https://api.audacity6441.kdns.fr/venue-demo',
           ),
         ),
@@ -253,30 +213,14 @@ class _QrScanPageState extends State<QrScanPage> {
                       style: TextStyle(color: Colors.white, fontSize: 16),
                     ),
                     const SizedBox(height: 12),
-                    Wrap(
-                      alignment: WrapAlignment.center,
-                      spacing: 10,
-                      runSpacing: 10,
-                      children: [
-                        OutlinedButton.icon(
-                          onPressed: _showManualInput,
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: Colors.white,
-                            side: const BorderSide(color: Colors.white70),
-                          ),
-                          icon: const Icon(Icons.keyboard_alt_outlined),
-                          label: const Text('手动输入'),
-                        ),
-                        OutlinedButton.icon(
-                          onPressed: _openDemoVenue,
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: Colors.white,
-                            side: const BorderSide(color: Colors.white70),
-                          ),
-                          icon: const Icon(Icons.sports_tennis_outlined),
-                          label: const Text('演示球馆'),
-                        ),
-                      ],
+                    OutlinedButton.icon(
+                      onPressed: _openDemoVenue,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white,
+                        side: const BorderSide(color: Colors.white70),
+                      ),
+                      icon: const Icon(Icons.sports_tennis_outlined),
+                      label: const Text('查看示例球场'),
                     ),
                   ],
                 ),
@@ -292,7 +236,6 @@ class _QrScanPageState extends State<QrScanPage> {
                 message: _error ?? '需要相机权限才能扫描球馆二维码',
                 onRetry: _retryScanner,
                 onOpenSettings: _openCameraSettings,
-                onManualInput: _showManualInput,
                 onDemo: _openDemoVenue,
               ),
           ],
@@ -309,7 +252,6 @@ class _CameraPermissionPanel extends StatelessWidget {
     required this.message,
     required this.onRetry,
     required this.onOpenSettings,
-    required this.onManualInput,
     required this.onDemo,
   });
 
@@ -318,7 +260,6 @@ class _CameraPermissionPanel extends StatelessWidget {
   final String message;
   final VoidCallback onRetry;
   final VoidCallback onOpenSettings;
-  final VoidCallback onManualInput;
   final VoidCallback onDemo;
 
   @override
@@ -375,14 +316,9 @@ class _CameraPermissionPanel extends StatelessWidget {
                         icon: const Icon(Icons.settings_outlined),
                         label: const Text('打开系统设置'),
                       ),
-                      OutlinedButton.icon(
-                        onPressed: onManualInput,
-                        icon: const Icon(Icons.keyboard_alt_outlined),
-                        label: const Text('手动输入'),
-                      ),
                       TextButton(
                         onPressed: onDemo,
-                        child: const Text('查看演示球馆'),
+                        child: const Text('查看示例球场'),
                       ),
                     ],
                   ),

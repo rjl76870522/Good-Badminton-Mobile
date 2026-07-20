@@ -12,7 +12,8 @@ void main() {
     expect(find.text('Good-Badminton'), findsOneWidget);
     expect(find.text('羽毛球 AI 视觉分析'), findsOneWidget);
     expect(find.text('开始上传视频'), findsOneWidget);
-    expect(find.text('进入虚拟球馆'), findsOneWidget);
+    expect(find.text('进入示例球场'), findsOneWidget);
+    expect(find.text('扫描合作球馆'), findsOneWidget);
     await tester.scrollUntilVisible(find.text('官网'), 160);
     expect(find.text('官网'), findsOneWidget);
     expect(find.text('Demo'), findsNothing);

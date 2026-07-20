@@ -3,7 +3,7 @@ from fastapi.testclient import TestClient
 from mock_venue_server.main import app
 
 
-def test_virtual_venue_exposes_ten_courts_and_twenty_recordings():
+def test_example_venue_exposes_ten_courts_and_one_recording_each():
     with TestClient(app) as client:
         courts = client.get("/courts")
         videos = client.get("/videos")
@@ -13,8 +13,8 @@ def test_virtual_venue_exposes_ten_courts_and_twenty_recordings():
     assert videos.status_code == 200
     assert operator.status_code == 200
     assert len(courts.json()["items"]) == 10
-    assert all(item["video_count"] == 2 for item in courts.json()["items"])
-    assert len(videos.json()["items"]) == 20
+    assert all(item["video_count"] == 1 for item in courts.json()["items"])
+    assert len(videos.json()["items"]) == 10
     assert "视频运营台" in operator.text
 
 
@@ -24,5 +24,5 @@ def test_virtual_venue_can_filter_recordings_by_court():
 
     assert response.status_code == 200
     items = response.json()["items"]
-    assert len(items) == 2
+    assert len(items) == 1
     assert {item["court"] for item in items} == {"3号场"}
