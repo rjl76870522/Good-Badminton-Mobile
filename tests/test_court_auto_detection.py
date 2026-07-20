@@ -3,6 +3,7 @@ import numpy as np
 
 from badminton_analysis.court.detector import (
     _build_green_court_mask,
+    _detect_surface_court_corners,
     auto_detect_court_corners,
 )
 from badminton_analysis.court.reference import BadmintonCourtReference
@@ -52,3 +53,21 @@ def test_surface_fallback_does_not_use_generic_color_range():
 
     assert cv2.countNonZero(roi_mask) > image.size // 20
     assert cv2.countNonZero(surface_mask) == 0
+
+
+def test_surface_fallback_uses_the_prepared_support_mask():
+    image = np.zeros((360, 640, 3), dtype=np.uint8)
+    image[:] = (35, 35, 35)
+    quad = np.array(
+        [[150, 150], [490, 150], [570, 340], [70, 340]],
+        dtype=np.int32,
+    )
+    cv2.fillConvexPoly(image, quad, (82, 170, 112))
+
+    line_mask = np.zeros(image.shape[:2], dtype=np.uint8)
+    cv2.polylines(line_mask, [quad], True, 255, 5, cv2.LINE_AA)
+    reference = BadmintonCourtReference()
+    line_support = reference.prepare_line_support(line_mask, image.shape)
+
+    assert isinstance(line_support["support_mask"], np.ndarray)
+    _detect_surface_court_corners(image, reference, line_support)

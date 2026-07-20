@@ -413,8 +413,8 @@ class _UploadPageState extends State<UploadPage> {
                         dimension: 18,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Icon(Icons.cloud_upload_outlined),
-                label: Text(_uploading ? '正在上传' : '上传视频'),
+                    : const Icon(Icons.analytics_outlined),
+                label: Text(_uploading ? '正在开始分析' : '开始分析'),
               ),
               if (_uploading) ...[
                 const SizedBox(height: 12),

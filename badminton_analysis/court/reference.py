@@ -54,6 +54,7 @@ class BadmintonCourtReference:
 
         distance_map = cv2.distanceTransform(255 - support_mask, cv2.DIST_L2, 3)
         return {
+            "support_mask": support_mask,
             "distance_map": distance_map,
             "tolerance": max(5.0, min(width, height) * 0.013),
         }
