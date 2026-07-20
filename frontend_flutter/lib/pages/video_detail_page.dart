@@ -28,6 +28,7 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
   VideoPlayerController? _controller;
   String? _previewError;
   bool _downloading = false;
+  bool _resettingAtClipEnd = false;
   double _downloadProgress = 0;
   RangeValues _clipRange = const RangeValues(0, 0);
 
@@ -95,6 +96,18 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
   }
 
   void _onVideoChanged() {
+    final controller = _controller;
+    if (controller != null &&
+        controller.value.isPlaying &&
+        !_resettingAtClipEnd &&
+        controller.value.position.inMilliseconds >= _endMs) {
+      _resettingAtClipEnd = true;
+      controller.pause().then(
+            (_) => controller
+                .seekTo(Duration(milliseconds: _startMs))
+                .whenComplete(() => _resettingAtClipEnd = false),
+          );
+    }
     if (mounted) setState(() {});
   }
 
@@ -129,8 +142,58 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
         '${seconds.toString().padLeft(2, '0')}';
   }
 
-  void _resetClip() {
+  Future<void> _resetClip() async {
     setState(() => _clipRange = RangeValues(0, _maximumSeconds));
+    await _controller?.seekTo(Duration.zero);
+  }
+
+  Future<void> _updateClipRange(RangeValues values) async {
+    const minimumSpan = 1.0;
+    var start = values.start;
+    var end = values.end;
+    if (end - start < minimumSpan) {
+      if (start + minimumSpan <= _maximumSeconds) {
+        end = start + minimumSpan;
+      } else {
+        start = end - minimumSpan;
+      }
+    }
+    final previous = _clipRange;
+    final startMoved = (start - previous.start).abs();
+    final endMoved = (end - previous.end).abs();
+    final seekSeconds = startMoved >= endMoved ? start : end;
+    setState(() => _clipRange = RangeValues(start, end));
+    final controller = _controller;
+    if (controller != null) {
+      await controller.pause();
+      await controller.seekTo(
+        Duration(
+          milliseconds: (seekSeconds * Duration.millisecondsPerSecond).round(),
+        ),
+      );
+    }
+  }
+
+  Future<void> _previewSelectedClip() async {
+    final controller = _controller;
+    if (controller == null) return;
+    await controller.pause();
+    await controller.seekTo(Duration(milliseconds: _startMs));
+    await controller.play();
+  }
+
+  Future<void> _togglePlayback() async {
+    final controller = _controller;
+    if (controller == null) return;
+    if (controller.value.isPlaying) {
+      await controller.pause();
+      return;
+    }
+    final position = controller.value.position.inMilliseconds;
+    if (position < _startMs || position >= _endMs) {
+      await controller.seekTo(Duration(milliseconds: _startMs));
+    }
+    await controller.play();
   }
 
   Future<void> _selectDownloadAction() async {
@@ -203,7 +266,10 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
       }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('已保存到系统相册：Good-Badminton')),
+          const SnackBar(
+            content: Text('已保存到系统相册：Good-Badminton'),
+            duration: Duration(seconds: 2),
+          ),
         );
       }
     } catch (error) {
@@ -369,26 +435,19 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
                   _formatTime(_startMs),
                   _formatTime(_endMs),
                 ),
-                onChanged: _downloading
-                    ? null
-                    : (values) {
-                        const minimumSpan = 1.0;
-                        var start = values.start;
-                        var end = values.end;
-                        if (end - start < minimumSpan) {
-                          if (start + minimumSpan <= _maximumSeconds) {
-                            end = start + minimumSpan;
-                          } else {
-                            start = end - minimumSpan;
-                          }
-                        }
-                        setState(() => _clipRange = RangeValues(start, end));
-                      },
+                onChangeStart:
+                    _downloading ? null : (_) => _controller?.pause(),
+                onChanged: _downloading ? null : _updateClipRange,
               ),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(_formatTime(_startMs)),
+                  OutlinedButton.icon(
+                    onPressed: _downloading ? null : _previewSelectedClip,
+                    icon: const Icon(Icons.play_arrow_rounded),
+                    label: const Text('预览所选片段'),
+                  ),
                   Text(_formatTime(_endMs)),
                 ],
               ),
@@ -409,9 +468,7 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
       child: Column(
         children: [
           GestureDetector(
-            onTap: () => controller.value.isPlaying
-                ? controller.pause()
-                : controller.play(),
+            onTap: _togglePlayback,
             child: ColoredBox(
               color: Colors.black,
               child: AspectRatio(
@@ -427,9 +484,7 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
                 IconButton(
                   tooltip: controller.value.isPlaying ? '暂停' : '播放',
                   color: Colors.white,
-                  onPressed: () => controller.value.isPlaying
-                      ? controller.pause()
-                      : controller.play(),
+                  onPressed: _togglePlayback,
                   icon: Icon(
                     controller.value.isPlaying
                         ? Icons.pause_rounded
@@ -446,6 +501,13 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
                       bufferedColor: Color(0xFF53645A),
                       backgroundColor: Color(0xFF303A34),
                     ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(left: 8),
+                  child: Text(
+                    _formatTime(controller.value.position.inMilliseconds),
+                    style: const TextStyle(color: Colors.white70),
                   ),
                 ),
                 const SizedBox(width: 14),

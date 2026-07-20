@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:gal/gal.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
 
 import '../config/api_config.dart';
 import '../models/report.dart';
@@ -1377,15 +1376,7 @@ class _VideoResultState extends State<_VideoResult> {
           content: Text(
               '✅ 已保存到系统相册：${fileSize > 1024 * 1024 ? '${(fileSize / 1024 / 1024).toStringAsFixed(1)} MB' : '${(fileSize / 1024).toStringAsFixed(0)} KB'}'),
           backgroundColor: const Color(0xFF1B5E20),
-          duration: const Duration(seconds: 3),
-          action: SnackBarAction(
-            label: '分享',
-            textColor: Colors.white,
-            onPressed: () async {
-              final xFile = XFile(savedPath);
-              await Share.shareXFiles([xFile]);
-            },
-          ),
+          duration: const Duration(seconds: 2),
         ),
       );
     } catch (e) {

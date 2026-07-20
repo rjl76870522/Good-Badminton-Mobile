@@ -4,6 +4,7 @@ import '../config/api_config.dart';
 import '../models/history_item.dart';
 import '../services/api_service.dart';
 import '../services/offline_report_storage.dart';
+import '../services/offline_save_coordinator.dart';
 import '../services/user_storage.dart';
 import '../utils/user_facing_error.dart';
 import 'report_page.dart';
@@ -21,18 +22,19 @@ class _HistoryPageState extends State<HistoryPage> {
   final ApiService _api = ApiService();
   final UserStorage _userStorage = UserStorage();
   final OfflineReportStorage _offlineStorage = OfflineReportStorage();
+  final OfflineSaveCoordinator _offlineSave = OfflineSaveCoordinator.instance;
   List<HistoryItem> _tasks = const [];
   List<OfflineReportRecord> _offlineRecords = const [];
   String? _error;
   String _statusFilter = 'all';
   bool _loading = true;
-  String? _offlineSavingTaskId;
-  double _offlineSaveProgress = 0;
-  String _offlineSaveStage = '';
+  int _handledOfflineSaveRevision = 0;
 
   @override
   void initState() {
     super.initState();
+    _offlineSave.addListener(_onOfflineSaveChanged);
+    _handledOfflineSaveRevision = _offlineSave.state.revision;
     _load();
   }
 
@@ -66,8 +68,25 @@ class _HistoryPageState extends State<HistoryPage> {
 
   @override
   void dispose() {
+    _offlineSave.removeListener(_onOfflineSaveChanged);
     _api.close();
     super.dispose();
+  }
+
+  void _onOfflineSaveChanged() {
+    if (!mounted) return;
+    final state = _offlineSave.state;
+    setState(() {});
+    if (state.completedRecord != null &&
+        state.revision != _handledOfflineSaveRevision) {
+      _handledOfflineSaveRevision = state.revision;
+      _refreshOfflineRecords();
+    }
+  }
+
+  Future<void> _refreshOfflineRecords() async {
+    final records = await _offlineStorage.list();
+    if (mounted) setState(() => _offlineRecords = records);
   }
 
   void _openTask(HistoryItem task) {
@@ -111,23 +130,10 @@ class _HistoryPageState extends State<HistoryPage> {
       ),
     );
     if (confirmed != true) return;
-    setState(() {
-      _offlineSavingTaskId = task.taskId;
-      _offlineSaveProgress = 0;
-      _offlineSaveStage = '准备保存';
-    });
     try {
-      final record = await _offlineStorage.save(
-        api: _api,
+      final record = await _offlineSave.save(
         taskId: task.taskId,
         videoName: task.videoName,
-        onProgress: (progress, stage) {
-          if (!mounted) return;
-          setState(() {
-            _offlineSaveProgress = progress;
-            _offlineSaveStage = stage;
-          });
-        },
       );
       if (!mounted) return;
       setState(() {
@@ -146,14 +152,6 @@ class _HistoryPageState extends State<HistoryPage> {
           content: Text(userFacingError(error, fallback: '保存离线报告失败，请稍后重试。')),
         ),
       );
-    } finally {
-      if (mounted) {
-        setState(() {
-          _offlineSavingTaskId = null;
-          _offlineSaveProgress = 0;
-          _offlineSaveStage = '';
-        });
-      }
     }
   }
 
@@ -224,6 +222,7 @@ class _HistoryPageState extends State<HistoryPage> {
 
   @override
   Widget build(BuildContext context) {
+    final offlineSaveState = _offlineSave.state;
     return Scaffold(
       backgroundColor: const Color(0xFF05080B),
       appBar: AppBar(
@@ -311,7 +310,7 @@ class _HistoryPageState extends State<HistoryPage> {
                     ),
                   if (_error != null)
                     _HistoryErrorCard(message: _error!, onRetry: _load),
-                  if (_offlineSavingTaskId != null) ...[
+                  if (offlineSaveState.running) ...[
                     Container(
                       margin: const EdgeInsets.only(bottom: 12),
                       padding: const EdgeInsets.all(14),
@@ -326,17 +325,18 @@ class _HistoryPageState extends State<HistoryPage> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            _offlineSaveStage,
+                            '${offlineSaveState.videoName} · '
+                            '${offlineSaveState.stage}',
                             style: const TextStyle(color: Colors.white),
                           ),
                           const SizedBox(height: 9),
                           LinearProgressIndicator(
-                            value: _offlineSaveProgress,
+                            value: offlineSaveState.progress,
                             color: const Color(0xFFFFC44D),
                           ),
                           const SizedBox(height: 5),
                           Text(
-                            '${(_offlineSaveProgress * 100).round()}%',
+                            '${(offlineSaveState.progress * 100).round()}%',
                             style: const TextStyle(color: Colors.white70),
                           ),
                         ],
@@ -382,7 +382,7 @@ class _HistoryPageState extends State<HistoryPage> {
                         onDelete: () => _deleteTask(task),
                         offlineSaved: _offlineRecordFor(task.taskId) != null,
                         onSaveOffline:
-                            task.isCompleted && _offlineSavingTaskId == null
+                            task.isCompleted && !offlineSaveState.running
                                 ? () => _saveOffline(task)
                                 : null,
                       ),
