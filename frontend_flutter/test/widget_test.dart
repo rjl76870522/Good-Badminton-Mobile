@@ -14,8 +14,8 @@ void main() {
     expect(find.text('开始上传视频'), findsOneWidget);
     expect(find.text('进入示例球场'), findsOneWidget);
     expect(find.text('扫描合作球馆'), findsOneWidget);
-    await tester.scrollUntilVisible(find.text('官网'), 160);
-    expect(find.text('官网'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('宣传页面'), 160);
+    expect(find.text('宣传页面'), findsOneWidget);
     expect(find.text('Demo'), findsNothing);
     expect(find.text('附近羽毛球馆'), findsNothing);
     expect(find.text('首页'), findsOneWidget);

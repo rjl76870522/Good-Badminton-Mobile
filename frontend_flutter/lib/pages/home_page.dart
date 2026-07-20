@@ -247,7 +247,7 @@ class _HomePageState extends State<HomePage> {
                     Expanded(
                       child: _QuickAccessCard(
                         icon: Icons.language_outlined,
-                        label: '官网',
+                        label: '宣传页面',
                         color: const Color(0xFFFFF4D9),
                         onTap: _openWebsite,
                       ),

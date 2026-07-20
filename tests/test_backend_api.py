@@ -21,6 +21,7 @@ def _configure_data_dirs(monkeypatch, tmp_path: Path) -> None:
         directory.mkdir()
         monkeypatch.setattr(backend_api, name, directory)
     backend_api.init_db(tmp_path / "badminton.db")
+    backend_api.VIDEO_DAILY_SEQUENCE.clear()
 
 
 def _fake_preview(video_path: Path, source_upload_id: str) -> dict:
@@ -106,9 +107,10 @@ def test_preview_then_source_upload_matches_flutter_contract(monkeypatch, tmp_pa
 
         status = client.get(upload["status_url"]).json()
         assert status["user_id"] == "phone-user"
-        assert status["video_name"] == "training.mp4"
+        assert status["video_name"].endswith("_01.mp4")
         task = backend_api._get_task_or_404(upload["task_id"])
         assert Path(task["upload_path"]).read_bytes() == b"video-bytes"
+        assert Path(task["upload_path"]).parent.name == "phone-user"
         assert not list(
             backend_api.PREVIEW_UPLOAD_DIR.glob(
                 f"{preview['source_upload_id']}_*",
@@ -147,11 +149,20 @@ def test_legacy_direct_file_upload_still_works(monkeypatch, tmp_path):
             data={"user_id": "legacy-user"},
             files={"file": ("match.MP4", b"video-bytes", "video/mp4")},
         )
+        second_response = client.post(
+            "/api/videos/upload",
+            data={"user_id": "legacy-user"},
+            files={"file": ("another.mov", b"more-video-bytes", "video/quicktime")},
+        )
 
     assert response.status_code == 200
+    assert second_response.status_code == 200
     task = backend_api._get_task_or_404(response.json()["task_id"])
-    assert task["video_name"] == "match.MP4"
+    second_task = backend_api._get_task_or_404(second_response.json()["task_id"])
+    assert task["video_name"].endswith("_01.mp4")
+    assert second_task["video_name"].endswith("_02.mov")
     assert Path(task["upload_path"]).read_bytes() == b"video-bytes"
+    assert Path(task["upload_path"]).parent.name == "legacy-user"
 
 
 def test_output_path_converts_to_public_url(monkeypatch, tmp_path):

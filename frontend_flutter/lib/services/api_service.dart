@@ -272,14 +272,34 @@ class ApiService {
     _decodeMap(response);
   }
 
-  Future<String> downloadFile(String url, String localPath) async {
+  Future<String> downloadFile(
+    String url,
+    String localPath, {
+    void Function(double progress)? onProgress,
+  }) async {
+    final request = http.Request('GET', Uri.parse(url));
     final response =
-        await _client.get(Uri.parse(url)).timeout(const Duration(minutes: 10));
+        await _client.send(request).timeout(const Duration(minutes: 10));
     if (response.statusCode != 200) {
       throw ApiException('下载失败：HTTP ${response.statusCode}');
     }
     final file = File(localPath);
-    await file.writeAsBytes(response.bodyBytes);
+    final sink = file.openWrite();
+    final totalBytes = response.contentLength ?? 0;
+    var receivedBytes = 0;
+    try {
+      await for (final chunk
+          in response.stream.timeout(const Duration(minutes: 10))) {
+        sink.add(chunk);
+        receivedBytes += chunk.length;
+        if (totalBytes > 0) {
+          onProgress?.call((receivedBytes / totalBytes).clamp(0, 1));
+        }
+      }
+    } finally {
+      await sink.close();
+    }
+    onProgress?.call(1);
     return file.path;
   }
 

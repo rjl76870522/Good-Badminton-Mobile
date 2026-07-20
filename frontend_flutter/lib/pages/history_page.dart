@@ -26,6 +26,9 @@ class _HistoryPageState extends State<HistoryPage> {
   String? _error;
   String _statusFilter = 'all';
   bool _loading = true;
+  String? _offlineSavingTaskId;
+  double _offlineSaveProgress = 0;
+  String _offlineSaveStage = '';
 
   @override
   void initState() {
@@ -108,11 +111,23 @@ class _HistoryPageState extends State<HistoryPage> {
       ),
     );
     if (confirmed != true) return;
+    setState(() {
+      _offlineSavingTaskId = task.taskId;
+      _offlineSaveProgress = 0;
+      _offlineSaveStage = '准备保存';
+    });
     try {
       final record = await _offlineStorage.save(
         api: _api,
         taskId: task.taskId,
         videoName: task.videoName,
+        onProgress: (progress, stage) {
+          if (!mounted) return;
+          setState(() {
+            _offlineSaveProgress = progress;
+            _offlineSaveStage = stage;
+          });
+        },
       );
       if (!mounted) return;
       setState(() {
@@ -131,6 +146,14 @@ class _HistoryPageState extends State<HistoryPage> {
           content: Text(userFacingError(error, fallback: '保存离线报告失败，请稍后重试。')),
         ),
       );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _offlineSavingTaskId = null;
+          _offlineSaveProgress = 0;
+          _offlineSaveStage = '';
+        });
+      }
     }
   }
 
@@ -160,7 +183,7 @@ class _HistoryPageState extends State<HistoryPage> {
         title: const Text('删除训练记录？'),
         content: Text(
           '将删除“${task.videoName.isEmpty ? '未命名训练' : task.videoName}”'
-          '及后端生成的相关文件，此操作无法撤销。',
+          '及中心服务器生成的相关文件，此操作无法撤销。',
         ),
         actions: [
           TextButton(
@@ -288,6 +311,38 @@ class _HistoryPageState extends State<HistoryPage> {
                     ),
                   if (_error != null)
                     _HistoryErrorCard(message: _error!, onRetry: _load),
+                  if (_offlineSavingTaskId != null) ...[
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.62),
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.2),
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _offlineSaveStage,
+                            style: const TextStyle(color: Colors.white),
+                          ),
+                          const SizedBox(height: 9),
+                          LinearProgressIndicator(
+                            value: _offlineSaveProgress,
+                            color: const Color(0xFFFFC44D),
+                          ),
+                          const SizedBox(height: 5),
+                          Text(
+                            '${(_offlineSaveProgress * 100).round()}%',
+                            style: const TextStyle(color: Colors.white70),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                   if (_offlineRecords.isNotEmpty) ...[
                     _OfflineSection(
                       records: _offlineRecords,
@@ -327,7 +382,9 @@ class _HistoryPageState extends State<HistoryPage> {
                         onDelete: () => _deleteTask(task),
                         offlineSaved: _offlineRecordFor(task.taskId) != null,
                         onSaveOffline:
-                            task.isCompleted ? () => _saveOffline(task) : null,
+                            task.isCompleted && _offlineSavingTaskId == null
+                                ? () => _saveOffline(task)
+                                : null,
                       ),
                     ),
                   ),

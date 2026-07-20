@@ -232,19 +232,42 @@ class _UploadPageState extends State<UploadPage> {
     });
     try {
       final userId = await _userStorage.getOrCreateUserId();
-      final result = await _api.uploadVideo(
-        _preview == null ? file : null,
-        userId: userId,
-        sourceUploadId: _preview?.sourceUploadId,
-        corners: _corners?.length == 4 ? _corners : null,
-        language: 'zh',
-        poseMode: 'balanced',
-        keepAudio: true,
-        onProgress: (progress) {
-          if (!mounted) return;
-          setState(() => _uploadProgress = progress);
-        },
-      );
+      UploadResult result;
+      try {
+        result = await _api.uploadVideo(
+          _preview == null ? file : null,
+          userId: userId,
+          sourceUploadId: _preview?.sourceUploadId,
+          corners: _corners?.length == 4 ? _corners : null,
+          language: 'zh',
+          poseMode: 'balanced',
+          keepAudio: true,
+          onProgress: _setUploadProgress,
+        );
+      } on ApiException catch (error) {
+        if (_preview == null ||
+            !const {
+              'SOURCE_UPLOAD_NOT_FOUND',
+              'INVALID_SOURCE_UPLOAD',
+            }.contains(error.code)) {
+          rethrow;
+        }
+        if (mounted) {
+          setState(() {
+            _preview = null;
+            _uploadProgress = 0;
+          });
+        }
+        result = await _api.uploadVideo(
+          file,
+          userId: userId,
+          corners: _corners?.length == 4 ? _corners : null,
+          language: 'zh',
+          poseMode: 'balanced',
+          keepAudio: true,
+          onProgress: _setUploadProgress,
+        );
+      }
       if (!mounted) return;
       await _storage.saveActiveTask(
         taskId: result.taskId,
@@ -268,6 +291,11 @@ class _UploadPageState extends State<UploadPage> {
         setState(() => _uploading = false);
       }
     }
+  }
+
+  void _setUploadProgress(double progress) {
+    if (!mounted) return;
+    setState(() => _uploadProgress = progress);
   }
 
   @override
@@ -301,8 +329,6 @@ class _UploadPageState extends State<UploadPage> {
                             fontWeight: FontWeight.bold, fontSize: 18),
                       ),
                       SizedBox(height: 8),
-                      Text('格式：MP4 / MOV / M4V'),
-                      Text('大小：不超过 200 MB'),
                       Text('时长：5 秒～3 分钟（推荐单个完整回合，约 8～20 秒）'),
                       SizedBox(height: 6),
                       Text('建议横屏固定机位拍摄，画面尽量覆盖完整球场。'),
@@ -442,17 +468,6 @@ class _SelectedVideoCard extends StatelessWidget {
           children: [
             Text(fileName, style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 10),
-            _InfoRow(
-              icon: Icons.movie_outlined,
-              label:
-                  '格式：${UploadConstraints.extensionOf(fileName).toUpperCase()}',
-            ),
-            _InfoRow(
-              icon: Icons.storage_outlined,
-              label: fileSize == null
-                  ? '大小：读取中'
-                  : '大小：${UploadConstraints.formatBytes(fileSize!)}',
-            ),
             _InfoRow(
               icon: Icons.timer_outlined,
               label: duration == null

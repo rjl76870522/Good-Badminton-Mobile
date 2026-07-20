@@ -20,6 +20,7 @@ import math
 import statistics
 from collections import Counter, defaultdict, deque
 from contextlib import asynccontextmanager, contextmanager
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -186,6 +187,8 @@ if FRONTEND_DIR.is_dir():
 USER_REGISTRY_LOCK = threading.Lock()
 STARTUP_RECOVERY_LOCK = threading.Lock()
 TASK_CREATION_LOCK = threading.Lock()
+VIDEO_NAMING_LOCK = threading.Lock()
+VIDEO_DAILY_SEQUENCE: dict[tuple[str, str], int] = {}
 TASK_CREATION_TIMES: dict[str, deque[float]] = defaultdict(deque)
 TASK_CREATION_RESERVATIONS: Counter[str] = Counter()
 
@@ -419,7 +422,7 @@ def _create_analysis_task(
     task_id = uuid.uuid4().hex
     if source_upload_id:
         source_path, source_name = _resolve_preview_upload(source_upload_id)
-        safe_name = source_name
+        original_name = source_name
     else:
         if file is None or not file.filename:
             raise_api_error(
@@ -428,8 +431,12 @@ def _create_analysis_task(
                 message="请选择要上传的视频文件。",
             )
         source_path = None
-        safe_name = _safe_filename(file.filename)
-    upload_path = UPLOAD_DIR / f"{task_id}_{safe_name}"
+        original_name = _safe_filename(file.filename)
+
+    video_name = _next_daily_video_name(user_id, original_name)
+    user_upload_dir = UPLOAD_DIR / user_id
+    user_upload_dir.mkdir(parents=True, exist_ok=True)
+    upload_path = user_upload_dir / f"{task_id}_{video_name}"
 
     if source_upload_id:
         shutil.copyfile(source_path, upload_path)
@@ -448,7 +455,7 @@ def _create_analysis_task(
         "progress": 0.0,
         "stage": "queued",
         "error": None,
-        "video_name": safe_name,
+        "video_name": video_name,
         "user_id": user_id,
         "upload_path": str(upload_path),
         "template_path": str(template),
@@ -1920,6 +1927,36 @@ def _parse_corners(corners_json: str | None) -> list[list[int]] | None:
 def _safe_filename(filename: str) -> str:
     name = Path(filename).name
     return "".join(ch if ch.isalnum() or ch in "._-" else "_" for ch in name)
+
+
+def _next_daily_video_name(user_id: str, original_name: str) -> str:
+    """Return a readable per-user daily sequence while physical paths use task IDs."""
+    now = datetime.now().astimezone()
+    day_start = now.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+    day_end = day_start + 24 * 60 * 60
+    key = (user_id, now.strftime("%Y-%m-%d"))
+    with VIDEO_NAMING_LOCK:
+        sequence = VIDEO_DAILY_SEQUENCE.get(key)
+        if sequence is None:
+            session = get_session()
+            try:
+                sequence = (
+                    session.query(Task)
+                    .filter(
+                        Task.user_id == user_id,
+                        Task.created_at >= day_start,
+                        Task.created_at < day_end,
+                    )
+                    .count()
+                )
+            finally:
+                session.close()
+        sequence += 1
+        VIDEO_DAILY_SEQUENCE[key] = sequence
+    extension = Path(original_name).suffix.lower()
+    if not extension or len(extension) > 10:
+        extension = ".mp4"
+    return f"{now:%Y-%m-%d}_{sequence:02d}{extension}"
 
 
 def _storage_status() -> dict[str, Any]:

@@ -91,18 +91,7 @@ def _save_uploaded_library(items: list[dict]) -> None:
 
 
 def _all_videos() -> list[dict]:
-    uploaded = []
-    seen_courts: set[str] = set()
-    for item in _load_uploaded_library():
-        if item["court"] in seen_courts:
-            continue
-        seen_courts.add(item["court"])
-        uploaded.append(item)
-    uploaded_courts = {item["court"] for item in uploaded}
-    defaults = [
-        item for item in _default_library() if item["court"] not in uploaded_courts
-    ]
-    return defaults + uploaded
+    return _default_library() + _load_uploaded_library()
 
 
 def _find_video(video_id: str) -> dict:
@@ -220,11 +209,7 @@ async def upload_recording(court_id: int, file: UploadFile = File(...)) -> dict:
         "filename": stored_name,
         "source": "operator_upload",
     }
-    uploaded = [
-        existing
-        for existing in _load_uploaded_library()
-        if existing["court"] != court
-    ]
+    uploaded = _load_uploaded_library()
     uploaded.insert(0, item)
     _save_uploaded_library(uploaded)
     return {key: value for key, value in item.items() if key != "filename"}
