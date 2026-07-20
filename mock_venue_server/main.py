@@ -21,6 +21,18 @@ QR_IMAGE_PATH = BASE_DIR / "venue_qr.png"
 COURT_COUNT = 10
 ALLOWED_SUFFIXES = {".mp4", ".mov", ".m4v", ".avi"}
 ALLOW_OPERATOR_UPLOADS = os.getenv("VENUE_ALLOW_UPLOADS", "").lower() == "true"
+DEFAULT_COURT_RECORDINGS = {
+    1: "001.mp4",
+    2: "002.mp4",
+    3: "003.mp4",
+    4: "004.mp4",
+    5: "005.mp4",
+    6: "006.mp4",
+    7: "007.mp4",
+    8: "005.mp4",
+    9: "006.mp4",
+    10: "007.mp4",
+}
 
 VENUE = {
     "type": "venue",
@@ -59,15 +71,17 @@ def _default_library() -> list[dict]:
     """Provide one complete camera recording for each example court."""
     recordings: list[dict] = []
     base_time = datetime.now().strftime("%Y-%m-%d")
-    for court_id in range(1, COURT_COUNT + 1):
+    for court_id, filename in DEFAULT_COURT_RECORDINGS.items():
+        duration = _probe_duration_seconds(VIDEOS_DIR / filename)
+        source_number = Path(filename).stem
         recordings.append(
             {
                 "id": f"court{court_id}-full-recording",
                 "court": _court_name(court_id),
-                "time": f"{base_time} 完整录像",
-                "duration": "35 秒",
+                "time": f"{base_time} 录像 {source_number}",
+                "duration": f"{duration} 秒" if duration is not None else "时长未知",
                 "thumbnail": "",
-                "filename": "shiyuqi_10_45.mp4",
+                "filename": filename,
                 "source": "camera",
             }
         )
@@ -237,7 +251,9 @@ def download_clip(
         raise HTTPException(status_code=422, detail="选择的片段过短")
 
     CLIPS_DIR.mkdir(parents=True, exist_ok=True)
-    clip_path = CLIPS_DIR / f"{video_id}_{start_ms}_{end_ms}.mp4"
+    clip_path = (
+        CLIPS_DIR / f"{video_id}_{source.stem}_{start_ms}_{end_ms}.mp4"
+    )
     if not clip_path.is_file():
         temporary_path = clip_path.with_suffix(".tmp.mp4")
         command = [
