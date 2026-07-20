@@ -7,7 +7,7 @@ import math
 import os
 import shutil
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +17,8 @@ from .movement_metrics import load_stable_player_lookup
 
 MAX_PLAYER_SPEED_MPS = 12.0
 SHUTTLE_SCORE_REFERENCE_PX_PER_SEC = 3500.0
+MAX_HIGHLIGHT_SOURCE_RATIO = 0.70
+MIN_HIGHLIGHT_SEGMENT_SEC = 2.0
 
 
 @dataclass
@@ -154,15 +156,17 @@ def _select_segments(
     window_sec: float,
     overlap_sec: float,
 ) -> list[HighlightSegment]:
-    if duration_sec <= window_sec + 1.0:
-        segment = _score_window(frames, 0.0, duration_sec)
-        return [segment] if segment else []
-
-    step = max(window_sec - overlap_sec, 1.0)
+    effective_window = min(
+        window_sec,
+        max(MIN_HIGHLIGHT_SEGMENT_SEC, duration_sec * 0.60),
+    )
+    step = max(effective_window - overlap_sec, 1.0)
     candidates: list[HighlightSegment] = []
     start = 0.0
     while start < duration_sec:
-        end = min(start + window_sec, duration_sec)
+        end = min(start + effective_window, duration_sec)
+        if end - start < MIN_HIGHLIGHT_SEGMENT_SEC:
+            break
         segment = _score_window(frames, start, end)
         if segment:
             candidates.append(segment)
@@ -170,16 +174,11 @@ def _select_segments(
             break
         start += step
 
-    candidates.sort(key=lambda item: item.score, reverse=True)
-    selected: list[HighlightSegment] = []
-    for segment in candidates:
-        if all(_overlap_ratio(segment, existing) < 0.35 for existing in selected):
-            selected.append(segment)
-        if len(selected) >= max_segments:
-            break
-
-    selected.sort(key=lambda item: item.start_sec)
-    return selected
+    return _sanitize_segments(
+        candidates,
+        duration_sec=duration_sec,
+        max_segments=max_segments,
+    )
 
 
 def _score_window(
@@ -248,8 +247,8 @@ def _score_window(
         player_distance_score=player_distance_score,
     )
     return HighlightSegment(
-        start_sec=max(0.0, start_sec - 1.0),
-        end_sec=end_sec + 1.0,
+        start_sec=start_sec,
+        end_sec=end_sec,
         score=score,
         reason=reason,
         metrics={
@@ -304,6 +303,53 @@ def _overlap_ratio(a: HighlightSegment, b: HighlightSegment) -> float:
     return overlap / shorter
 
 
+def _sanitize_segments(
+    segments: list[HighlightSegment],
+    *,
+    duration_sec: float,
+    max_segments: int | None = None,
+) -> list[HighlightSegment]:
+    """Clamp, de-duplicate and budget highlight segments before rendering."""
+    if duration_sec <= 0:
+        return []
+
+    duration_budget = min(
+        duration_sec * MAX_HIGHLIGHT_SOURCE_RATIO,
+        max(duration_sec - 1.0, 0.0),
+    )
+    if duration_budget < MIN_HIGHLIGHT_SEGMENT_SEC:
+        return []
+
+    selected: list[HighlightSegment] = []
+    used_duration = 0.0
+    for segment in sorted(segments, key=lambda item: item.score, reverse=True):
+        start = max(0.0, min(float(segment.start_sec), duration_sec))
+        end = max(start, min(float(segment.end_sec), duration_sec))
+        if end - start < MIN_HIGHLIGHT_SEGMENT_SEC:
+            continue
+        if any(
+            min(end, existing.end_sec) - max(start, existing.start_sec) > 0.001
+            for existing in selected
+        ):
+            continue
+
+        remaining = duration_budget - used_duration
+        if remaining < MIN_HIGHLIGHT_SEGMENT_SEC:
+            break
+        if end - start > remaining:
+            end = start + remaining
+        if end - start < MIN_HIGHLIGHT_SEGMENT_SEC:
+            continue
+
+        selected.append(replace(segment, start_sec=start, end_sec=end))
+        used_duration += end - start
+        if max_segments is not None and len(selected) >= max_segments:
+            break
+
+    selected.sort(key=lambda item: item.start_sec)
+    return selected
+
+
 def _render_highlight(
     video_path: Path,
     highlight_path: Path,
@@ -318,6 +364,7 @@ def _render_highlight(
         shutil.rmtree(temp_dir)
     temp_dir.mkdir(parents=True, exist_ok=True)
 
+    segments = _sanitize_segments(segments, duration_sec=duration_sec)
     clip_paths: list[Path] = []
     try:
         for idx, segment in enumerate(segments, 1):
