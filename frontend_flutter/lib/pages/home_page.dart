@@ -2,14 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../config/api_config.dart';
+import '../models/venue.dart';
 import '../models/task_status.dart';
 import '../services/api_service.dart';
 import '../services/task_storage.dart';
 import '../utils/user_facing_error.dart';
 import 'history_page.dart';
-import 'qr_scan_page.dart';
 import 'task_status_page.dart';
 import 'upload_page.dart';
+import 'venue_video_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -182,7 +183,16 @@ class _HomePageState extends State<HomePage> {
                 const SizedBox(height: 14),
                 _VenueScanEntry(
                   onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const QrScanPage()),
+                    MaterialPageRoute(
+                      builder: (_) => const VenueVideoPage(
+                        venue: VenueInfo(
+                          id: '24',
+                          name: '虚拟球馆',
+                          serverUrl:
+                              'https://api.audacity6441.kdns.fr/venue-demo',
+                        ),
+                      ),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 14),
@@ -485,7 +495,7 @@ class _VenueScanEntry extends StatelessWidget {
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Icon(
-                  Icons.qr_code_scanner_rounded,
+                  Icons.stadium_outlined,
                   color: Theme.of(context).colorScheme.onPrimaryContainer,
                 ),
               ),
@@ -495,11 +505,11 @@ class _VenueScanEntry extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '扫描球馆二维码',
+                      '进入虚拟球馆',
                       style: TextStyle(fontWeight: FontWeight.w800),
                     ),
                     SizedBox(height: 3),
-                    Text('获取合作球馆的可用比赛视频'),
+                    Text('选择场地、录像和需要分析的回合片段'),
                   ],
                 ),
               ),

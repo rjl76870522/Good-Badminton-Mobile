@@ -159,10 +159,9 @@ class _QrScanPageState extends State<QrScanPage> {
         builder: (_) => const VenueVideoPage(
           venue: VenueInfo(
             id: '24',
-            name: '演示球馆',
-            serverUrl: 'https://venue.example.com',
+            name: '虚拟球馆',
+            serverUrl: 'https://api.audacity6441.kdns.fr/venue-demo',
           ),
-          showDemoOnOpen: true,
         ),
       ),
     );

@@ -54,6 +54,7 @@ from badminton_analysis.user_registry import (
     search_users_by_display_name,
     update_display_name,
 )
+from mock_venue_server.main import app as virtual_venue_app
 from webui.pipeline import prepare_court, run_analysis
 
 
@@ -178,6 +179,7 @@ app.add_middleware(
 )
 app.mount("/outputs", StaticFiles(directory=str(OUTPUTS_DIR)), name="outputs")
 app.mount("/preview-frames", StaticFiles(directory=str(PREVIEW_FRAME_DIR)), name="preview_frames")
+app.mount("/venue-demo", virtual_venue_app, name="virtual_venue")
 if FRONTEND_DIR.is_dir():
     app.mount("/app", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="mobile_frontend")
 

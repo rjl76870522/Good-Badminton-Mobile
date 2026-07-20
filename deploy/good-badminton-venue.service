@@ -9,6 +9,7 @@ User=john
 Group=john
 WorkingDirectory=/data/projects/Good-Badminton-1
 Environment=PYTHONPATH=/data/projects/Good-Badminton-1
+Environment=VENUE_ALLOW_UPLOADS=true
 ExecStart=/data/projects/Good-Badminton-1/.venv/bin/python -m uvicorn mock_venue_server.main:app --host 0.0.0.0 --port 9000
 Restart=on-failure
 RestartSec=5

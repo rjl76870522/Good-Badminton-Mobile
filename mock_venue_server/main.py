@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import uuid
@@ -19,6 +20,7 @@ LIBRARY_PATH = BASE_DIR / "venue_library.json"
 QR_IMAGE_PATH = BASE_DIR / "venue_qr.png"
 COURT_COUNT = 10
 ALLOWED_SUFFIXES = {".mp4", ".mov", ".m4v", ".avi"}
+ALLOW_OPERATOR_UPLOADS = os.getenv("VENUE_ALLOW_UPLOADS", "").lower() == "true"
 
 VENUE = {
     "type": "venue",
@@ -130,7 +132,7 @@ def venue_portal() -> str:
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>智慧羽毛球馆</title><style>
 body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f4f8f2;color:#173b24;font-family:"Microsoft YaHei",sans-serif}main{width:min(92vw,440px);margin:24px;padding:28px;text-align:center;border-radius:24px;background:#fff;box-shadow:0 12px 32px #1d4d2c1a}h1{margin:0 0 8px;font-size:25px}p{line-height:1.65;color:#54705c}img{width:min(72vw,280px);aspect-ratio:1;image-rendering:pixelated}.tip{padding:12px;border-radius:14px;background:#e8f5e9;color:#236838}a{display:inline-block;margin:12px 6px 0;color:#236838;font-weight:700}</style></head>
-<body><main><h1>智慧羽毛球馆</h1><p>请用 Good-Badminton App 的“扫描球馆二维码”功能扫描下方二维码。</p><img src="/venue/qr.png" alt="球馆二维码"><p class="tip">视频运营人员可在管理台向 1～10 号场上传模拟摄像头录像。</p><a href="/operator">打开视频运营台</a><a href="/videos">查看视频库 JSON</a></main></body></html>"""
+<body><main><h1>智慧羽毛球馆</h1><p>请用 Good-Badminton App 的“扫描球馆二维码”功能扫描下方二维码。</p><img src="venue/qr.png" alt="球馆二维码"><p class="tip">视频运营人员可在管理台向 1～10 号场上传模拟摄像头录像。</p><a href="operator">打开视频运营台</a><a href="videos">查看视频库 JSON</a></main></body></html>"""
 
 
 @app.get("/operator", response_class=HTMLResponse, include_in_schema=False)
@@ -140,12 +142,12 @@ def operator_portal() -> str:
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>智慧羽毛球馆 · 视频运营台</title><style>
 :root{{--green:#237a3b;--ink:#173b24;--line:#dbe7dc}}*{{box-sizing:border-box}}body{{margin:0;background:#f5f8f3;color:var(--ink);font-family:"Microsoft YaHei",sans-serif}}main{{max-width:1020px;margin:auto;padding:32px 18px 64px}}header{{display:flex;justify-content:space-between;gap:16px;align-items:end;margin-bottom:24px}}h1{{margin:0;font-size:clamp(26px,5vw,38px)}}p{{color:#617563}}.grid{{display:grid;grid-template-columns:1fr 1.1fr;gap:18px}}.card{{background:#fff;border:1px solid var(--line);border-radius:22px;padding:22px;box-shadow:0 10px 24px #1d4d2c0d}}label{{display:block;margin:14px 0 7px;font-weight:700}}select,input,button{{width:100%;font:inherit;border-radius:12px;padding:12px;border:1px solid var(--line)}}button{{border:0;background:var(--green);color:#fff;font-weight:700;cursor:pointer;margin-top:12px}}button:disabled{{opacity:.5;cursor:not-allowed}}.record{{margin-top:18px;padding:14px;border-radius:14px;background:#eef4ee;display:flex;gap:10px;align-items:center}}.dot{{width:10px;height:10px;border-radius:50%;background:#a7b8a8}}.recording .dot{{background:#e34b4b;animation:pulse 1s infinite}}.recording{{background:#fff0f0}}@keyframes pulse{{50%{{transform:scale(1.5);opacity:.5}}}}.courts{{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}}.court{{padding:10px 6px;text-align:center;border-radius:12px;background:#edf5ee;font-weight:700}}.video{{padding:13px 0;border-bottom:1px solid #edf1ed}}.video:last-child{{border:0}}.muted{{font-size:13px;color:#718071}}@media(max-width:720px){{.grid{{grid-template-columns:1fr}}.courts{{grid-template-columns:repeat(5,1fr)}}}}</style></head>
-<body><main><header><div><h1>视频运营台</h1><p>模拟各场地摄像头录制并上传比赛视频</p></div><a href="/">返回扫码页</a></header><div class="grid"><section class="card"><h2>模拟摄像头录制</h2><form id="uploadForm"><label>选择场地</label><select id="court" name="court_id">{options}</select><label>选择录像文件</label><input id="file" name="file" type="file" accept="video/*" required><button id="record" type="button">开始模拟录制</button><button id="upload" type="submit" disabled>结束录制并上传</button></form><div id="state" class="record"><span class="dot"></span><span>摄像头待机</span></div></section><section class="card"><h2>场地概览</h2><div id="courts" class="courts"></div><h2>最近视频</h2><div id="videos" class="muted">正在加载…</div></section></div></main><script>
+<body><main><header><div><h1>视频运营台</h1><p>模拟各场地摄像头录制并上传比赛视频</p></div><a href="./">返回扫码页</a></header><div class="grid"><section class="card"><h2>模拟摄像头录制</h2><form id="uploadForm"><label>选择场地</label><select id="court" name="court_id">{options}</select><label>选择录像文件</label><input id="file" name="file" type="file" accept="video/*" required><button id="record" type="button">开始模拟录制</button><button id="upload" type="submit" disabled>结束录制并上传</button></form><div id="state" class="record"><span class="dot"></span><span>摄像头待机</span></div></section><section class="card"><h2>场地概览</h2><div id="courts" class="courts"></div><h2>最近视频</h2><div id="videos" class="muted">正在加载…</div></section></div></main><script>
 const state=document.querySelector('#state'),record=document.querySelector('#record'),upload=document.querySelector('#upload'),form=document.querySelector('#uploadForm'),file=document.querySelector('#file'),court=document.querySelector('#court');let timer,seconds=0;
 function status(text,on=false){{state.classList.toggle('recording',on);state.querySelector('span:last-child').textContent=text}}
-async function load(){{const r=await fetch('/videos');const d=await r.json();const count={{}};d.items.forEach(v=>count[v.court]=(count[v.court]||0)+1);document.querySelector('#courts').innerHTML=Array.from({{length:10}},(_,i)=>`<div class="court">${{i+1}}号场<br><small>${{count[`${{i+1}}号场`]||0}} 条</small></div>`).join('');document.querySelector('#videos').innerHTML=d.items.slice(0,12).map(v=>`<div class="video"><b>${{v.court}}</b> · ${{v.time}}<br><span class="muted">${{v.duration}}</span></div>`).join('')}}
+async function load(){{const r=await fetch('videos');const d=await r.json();const count={{}};d.items.forEach(v=>count[v.court]=(count[v.court]||0)+1);document.querySelector('#courts').innerHTML=Array.from({{length:10}},(_,i)=>`<div class="court">${{i+1}}号场<br><small>${{count[`${{i+1}}号场`]||0}} 条</small></div>`).join('');document.querySelector('#videos').innerHTML=d.items.slice(0,12).map(v=>`<div class="video"><b>${{v.court}}</b> · ${{v.time}}<br><span class="muted">${{v.duration}}</span></div>`).join('')}}
 record.onclick=()=>{{if(!file.files.length){{status('请先选择一段本地录像');return}}seconds=0;record.disabled=true;upload.disabled=false;status('摄像头录制中 00:00',true);timer=setInterval(()=>{{seconds++;status(`摄像头录制中 00:${{String(seconds).padStart(2,'0')}}`,true)}},1000)}};
-form.onsubmit=async e=>{{e.preventDefault();clearInterval(timer);upload.disabled=true;status('正在上传录像…',true);const data=new FormData();data.append('file',file.files[0]);const res=await fetch(`/courts/${{court.value}}/videos`,{{method:'POST',body:data}});if(!res.ok){{status('上传失败，请重试');record.disabled=false;return}}status('上传完成，视频库已更新');record.disabled=false;file.value='';await load()}};load();</script></body></html>"""
+form.onsubmit=async e=>{{e.preventDefault();clearInterval(timer);upload.disabled=true;status('正在上传录像…',true);const data=new FormData();data.append('file',file.files[0]);const res=await fetch(`courts/${{court.value}}/videos`,{{method:'POST',body:data}});if(!res.ok){{status('上传失败，请重试');record.disabled=false;return}}status('上传完成，视频库已更新');record.disabled=false;file.value='';await load()}};load();</script></body></html>"""
 
 
 @app.get("/venue/qr.png", include_in_schema=False)
@@ -189,6 +191,8 @@ def get_videos(court: str | None = None) -> dict:
 
 @app.post("/courts/{court_id}/videos")
 async def upload_recording(court_id: int, file: UploadFile = File(...)) -> dict:
+    if not ALLOW_OPERATOR_UPLOADS:
+        raise HTTPException(status_code=403, detail="公网虚拟球馆只提供录像浏览")
     court = _court_name(court_id)
     suffix = Path(file.filename or "").suffix.lower()
     if suffix not in ALLOWED_SUFFIXES:

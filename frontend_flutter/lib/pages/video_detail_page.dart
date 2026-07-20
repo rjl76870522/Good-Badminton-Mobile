@@ -35,9 +35,15 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
 
   String get _downloadUrl =>
       widget.video.downloadUrl ??
-      Uri.parse(widget.venue.serverUrl)
-          .resolve('/videos/${widget.video.id}/download')
-          .toString();
+      _venueVideoUrl('videos/${widget.video.id}/download');
+
+  String _venueVideoUrl(String path) {
+    final base = Uri.parse(widget.venue.serverUrl);
+    final basePath = base.path.endsWith('/') ? base.path : '${base.path}/';
+    return base
+        .replace(path: '$basePath$path', query: null, fragment: null)
+        .toString();
+  }
 
   Duration get _duration => _controller?.value.duration ?? Duration.zero;
   double get _maximumSeconds => math
@@ -48,12 +54,16 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
   int get _endMs => (_clipRange.end * Duration.millisecondsPerSecond).round();
   bool get _isFullSelection =>
       _startMs <= 0 && _endMs >= _duration.inMilliseconds - 150;
-  Uri get _clipUri => Uri.parse(widget.venue.serverUrl)
-          .resolve('/videos/${widget.video.id}/clip')
-          .replace(queryParameters: {
-        'start_ms': _startMs.toString(),
-        'end_ms': _endMs.toString(),
-      });
+  Uri get _clipUri {
+    final download = Uri.parse(_downloadUrl);
+    final clipPath = download.path.endsWith('/download')
+        ? '${download.path.substring(0, download.path.length - '/download'.length)}/clip'
+        : '${download.path}/clip';
+    return download.replace(path: clipPath, queryParameters: {
+      'start_ms': _startMs.toString(),
+      'end_ms': _endMs.toString(),
+    });
+  }
 
   @override
   void initState() {
