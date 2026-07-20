@@ -38,8 +38,18 @@ def test_default_courts_use_the_configured_recordings():
     recordings = venue_server._default_library()
     filenames = [item["filename"] for item in recordings]
 
-    assert filenames[:7] == [f"{number:03}.mp4" for number in range(1, 8)]
-    assert filenames[7:] == ["005.mp4", "006.mp4", "007.mp4"]
+    assert filenames == [
+        "01.mp4",
+        "02.mp4",
+        "03.mp4",
+        "04.mp4",
+        "05.mp4",
+        "01.mp4",
+        "02.mp4",
+        "03.mp4",
+        "04.mp4",
+        "05.mp4",
+    ]
 
 
 def test_operator_can_add_multiple_recordings_at_different_times(

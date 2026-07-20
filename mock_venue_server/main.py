@@ -22,16 +22,16 @@ COURT_COUNT = 10
 ALLOWED_SUFFIXES = {".mp4", ".mov", ".m4v", ".avi"}
 ALLOW_OPERATOR_UPLOADS = os.getenv("VENUE_ALLOW_UPLOADS", "").lower() == "true"
 DEFAULT_COURT_RECORDINGS = {
-    1: "001.mp4",
-    2: "002.mp4",
-    3: "003.mp4",
-    4: "004.mp4",
-    5: "005.mp4",
-    6: "006.mp4",
-    7: "007.mp4",
-    8: "005.mp4",
-    9: "006.mp4",
-    10: "007.mp4",
+    1: "01.mp4",
+    2: "02.mp4",
+    3: "03.mp4",
+    4: "04.mp4",
+    5: "05.mp4",
+    6: "01.mp4",
+    7: "02.mp4",
+    8: "03.mp4",
+    9: "04.mp4",
+    10: "05.mp4",
 }
 
 VENUE = {
