@@ -29,6 +29,9 @@ server/uploads/
 frontend_flutter/android/key.properties
 frontend_flutter/nul
 server/debug_line_mask.png
+mock_venue_server/clips/
+mock_venue_server/venue_library.json
+mock_venue_server/videos/upload_*
 
 # Keep only the small repository demo videos.
 videos/*

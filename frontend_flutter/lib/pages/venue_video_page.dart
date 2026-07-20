@@ -23,6 +23,7 @@ class VenueVideoPage extends StatefulWidget {
 class _VenueVideoPageState extends State<VenueVideoPage> {
   List<VenueVideo>? _videos;
   String? _error;
+  String? _selectedCourt;
   var _isLoading = true;
   var _isDemoData = false;
 
@@ -42,6 +43,7 @@ class _VenueVideoPageState extends State<VenueVideoPage> {
     setState(() {
       _isLoading = true;
       _error = null;
+      _selectedCourt = null;
       _isDemoData = false;
     });
     try {
@@ -60,6 +62,7 @@ class _VenueVideoPageState extends State<VenueVideoPage> {
     setState(() {
       _videos = widget.service.getMockVideos();
       _error = null;
+      _selectedCourt = null;
       _isDemoData = true;
     });
   }
@@ -100,8 +103,15 @@ class _VenueVideoPageState extends State<VenueVideoPage> {
       );
     }
 
-    final videos =
+    final allVideos =
         _videos?.isNotEmpty == true ? _videos! : widget.service.getMockVideos();
+    final courts = allVideos.map((video) => video.court).toSet().toList()
+      ..sort((left, right) => _courtOrder(left).compareTo(_courtOrder(right)));
+    final videos = _selectedCourt == null
+        ? allVideos
+        : allVideos
+            .where((video) => video.court == _selectedCourt)
+            .toList(growable: false);
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -133,11 +143,43 @@ class _VenueVideoPageState extends State<VenueVideoPage> {
                 ],
               ),
             ),
-          Text('可用比赛视频', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 10),
-          Text('共 ${videos.length} 条',
-              style: Theme.of(context).textTheme.bodySmall),
+          Row(
+            children: [
+              Text('可用比赛视频', style: Theme.of(context).textTheme.titleMedium),
+              const Spacer(),
+              Text('共 ${videos.length} 条',
+                  style: Theme.of(context).textTheme.bodySmall),
+            ],
+          ),
+          if (courts.length > 1) ...[
+            const SizedBox(height: 10),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  ChoiceChip(
+                    label: Text('全部 ${allVideos.length}'),
+                    selected: _selectedCourt == null,
+                    onSelected: (_) => setState(() => _selectedCourt = null),
+                  ),
+                  for (final court in courts) ...[
+                    const SizedBox(width: 8),
+                    ChoiceChip(
+                      label: Text(court),
+                      selected: _selectedCourt == court,
+                      onSelected: (_) => setState(() => _selectedCourt = court),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 8),
+          if (videos.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 24),
+              child: Center(child: Text('该场地暂时没有可用比赛视频')),
+            ),
           if (videos.isNotEmpty) _videoCard(videos[0]),
           if (videos.length > 1) _videoCard(videos[1]),
           if (videos.length > 2)
@@ -145,6 +187,11 @@ class _VenueVideoPageState extends State<VenueVideoPage> {
         ],
       ),
     );
+  }
+
+  int _courtOrder(String court) {
+    final match = RegExp(r'\d+').firstMatch(court);
+    return int.tryParse(match?.group(0) ?? '') ?? 999;
   }
 
   void _openVideo(VenueVideo video) {

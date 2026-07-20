@@ -28,9 +28,15 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('共 2 条'), findsOneWidget);
-    expect(find.text('1号场'), findsOneWidget);
-    expect(find.text('2号场'), findsOneWidget);
+    expect(find.text('全部 2'), findsOneWidget);
+    expect(find.text('1号场'), findsNWidgets(2));
+    expect(find.text('2号场'), findsNWidgets(2));
     expect(find.text('选择'), findsNWidgets(2));
+
+    await tester.tap(find.widgetWithText(ChoiceChip, '1号场'));
+    await tester.pumpAndSettle();
+    expect(find.text('共 1 条'), findsOneWidget);
+    expect(find.text('选择'), findsOneWidget);
   });
 
   testWidgets('demo venue shows venue 24 and prepared clip notice',

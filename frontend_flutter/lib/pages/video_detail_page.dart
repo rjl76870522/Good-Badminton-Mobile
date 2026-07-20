@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -28,6 +29,7 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
   String? _previewError;
   bool _downloading = false;
   double _downloadProgress = 0;
+  RangeValues _clipRange = const RangeValues(0, 0);
 
   bool get _isBundledDemo => widget.video.assetPath?.isNotEmpty == true;
 
@@ -36,6 +38,22 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
       Uri.parse(widget.venue.serverUrl)
           .resolve('/videos/${widget.video.id}/download')
           .toString();
+
+  Duration get _duration => _controller?.value.duration ?? Duration.zero;
+  double get _maximumSeconds => math
+      .max(1, _duration.inMilliseconds / Duration.millisecondsPerSecond)
+      .toDouble();
+  int get _startMs =>
+      (_clipRange.start * Duration.millisecondsPerSecond).round();
+  int get _endMs => (_clipRange.end * Duration.millisecondsPerSecond).round();
+  bool get _isFullSelection =>
+      _startMs <= 0 && _endMs >= _duration.inMilliseconds - 150;
+  Uri get _clipUri => Uri.parse(widget.venue.serverUrl)
+          .resolve('/videos/${widget.video.id}/clip')
+          .replace(queryParameters: {
+        'start_ms': _startMs.toString(),
+        'end_ms': _endMs.toString(),
+      });
 
   @override
   void initState() {
@@ -54,7 +72,10 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
         return;
       }
       controller.addListener(_onVideoChanged);
-      setState(() => _controller = controller);
+      setState(() {
+        _controller = controller;
+        _clipRange = RangeValues(0, _maximumSeconds);
+      });
     } catch (_) {
       await controller.dispose();
       if (mounted) {
@@ -74,8 +95,7 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
     if (!await videoDirectory.exists()) {
       await videoDirectory.create(recursive: true);
     }
-    final fileName =
-        '${widget.video.id}_${DateTime.now().millisecondsSinceEpoch}.mp4';
+    final fileName = '${widget.video.id}_${_startMs}_$_endMs.mp4';
     final targetPath = '${videoDirectory.path}/$fileName';
     if (_isBundledDemo) {
       final data = await rootBundle.load(widget.video.assetPath!);
@@ -86,11 +106,21 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
       );
       return file;
     }
-    final savedPath = await _api.downloadFile(
-      _downloadUrl,
-      targetPath,
-    );
+    final url = _isFullSelection ? _downloadUrl : _clipUri.toString();
+    final savedPath = await _api.downloadFile(url, targetPath);
     return File(savedPath);
+  }
+
+  String _formatTime(int milliseconds) {
+    final totalSeconds = milliseconds ~/ Duration.millisecondsPerSecond;
+    final minutes = totalSeconds ~/ 60;
+    final seconds = totalSeconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:'
+        '${seconds.toString().padLeft(2, '0')}';
+  }
+
+  void _resetClip() {
+    setState(() => _clipRange = RangeValues(0, _maximumSeconds));
   }
 
   Future<void> _selectDownloadAction() async {
@@ -106,7 +136,11 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
             children: [
               Text('获取比赛视频', style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 6),
-              const Text('请选择视频下载后的操作。'),
+              Text(
+                _isFullSelection
+                    ? '当前选择完整视频'
+                    : '当前片段：${_formatTime(_startMs)} - ${_formatTime(_endMs)}',
+              ),
               const SizedBox(height: 12),
               ListTile(
                 leading: const Icon(Icons.photo_library_outlined),
@@ -271,6 +305,10 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
               ),
             ),
             const SizedBox(height: 20),
+            if (controller != null && !_isBundledDemo) ...[
+              _clipSelector(context),
+              const SizedBox(height: 20),
+            ],
             if (_downloading) ...[
               LinearProgressIndicator(value: _downloadProgress),
               const SizedBox(height: 8),
@@ -287,6 +325,67 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
       ),
     );
   }
+
+  Widget _clipSelector(BuildContext context) => Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.content_cut_rounded),
+                  const SizedBox(width: 8),
+                  Text(
+                    '选择要分析的回合',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const Spacer(),
+                  TextButton(
+                    onPressed: _resetClip,
+                    child: const Text('完整视频'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              const Text('拖动两端，尽量避开回合之间的捡球和休息时间'),
+              RangeSlider(
+                values: _clipRange,
+                min: 0,
+                max: _maximumSeconds,
+                divisions:
+                    math.min(180, _maximumSeconds.ceil()).clamp(1, 180).toInt(),
+                labels: RangeLabels(
+                  _formatTime(_startMs),
+                  _formatTime(_endMs),
+                ),
+                onChanged: _downloading
+                    ? null
+                    : (values) {
+                        const minimumSpan = 1.0;
+                        var start = values.start;
+                        var end = values.end;
+                        if (end - start < minimumSpan) {
+                          if (start + minimumSpan <= _maximumSeconds) {
+                            end = start + minimumSpan;
+                          } else {
+                            start = end - minimumSpan;
+                          }
+                        }
+                        setState(() => _clipRange = RangeValues(start, end));
+                      },
+              ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(_formatTime(_startMs)),
+                  Text(_formatTime(_endMs)),
+                ],
+              ),
+            ],
+          ),
+        ),
+      );
 
   Widget _previewCard(VideoPlayerController? controller) {
     if (_previewError != null) {
