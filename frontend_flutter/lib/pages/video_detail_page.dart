@@ -33,6 +33,10 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
   bool _scrubbing = false;
   bool _wasPlayingBeforeScrub = false;
   double _scrubSeconds = 0;
+  double? _pendingScrubSeconds;
+  Future<void>? _scrubSeekWorker;
+  double _previewLoadingProgress = 0;
+  File? _previewCacheFile;
   double _downloadProgress = 0;
   RangeValues _clipRange = const RangeValues(0, 0);
 
@@ -77,10 +81,32 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
   }
 
   Future<void> _initializePreview() async {
-    final controller = _isBundledDemo
-        ? VideoPlayerController.asset(widget.video.assetPath!)
-        : VideoPlayerController.networkUrl(Uri.parse(_downloadUrl));
+    VideoPlayerController? controller;
     try {
+      if (_isBundledDemo) {
+        controller = VideoPlayerController.asset(widget.video.assetPath!);
+      } else {
+        final directory = await getTemporaryDirectory();
+        final videoDirectory =
+            Directory('${directory.path}/GoodBadminton/venue_preview');
+        await videoDirectory.create(recursive: true);
+        final cacheKey = '${widget.video.id}_${widget.video.time}'
+            .replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+        final cacheFile = File('${videoDirectory.path}/$cacheKey.mp4');
+        _previewCacheFile = cacheFile;
+        if (!await cacheFile.exists() || await cacheFile.length() == 0) {
+          await _api.downloadFile(
+            _downloadUrl,
+            cacheFile.path,
+            onProgress: (progress) {
+              if (mounted) {
+                setState(() => _previewLoadingProgress = progress);
+              }
+            },
+          );
+        }
+        controller = VideoPlayerController.file(cacheFile);
+      }
       await controller.initialize();
       if (!mounted) {
         await controller.dispose();
@@ -90,9 +116,17 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
       setState(() {
         _controller = controller;
         _clipRange = RangeValues(0, _maximumSeconds);
+        _previewLoadingProgress = 1;
       });
     } catch (_) {
-      await controller.dispose();
+      await controller?.dispose();
+      if (_previewCacheFile case final cacheFile?) {
+        try {
+          await cacheFile.delete();
+        } on FileSystemException {
+          // A later retry can replace an incomplete cache file.
+        }
+      }
       if (mounted) {
         setState(() => _previewError = '视频预览暂时不可用，请检查球馆网络。');
       }
@@ -212,31 +246,47 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
     if (controller == null) return;
     _playingSelectedClip = false;
     _wasPlayingBeforeScrub = controller.value.isPlaying;
+    controller.pause();
     setState(() {
       _scrubbing = true;
       _scrubSeconds = value;
     });
+    _queueScrubSeek(value);
   }
 
   void _scrubTo(double value) {
-    final controller = _controller;
-    if (controller == null) return;
+    if (_controller == null) return;
     setState(() => _scrubSeconds = value);
-    controller.seekTo(
-      Duration(
-        milliseconds: (value * Duration.millisecondsPerSecond).round(),
-      ),
+    _queueScrubSeek(value);
+  }
+
+  void _queueScrubSeek(double value) {
+    _pendingScrubSeconds = value;
+    _scrubSeekWorker ??= _drainScrubSeeks().whenComplete(
+      () => _scrubSeekWorker = null,
     );
+  }
+
+  Future<void> _drainScrubSeeks() async {
+    while (_pendingScrubSeconds != null) {
+      final target = _pendingScrubSeconds!;
+      _pendingScrubSeconds = null;
+      final controller = _controller;
+      if (controller == null) return;
+      await controller.seekTo(
+        Duration(
+          milliseconds: (target * Duration.millisecondsPerSecond).round(),
+        ),
+      );
+      if (mounted) setState(() {});
+    }
   }
 
   Future<void> _finishScrubbing(double value) async {
     final controller = _controller;
     if (controller == null) return;
-    await controller.seekTo(
-      Duration(
-        milliseconds: (value * Duration.millisecondsPerSecond).round(),
-      ),
-    );
+    _queueScrubSeek(value);
+    await _scrubSeekWorker;
     if (_wasPlayingBeforeScrub) await controller.play();
     if (mounted) {
       setState(() {
@@ -511,7 +561,13 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
       return _placeholder(const Icon(Icons.wifi_off_outlined), _previewError!);
     }
     if (controller == null) {
-      return _placeholder(const CircularProgressIndicator(), '正在加载视频预览…');
+      final percent = (_previewLoadingProgress * 100).round();
+      return _placeholder(
+        CircularProgressIndicator(
+          value: _previewLoadingProgress > 0 ? _previewLoadingProgress : null,
+        ),
+        _previewLoadingProgress > 0 ? '正在缓存完整视频，便于流畅拖动：$percent%' : '正在加载视频预览…',
+      );
     }
     return ClipRRect(
       borderRadius: BorderRadius.circular(20),
