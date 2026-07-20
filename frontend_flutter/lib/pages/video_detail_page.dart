@@ -41,6 +41,11 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
   RangeValues _clipRange = const RangeValues(0, 0);
 
   bool get _isBundledDemo => widget.video.assetPath?.isNotEmpty == true;
+  bool get _videoReady =>
+      _controller != null &&
+      _controller!.value.isInitialized &&
+      _previewLoadingProgress >= 1 &&
+      _previewError == null;
 
   String get _downloadUrl =>
       widget.video.downloadUrl ??
@@ -154,6 +159,9 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
   }
 
   Future<File> _downloadToCache() async {
+    if (!_videoReady) {
+      throw StateError('完整视频仍在缓存，请稍候。');
+    }
     final directory = await getTemporaryDirectory();
     final videoDirectory =
         Directory('${directory.path}/GoodBadminton/venue_videos');
@@ -170,6 +178,13 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
         flush: true,
       );
       return file;
+    }
+    final previewCache = _previewCacheFile;
+    if (_isFullSelection &&
+        previewCache != null &&
+        await previewCache.exists() &&
+        await previewCache.length() > 0) {
+      return previewCache.copy(targetPath);
     }
     final url = _isFullSelection ? _downloadUrl : _clipUri.toString();
     final savedPath = await _api.downloadFile(url, targetPath);
@@ -297,6 +312,7 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
   }
 
   Future<void> _selectDownloadAction() async {
+    if (!_videoReady || _downloading) return;
     final action = await showModalBottomSheet<_VideoAction>(
       context: context,
       showDragHandle: true,
@@ -492,9 +508,21 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
               const SizedBox(height: 12),
             ],
             FilledButton.icon(
-              onPressed: _downloading ? null : _selectDownloadAction,
-              icon: const Icon(Icons.download_rounded),
-              label: const Text('获取视频'),
+              onPressed:
+                  _downloading || !_videoReady ? null : _selectDownloadAction,
+              icon: _videoReady
+                  ? const Icon(Icons.download_rounded)
+                  : const SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+              label: Text(
+                _videoReady
+                    ? '获取视频'
+                    : _previewError != null
+                        ? '视频暂不可用'
+                        : '完整视频缓存中',
+              ),
             ),
           ],
         ),
