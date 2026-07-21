@@ -45,7 +45,7 @@ class _NavigationPageState extends State<NavigationPage> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: const Text('导航'),
+        title: const Text('发现'),
         backgroundColor: Colors.transparent,
       ),
       body: AppBackground(

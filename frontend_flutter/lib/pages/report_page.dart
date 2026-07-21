@@ -250,7 +250,9 @@ class _ReportPageState extends State<ReportPage> {
                     _HighlightWarning(message: report.highlightError!),
                   ],
                   if (report.highlightSegments.isNotEmpty)
-                    ...report.highlightSegments.map(_HighlightCard.new),
+                    ...report.highlightSegments.map(
+                      (segment) => _HighlightCard(segment, selected: true),
+                    ),
                   const SizedBox(height: 12),
                   _VideoResult(
                     title: '分析视频',
@@ -958,83 +960,84 @@ class _AdviceSourcesCard extends StatelessWidget {
 }
 
 class _HighlightCard extends StatelessWidget {
-  const _HighlightCard(this.segment);
+  const _HighlightCard(this.segment, {required this.selected});
 
   final HighlightSegment segment;
+  final bool selected;
+
+  String get _activityLabel {
+    if (segment.score >= 75) return '高光';
+    if (segment.score >= 55) return '活跃';
+    return '可回看';
+  }
 
   @override
   Widget build(BuildContext context) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(12),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              width: 72,
-              height: 58,
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF1B5E20), Color(0xFF66BB6A)],
+            Row(
+              children: [
+                Icon(
+                  selected ? Icons.star_rounded : Icons.insights_outlined,
+                  color: selected
+                      ? Theme.of(context).colorScheme.primary
+                      : Colors.blueGrey,
                 ),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: const Icon(
-                Icons.play_arrow_rounded,
-                color: Colors.white,
-                size: 34,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '精彩片段 · ${segment.score} 分',
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    selected
+                        ? '入选片段  精彩度 ${segment.score} · $_activityLabel'
+                        : '候选片段  精彩度 ${segment.score}',
                     style: Theme.of(context).textTheme.titleSmall?.copyWith(
                           fontWeight: FontWeight.w800,
                         ),
                   ),
-                  Text(
-                    '${segment.startSec.toStringAsFixed(1)}s - '
-                    '${segment.endSec.toStringAsFixed(1)}s',
-                  ),
-                  if (segment.reason.isNotEmpty)
-                    Text(
-                      segment.reasonZh.isNotEmpty
-                          ? segment.reasonZh
-                          : segment.reason,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  if (segment.tags.isNotEmpty) ...[
-                    const SizedBox(height: 6),
-                    Wrap(
-                      spacing: 5,
-                      runSpacing: 5,
-                      children: segment.tags
-                          .map(
-                            (tag) => Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 7,
-                                vertical: 3,
-                              ),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFE8F5E9),
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: Text(
-                                tag,
-                                style: const TextStyle(fontSize: 11),
-                              ),
-                            ),
-                          )
-                          .toList(growable: false),
-                    ),
-                  ],
-                ],
-              ),
+                ),
+              ],
             ),
+            const SizedBox(height: 6),
+            Text(
+              '时间：${segment.startSec.toStringAsFixed(1)} - '
+              '${segment.endSec.toStringAsFixed(1)} 秒',
+            ),
+            if (segment.reasonZh.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text('评分依据：${segment.reasonZh}'),
+            ],
+            if (selected) ...[
+              const SizedBox(height: 4),
+              const Text('入选理由：该时段的球员移动、羽毛球运动和检测可信度综合表现突出'),
+            ] else if (segment.selectionNote.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(segment.selectionNote),
+            ],
+            if (segment.tags.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 5,
+                runSpacing: 5,
+                children: segment.tags
+                    .map(
+                      (tag) => Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 7,
+                          vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFE8F5E9),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(tag, style: const TextStyle(fontSize: 11)),
+                      ),
+                    )
+                    .toList(growable: false),
+              ),
+            ],
           ],
         ),
       ),

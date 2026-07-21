@@ -7,6 +7,7 @@ Run from the project root:
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import os
@@ -55,7 +56,10 @@ from badminton_analysis.user_registry import (
     search_users_by_display_name,
     update_display_name,
 )
-from mock_venue_server.main import app as virtual_venue_app
+from mock_venue_server.main import (
+    app as virtual_venue_app,
+    download_clip as create_virtual_venue_clip,
+)
 from webui.pipeline import prepare_court, run_analysis
 
 
@@ -87,8 +91,8 @@ MAX_PREVIEW_DARK_RATIO = 0.65
 MIN_PREVIEW_SHARPNESS = 12.0
 MIN_PREVIEW_COURT_AREA_RATIO = 0.025
 MAX_PREVIEW_COURT_AREA_RATIO = 0.92
-PREVIEW_IMAGE_MAX_WIDTH = 480
-PREVIEW_IMAGE_JPEG_QUALITY = 65
+PREVIEW_IMAGE_MAX_WIDTH = 960
+PREVIEW_IMAGE_JPEG_QUALITY = 90
 DEFAULT_TEMPLATE_CANDIDATES = [
     PROJECT_ROOT / "templates" / "badminton_template.png",
     PROJECT_ROOT / "templates" / "my_template.png",
@@ -519,6 +523,52 @@ def create_preview_frame(
     return preview
 
 
+@app.post("/api/videos/venue-preview")
+def create_venue_preview(
+    video_id: str = Form(...),
+    start_ms: int = Form(..., ge=0),
+    end_ms: int = Form(..., gt=0),
+    user_id: str = Form(default=DEFAULT_USER_ID),
+) -> dict[str, Any]:
+    """Prepare a venue clip locally without routing video bytes through the phone."""
+    _require_upload_capacity()
+    user_id = _safe_user_id(user_id)
+    source_upload_id = uuid.uuid4().hex
+    source_path = PREVIEW_UPLOAD_DIR / f"{source_upload_id}_{video_id}.mp4"
+    try:
+        clip_response = create_virtual_venue_clip(
+            video_id=video_id,
+            start_ms=start_ms,
+            end_ms=end_ms,
+        )
+        clip_path = Path(str(clip_response.path))
+        if not clip_path.is_file():
+            raise_api_error(
+                status_code=500,
+                code="VENUE_CLIP_NOT_FOUND",
+                message="球馆视频片段生成失败，请稍后重试。",
+            )
+        shutil.copyfile(clip_path, source_path)
+        _validate_uploaded_video(source_path)
+        preview = _select_preview_frame(source_path, source_upload_id)
+        preview_path = PREVIEW_FRAME_DIR / f"{source_upload_id}.jpg"
+        preview["image_data_url"] = (
+            "data:image/jpeg;base64,"
+            + base64.b64encode(preview_path.read_bytes()).decode("ascii")
+        )
+    except Exception:
+        _remove_preview_artifacts(source_upload_id, source_path)
+        raise
+    preview.update(
+        {
+            "source_upload_id": source_upload_id,
+            "user_id": user_id,
+            "video_name": f"{video_id}_{start_ms}_{end_ms}.mp4",
+        }
+    )
+    return preview
+
+
 @app.get("/api/tasks")
 def list_tasks(user_id: str | None = Query(default=None)) -> dict[str, Any]:
     tasks = _load_all_tasks()
@@ -863,6 +913,9 @@ def _decorate_highlight_segments(segments: Any) -> list[dict[str, Any]]:
         segment["display_metrics"] = {
             "player_peak_mps": _round_float(metrics.get("player_peak_mps")),
             "player_distance_m": _round_float(metrics.get("player_distance_m")),
+            "player_movement_rate_mps": _round_float(
+                metrics.get("player_movement_rate_mps")
+            ),
             "shuttle_peak_px_s": _round_float(metrics.get("shuttle_peak_px_s")),
         }
         decorated.append(segment)
@@ -871,33 +924,30 @@ def _decorate_highlight_segments(segments: Any) -> list[dict[str, Any]]:
 
 def _highlight_reason_zh(reason: str, metrics: dict[str, Any]) -> str:
     player_peak = _to_float(metrics.get("player_peak_mps"))
-    player_distance = _to_float(metrics.get("player_distance_m"))
+    movement_rate = _to_float(metrics.get("player_movement_rate_mps"))
     shuttle_peak = _to_float(metrics.get("shuttle_peak_px_s"))
     parts: list[str] = []
     if player_peak >= 5.0:
-        parts.append("球员出现快速启动或冲刺")
-    if player_distance >= 12.0:
-        parts.append("片段内移动距离较大")
+        parts.append(f"球员代表性峰值速度约 {player_peak:.1f} 米/秒")
+    if movement_rate >= 2.8:
+        parts.append(f"每秒累计跑动约 {movement_rate:.1f} 米")
     if shuttle_peak >= 1000.0:
-        parts.append("球速变化明显")
+        parts.append("羽毛球在画面中的移动速度较突出")
     if not parts:
-        if "fast" in reason.lower():
-            parts.append("速度指标较高")
-        else:
-            parts.append("该片段综合运动强度较高")
-    return "，".join(parts) + "，因此被选入精彩集锦。"
+        parts.append("片段内检测到连续的球员移动或羽毛球运动")
+    return "；".join(parts)
 
 
 def _highlight_tags(reason: str, metrics: dict[str, Any]) -> list[str]:
     tags: list[str] = []
     player_peak = _to_float(metrics.get("player_peak_mps"))
-    player_distance = _to_float(metrics.get("player_distance_m"))
+    movement_rate = _to_float(metrics.get("player_movement_rate_mps"))
     shuttle_peak = _to_float(metrics.get("shuttle_peak_px_s"))
     if player_peak >= 5.0 or "fast player" in reason.lower():
         tags.append("快速启动")
-    if player_distance >= 12.0:
+    if movement_rate >= 2.8:
         tags.append("高强度跑动")
-    if player_distance >= 18.0:
+    if movement_rate >= 3.8:
         tags.append("覆盖范围大")
     if shuttle_peak >= 1000.0:
         tags.append("高速来球")

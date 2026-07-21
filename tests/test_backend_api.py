@@ -1,5 +1,6 @@
 from pathlib import Path
 import time
+from types import SimpleNamespace
 
 import cv2
 from fastapi.testclient import TestClient
@@ -125,6 +126,52 @@ def test_preview_then_source_upload_matches_flutter_contract(monkeypatch, tmp_pa
         other_history = client.get("/api/history", params={"user_id": "someone-else"}).json()
         assert own_history["total"] == 1
         assert other_history["total"] == 0
+
+
+def test_venue_preview_hands_clip_directly_to_analysis(monkeypatch, tmp_path):
+    _configure_data_dirs(monkeypatch, tmp_path)
+    venue_clip = tmp_path / "venue-clip.mp4"
+    venue_clip.write_bytes(b"venue-video-bytes")
+    monkeypatch.setattr(
+        backend_api,
+        "create_virtual_venue_clip",
+        lambda **_kwargs: SimpleNamespace(path=str(venue_clip)),
+    )
+    monkeypatch.setattr(backend_api, "_select_preview_frame", _fake_preview)
+    monkeypatch.setattr(backend_api, "_validate_uploaded_video", lambda _path: None)
+    monkeypatch.setattr(backend_api, "_run_analysis_task", lambda **_kwargs: None)
+
+    with TestClient(backend_api.app) as client:
+        preview_response = client.post(
+            "/api/videos/venue-preview",
+            data={
+                "video_id": "court2-full-recording",
+                "start_ms": "1000",
+                "end_ms": "9000",
+                "user_id": "venue-user",
+            },
+        )
+        assert preview_response.status_code == 200
+        preview = preview_response.json()
+        assert preview["video_name"] == "court2-full-recording_1000_9000.mp4"
+        assert preview["image_data_url"].startswith("data:image/jpeg;base64,")
+        source_id = preview["source_upload_id"]
+        source_files = list(backend_api.PREVIEW_UPLOAD_DIR.glob(f"{source_id}_*"))
+        assert len(source_files) == 1
+        assert source_files[0].read_bytes() == b"venue-video-bytes"
+
+        upload_response = client.post(
+            "/api/videos/upload",
+            data={
+                "source_upload_id": source_id,
+                "user_id": "venue-user",
+                "keep_audio": "true",
+            },
+        )
+        assert upload_response.status_code == 200
+        task = backend_api._get_task_or_404(upload_response.json()["task_id"])
+        assert Path(task["upload_path"]).read_bytes() == b"venue-video-bytes"
+        assert not list(backend_api.PREVIEW_UPLOAD_DIR.glob(f"{source_id}_*"))
 
 
 def test_upload_rejects_unsupported_video(monkeypatch, tmp_path):

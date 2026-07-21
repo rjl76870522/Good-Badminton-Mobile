@@ -67,7 +67,8 @@ class BadmintonAnalysisSystem:
                  ball_model_path='weights/yolo11s-ball.pt', template_path=None,
                  pose_mode='balanced', pose_family='rtmpose',
                  yolo_pose_model='yolo11n-pose.pt', show_pose_roi=True,
-                 court_match_threshold=0.75, always_process_court=False):
+                 court_match_threshold=0.75, always_process_court=False,
+                 pose_processor=None, ball_model=None):
         self.video_path = video_path
         self.show_display = show_display
         self.language = language
@@ -101,11 +102,13 @@ class BadmintonAnalysisSystem:
                 "weights/yolo11s-ball.pt, or pass its path with --ball-model."
             )
         
-        if self.pose_family == 'yolo-pose':
+        if pose_processor is not None:
+            self.rtmpose_processor = pose_processor
+        elif self.pose_family == 'yolo-pose':
             self.rtmpose_processor = YOLOPoseProcessor(model_path=self.yolo_pose_model)
         else:
             self.rtmpose_processor = RTMPoseProcessor(mode=self.pose_mode, pose_family=self.pose_family)
-        self.yolo_ball_model = YOLO(self.ball_model_path)
+        self.yolo_ball_model = ball_model or YOLO(self.ball_model_path)
 
         self.last_stats_update_frame = 0
 

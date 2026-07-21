@@ -10,6 +10,7 @@ import 'package:video_player/video_player.dart';
 
 import '../models/venue.dart';
 import '../services/api_service.dart';
+import '../services/user_storage.dart';
 import '../utils/user_facing_error.dart';
 import 'upload_page.dart';
 
@@ -25,6 +26,7 @@ class VideoDetailPage extends StatefulWidget {
 
 class _VideoDetailPageState extends State<VideoDetailPage> {
   final ApiService _api = ApiService();
+  final UserStorage _userStorage = UserStorage();
   VideoPlayerController? _controller;
   String? _previewError;
   bool _downloading = false;
@@ -36,7 +38,6 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
   double? _pendingScrubSeconds;
   Future<void>? _scrubSeekWorker;
   double _previewLoadingProgress = 0;
-  File? _previewCacheFile;
   double _downloadProgress = 0;
   RangeValues _clipRange = const RangeValues(0, 0);
 
@@ -91,28 +92,9 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
       if (_isBundledDemo) {
         controller = VideoPlayerController.asset(widget.video.assetPath!);
       } else {
-        final directory = await getTemporaryDirectory();
-        final videoDirectory =
-            Directory('${directory.path}/GoodBadminton/venue_preview');
-        await videoDirectory.create(recursive: true);
-        final cacheKey = '${widget.video.id}_${widget.video.time}'
-            .replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
-        final cacheFile = File('${videoDirectory.path}/$cacheKey.mp4');
-        _previewCacheFile = cacheFile;
-        if (!await cacheFile.exists() || await cacheFile.length() == 0) {
-          await _api.downloadFile(
-            _downloadUrl,
-            cacheFile.path,
-            onProgress: (progress) {
-              if (mounted) {
-                setState(() => _previewLoadingProgress = progress);
-              }
-            },
-          );
-        }
-        controller = VideoPlayerController.file(cacheFile);
+        controller = VideoPlayerController.networkUrl(Uri.parse(_downloadUrl));
       }
-      await controller.initialize();
+      await controller.initialize().timeout(const Duration(seconds: 30));
       if (!mounted) {
         await controller.dispose();
         return;
@@ -125,13 +107,6 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
       });
     } catch (_) {
       await controller?.dispose();
-      if (_previewCacheFile case final cacheFile?) {
-        try {
-          await cacheFile.delete();
-        } on FileSystemException {
-          // A later retry can replace an incomplete cache file.
-        }
-      }
       if (mounted) {
         setState(() => _previewError = '视频预览暂时不可用，请检查球馆网络。');
       }
@@ -179,15 +154,6 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
         data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
         flush: true,
       );
-      onProgress?.call(1);
-      return file;
-    }
-    final previewCache = _previewCacheFile;
-    if (_isFullSelection &&
-        previewCache != null &&
-        await previewCache.exists() &&
-        await previewCache.length() > 0) {
-      final file = await previewCache.copy(targetPath);
       onProgress?.call(1);
       return file;
     }
@@ -427,14 +393,35 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
       _downloadProgress = .05;
     });
     try {
-      final file = await _downloadToCache(onProgress: _showDownloadProgress);
+      if (_isBundledDemo) {
+        final file = await _downloadToCache(onProgress: _showDownloadProgress);
+        if (!mounted) return;
+        setState(() => _downloadProgress = 1);
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => UploadPage(
+              initialVideoPath: file.path,
+              initialVideoName: XFile(file.path).name,
+            ),
+          ),
+        );
+        return;
+      }
+      setState(() => _downloadProgress = .35);
+      final userId = await _userStorage.getOrCreateUserId();
+      final preview = await _api.previewVenueClip(
+        videoId: widget.video.id,
+        startMs: _startMs,
+        endMs: _endMs,
+        userId: userId,
+      );
       if (!mounted) return;
       setState(() => _downloadProgress = 1);
       await Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => UploadPage(
-            initialVideoPath: file.path,
-            initialVideoName: XFile(file.path).name,
+            initialPreview: preview,
+            initialVideoName: '${widget.video.id}_${_startMs}_$_endMs.mp4',
           ),
         ),
       );
@@ -443,7 +430,7 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content:
-                Text(userFacingError(error, fallback: '下载视频失败，请检查球馆网络后重试。')),
+                Text(userFacingError(error, fallback: '准备球馆视频失败，请检查网络后重试。')),
           ),
         );
       }
@@ -536,7 +523,7 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
                     ? '获取视频'
                     : _previewError != null
                         ? '视频暂不可用'
-                        : '完整视频缓存中',
+                        : '正在加载视频',
               ),
             ),
           ],
@@ -604,12 +591,9 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
       return _placeholder(const Icon(Icons.wifi_off_outlined), _previewError!);
     }
     if (controller == null) {
-      final percent = (_previewLoadingProgress * 100).round();
       return _placeholder(
-        CircularProgressIndicator(
-          value: _previewLoadingProgress > 0 ? _previewLoadingProgress : null,
-        ),
-        _previewLoadingProgress > 0 ? '正在缓存完整视频，便于流畅拖动：$percent%' : '正在加载视频预览…',
+        const CircularProgressIndicator(),
+        '正在加载视频预览…',
       );
     }
     return ClipRRect(

@@ -19,11 +19,17 @@ class UploadPage extends StatefulWidget {
     this.retryTaskId,
     this.initialVideoPath,
     this.initialVideoName,
+    this.initialPreview,
+    this.initialCornerVideoPath,
+    this.initialCornerVideoSeekSec,
   });
 
   final String? retryTaskId;
   final String? initialVideoPath;
   final String? initialVideoName;
+  final PreviewFrame? initialPreview;
+  final String? initialCornerVideoPath;
+  final double? initialCornerVideoSeekSec;
 
   @override
   State<UploadPage> createState() => _UploadPageState();
@@ -50,7 +56,7 @@ class _UploadPageState extends State<UploadPage> {
       !_uploading &&
       !_previewing &&
       !_inspectingVideo &&
-      _selectedFile != null &&
+      (_selectedFile != null || _preview != null) &&
       _validationErrors.isEmpty;
 
   @override
@@ -60,6 +66,25 @@ class _UploadPageState extends State<UploadPage> {
   }
 
   Future<void> _restoreInitialVideo() async {
+    final initialPreview = widget.initialPreview;
+    if (initialPreview != null) {
+      setState(() {
+        _preview = initialPreview;
+        _selectedDuration = Duration(
+          milliseconds: (initialPreview.video.durationSec * 1000).round(),
+        );
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _openCornerPicker(
+            initialPreview,
+            localVideoPath: widget.initialCornerVideoPath,
+            localVideoSeekSec: widget.initialCornerVideoSeekSec,
+          );
+        }
+      });
+      return;
+    }
     final initialPath = widget.initialVideoPath;
     if (initialPath != null) {
       if (!await File(initialPath).exists()) {
@@ -168,18 +193,7 @@ class _UploadPageState extends State<UploadPage> {
       );
       if (!mounted) return;
       setState(() => _preview = preview);
-      final corners = await Navigator.of(context).push<List<CourtPoint>>(
-        MaterialPageRoute(
-          builder: (_) => CornerPickerPage(
-            preview: preview,
-            localVideoPath: file.path,
-          ),
-        ),
-      );
-      if (!mounted) return;
-      if (corners != null) {
-        setState(() => _corners = corners.length == 4 ? corners : const []);
-      }
+      await _openCornerPicker(preview, localVideoPath: file.path);
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -192,14 +206,17 @@ class _UploadPageState extends State<UploadPage> {
     }
   }
 
-  Future<void> _editCorners() async {
-    final preview = _preview;
-    if (preview == null) return;
+  Future<void> _openCornerPicker(
+    PreviewFrame preview, {
+    String? localVideoPath,
+    double? localVideoSeekSec,
+  }) async {
     final corners = await Navigator.of(context).push<List<CourtPoint>>(
       MaterialPageRoute(
         builder: (_) => CornerPickerPage(
           preview: preview,
-          localVideoPath: _selectedFile?.path,
+          localVideoPath: localVideoPath,
+          localVideoSeekSec: localVideoSeekSec,
         ),
       ),
     );
@@ -208,13 +225,19 @@ class _UploadPageState extends State<UploadPage> {
     }
   }
 
+  Future<void> _editCorners() async {
+    final preview = _preview;
+    if (preview == null) return;
+    await _openCornerPicker(preview, localVideoPath: _selectedFile?.path);
+  }
+
   Future<void> _upload() async {
     final file = _selectedFile;
-    if (file == null) {
+    if (file == null && _preview == null) {
       setState(() => _error = '请先选择视频');
       return;
     }
-    if (file.path.isEmpty) {
+    if (file != null && file.path.isEmpty) {
       setState(() => _error = '无法读取所选视频的本地路径');
       return;
     }
@@ -260,6 +283,9 @@ class _UploadPageState extends State<UploadPage> {
             _uploadProgress = 0;
           });
         }
+        if (file == null) {
+          throw const ApiException('球馆视频临时缓存已失效，请返回重新选择片段');
+        }
         result = await _api.uploadVideo(
           file,
           userId: userId,
@@ -271,11 +297,13 @@ class _UploadPageState extends State<UploadPage> {
         );
       }
       if (!mounted) return;
-      await _storage.saveActiveTask(
-        taskId: result.taskId,
-        videoPath: file.path,
-        videoName: file.name,
-      );
+      if (file != null) {
+        await _storage.saveActiveTask(
+          taskId: result.taskId,
+          videoPath: file.path,
+          videoName: file.name,
+        );
+      }
       if (!mounted) return;
       await Navigator.of(context).pushReplacement(
         MaterialPageRoute(
@@ -360,8 +388,16 @@ class _UploadPageState extends State<UploadPage> {
                 label: const Text('选择视频'),
               ),
               const SizedBox(height: 12),
-              if (_selectedFile == null)
+              if (_selectedFile == null && _preview == null)
                 const Center(child: Text('尚未选择视频'))
+              else if (_selectedFile == null)
+                _SelectedVideoCard(
+                  fileName: widget.initialVideoName ?? '球馆视频片段',
+                  duration: _selectedDuration,
+                  inspecting: false,
+                  errors: const [],
+                  serverPrepared: true,
+                )
               else
                 _SelectedVideoCard(
                   fileName: _selectedFile!.name,
@@ -421,7 +457,9 @@ class _UploadPageState extends State<UploadPage> {
                 LinearProgressIndicator(value: _uploadProgress),
                 const SizedBox(height: 6),
                 Text(
-                  '上传进度：${(_uploadProgress * 100).round()}%',
+                  _preview != null
+                      ? '正在创建分析任务'
+                      : '上传进度：${(_uploadProgress * 100).round()}%',
                   textAlign: TextAlign.center,
                 ),
                 const Text(
@@ -450,12 +488,14 @@ class _SelectedVideoCard extends StatelessWidget {
     required this.duration,
     required this.inspecting,
     required this.errors,
+    this.serverPrepared = false,
   });
 
   final String fileName;
   final Duration? duration;
   final bool inspecting;
   final List<String> errors;
+  final bool serverPrepared;
 
   @override
   Widget build(BuildContext context) {
@@ -473,6 +513,14 @@ class _SelectedVideoCard extends StatelessWidget {
                   ? '时长：${inspecting ? '读取中' : '无法读取'}'
                   : '时长：${UploadConstraints.formatDuration(duration!)}',
             ),
+            if (serverPrepared) ...[
+              const SizedBox(height: 8),
+              const _ValidationMessage(
+                icon: Icons.cloud_done_outlined,
+                text: '球馆片段已由中心服务器准备，无需手机再次上传',
+                isError: false,
+              ),
+            ],
             if (inspecting) ...[
               const SizedBox(height: 8),
               const LinearProgressIndicator(),

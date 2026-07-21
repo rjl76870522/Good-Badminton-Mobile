@@ -113,6 +113,36 @@ class ApiService {
     }
   }
 
+  Future<PreviewFrame> previewVenueClip({
+    required String videoId,
+    required int startMs,
+    required int endMs,
+    required String userId,
+    Duration timeout = defaultUploadTimeout,
+  }) async {
+    try {
+      final response = await _client.post(
+        ApiConfig.uri('/api/videos/venue-preview'),
+        headers: {'content-type': 'application/x-www-form-urlencoded'},
+        body: {
+          'video_id': videoId,
+          'start_ms': startMs.toString(),
+          'end_ms': endMs.toString(),
+          'user_id': userId,
+        },
+      ).timeout(timeout);
+      return PreviewFrame.fromJson(_decodeMap(response));
+    } on TimeoutException {
+      throw const ApiException('准备球馆视频片段超时，请稍后重试', isTransient: true);
+    } on SocketException {
+      throw const ApiException('网络连接短暂中断，请稍后重试', isTransient: true);
+    } on http.ClientException {
+      throw const ApiException('网络连接短暂中断，请稍后重试', isTransient: true);
+    } on FormatException catch (error) {
+      throw ApiException(error.message);
+    }
+  }
+
   Future<UploadResult> uploadVideo(
     XFile? file, {
     required String userId,

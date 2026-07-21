@@ -17,6 +17,7 @@ from .movement_metrics import load_stable_player_lookup
 
 MAX_PLAYER_SPEED_MPS = 12.0
 SHUTTLE_SCORE_REFERENCE_PX_PER_SEC = 3500.0
+MIN_ACTIVE_SHUTTLE_SPEED_PX_PER_SEC = 20.0
 MAX_HIGHLIGHT_SOURCE_RATIO = 0.70
 MIN_HIGHLIGHT_SEGMENT_SEC = 2.0
 
@@ -52,7 +53,7 @@ def generate_highlight(
     video_path: str | os.PathLike[str],
     detections_path: str | os.PathLike[str],
     output_dir: str | os.PathLike[str],
-    max_segments: int = 3,
+    max_segments: int = 1,
     window_sec: float = 8.0,
     overlap_sec: float = 4.0,
 ) -> dict[str, Any]:
@@ -72,21 +73,34 @@ def generate_highlight(
         return {"video": None, "segments": [], "error": "Not enough detections for highlights."}
 
     duration_sec = max(frame.time_sec for frame in frames)
-    segments = _select_segments(
+    candidates = _candidate_segments(
         frames=frames,
         duration_sec=duration_sec,
-        max_segments=max_segments,
         window_sec=window_sec,
         overlap_sec=overlap_sec,
     )
+    segments = _select_from_candidates(
+        frames=frames,
+        candidates=candidates,
+        duration_sec=duration_sec,
+        max_segments=max_segments,
+    )
     if not segments:
-        return {"video": None, "segments": [], "error": "No valid highlight segment found."}
+        return {
+            "video": None,
+            "segments": [],
+            "error": "No valid highlight segment found.",
+        }
 
     highlight_path = out_dir / "highlight.mp4"
     try:
         _render_highlight(video, highlight_path, segments, duration_sec)
     except Exception as exc:
-        return {"video": None, "segments": [s.to_dict() for s in segments], "error": str(exc)}
+        return {
+            "video": None,
+            "segments": [s.to_dict() for s in segments],
+            "error": str(exc),
+        }
 
     return {
         "video": str(highlight_path),
@@ -156,6 +170,27 @@ def _select_segments(
     window_sec: float,
     overlap_sec: float,
 ) -> list[HighlightSegment]:
+    candidates = _candidate_segments(
+        frames=frames,
+        duration_sec=duration_sec,
+        window_sec=window_sec,
+        overlap_sec=overlap_sec,
+    )
+    return _select_from_candidates(
+        frames=frames,
+        candidates=candidates,
+        duration_sec=duration_sec,
+        max_segments=max_segments,
+    )
+
+
+def _candidate_segments(
+    *,
+    frames: list[DetectionFrame],
+    duration_sec: float,
+    window_sec: float,
+    overlap_sec: float,
+) -> list[HighlightSegment]:
     effective_window = min(
         window_sec,
         max(MIN_HIGHLIGHT_SEGMENT_SEC, duration_sec * 0.60),
@@ -174,11 +209,26 @@ def _select_segments(
             break
         start += step
 
-    return _sanitize_segments(
+    return candidates
+
+
+def _select_from_candidates(
+    *,
+    frames: list[DetectionFrame],
+    candidates: list[HighlightSegment],
+    duration_sec: float,
+    max_segments: int,
+) -> list[HighlightSegment]:
+    selected = _sanitize_segments(
         candidates,
         duration_sec=duration_sec,
         max_segments=max_segments,
     )
+    rescored: list[HighlightSegment] = []
+    for segment in selected:
+        exact = _score_window(frames, segment.start_sec, segment.end_sec)
+        rescored.append(exact or segment)
+    return rescored
 
 
 def _score_window(
@@ -191,22 +241,30 @@ def _score_window(
         return None
 
     shuttle_speeds: list[float] = []
-    player_peak_speed = 0.0
+    shuttle_detection_frames = 0
+    player_speeds: list[float] = []
     player_distance = 0.0
+    player_detection_frames = 0
     previous_shuttle: tuple[float, tuple[float, float]] | None = None
     previous_players: dict[str, tuple[float, tuple[float, float]]] = {}
 
     for frame in window:
         if frame.player_speeds:
-            player_peak_speed = max(player_peak_speed, max(frame.player_speeds))
+            player_speeds.extend(frame.player_speeds)
+        if frame.player_positions:
+            player_detection_frames += 1
 
         if frame.shuttle_xy is not None:
+            shuttle_detection_frames += 1
             if previous_shuttle is not None:
                 prev_time, prev_xy = previous_shuttle
                 dt = frame.time_sec - prev_time
                 if 0 < dt <= 0.25:
                     speed = math.dist(prev_xy, frame.shuttle_xy) / dt
-                    if math.isfinite(speed) and speed >= 0:
+                    if (
+                        math.isfinite(speed)
+                        and speed >= MIN_ACTIVE_SHUTTLE_SPEED_PX_PER_SEC
+                    ):
                         shuttle_speeds.append(speed)
             previous_shuttle = (frame.time_sec, frame.shuttle_xy)
 
@@ -219,7 +277,7 @@ def _score_window(
                 speed = dist / dt if dt > 0 else 0.0
                 if 0 < dt <= 0.5 and speed <= MAX_PLAYER_SPEED_MPS:
                     player_distance += dist
-                    player_peak_speed = max(player_peak_speed, speed)
+                    player_speeds.append(speed)
             previous_players[name] = (frame.time_sec, xy)
 
     if len(shuttle_speeds) < 3 and player_distance < 1.0:
@@ -227,18 +285,29 @@ def _score_window(
 
     shuttle_peak = _percentile(shuttle_speeds, 90)
     shuttle_raw_peak = max(shuttle_speeds) if shuttle_speeds else 0.0
+    player_peak_speed = _percentile(player_speeds, 90)
+    window_duration = max(end_sec - start_sec, 0.01)
+    player_movement_rate = player_distance / window_duration
+    shuttle_activity_ratio = len(shuttle_speeds) / max(len(window) - 1, 1)
+    shuttle_detection_ratio = shuttle_detection_frames / max(len(window), 1)
+    player_detection_ratio = player_detection_frames / max(len(window), 1)
     shuttle_score = min(
         shuttle_peak / SHUTTLE_SCORE_REFERENCE_PX_PER_SEC * 100.0,
         100.0,
     )
-    player_speed_score = min(player_peak_speed / 5.0 * 100.0, 100.0)
-    player_distance_score = min(player_distance / 35.0 * 100.0, 100.0)
-    detection_score = min((len(shuttle_speeds) + len(window)) / max(len(window) * 1.5, 1) * 100.0, 100.0)
+    player_speed_score = min(player_peak_speed / 6.0 * 100.0, 100.0)
+    player_distance_score = min(player_movement_rate / 4.5 * 100.0, 100.0)
+    detection_score = min(
+        shuttle_activity_ratio / 0.35 * 50.0
+        + shuttle_detection_ratio / 0.75 * 20.0
+        + player_detection_ratio / 0.75 * 30.0,
+        100.0,
+    )
     score = int(round(
-        0.45 * shuttle_score
-        + 0.35 * player_speed_score
-        + 0.15 * player_distance_score
-        + 0.05 * detection_score
+        0.35 * shuttle_score
+        + 0.30 * player_speed_score
+        + 0.25 * player_distance_score
+        + 0.10 * detection_score
     ))
 
     reason = _reason(
@@ -257,6 +326,10 @@ def _score_window(
             "shuttle_samples": float(len(shuttle_speeds)),
             "player_peak_mps": player_peak_speed,
             "player_distance_m": player_distance,
+            "player_movement_rate_mps": player_movement_rate,
+            "shuttle_activity_ratio": shuttle_activity_ratio,
+            "shuttle_detection_ratio": shuttle_detection_ratio,
+            "player_detection_ratio": player_detection_ratio,
             "shuttle_score": shuttle_score,
             "player_speed_score": player_speed_score,
             "player_distance_score": player_distance_score,

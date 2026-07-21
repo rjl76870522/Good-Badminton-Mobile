@@ -5,9 +5,58 @@ from pathlib import Path
 from badminton_analysis.highlight import (
     DetectionFrame,
     HighlightSegment,
+    _score_window,
     _render_highlight,
     _select_segments,
 )
+
+
+def _scoring_frames(*, speed: float, spike: bool = False) -> list[DetectionFrame]:
+    frames = []
+    for index in range(21):
+        frames.append(
+            DetectionFrame(
+                time_sec=index * 0.1,
+                shuttle_xy=(index * speed * 0.1, 100.0),
+                player_positions={},
+                player_speeds=[12.0 if spike and index == 10 else speed / 500.0],
+            )
+        )
+    return frames
+
+
+def test_highlight_score_ignores_one_frame_player_speed_spike():
+    normal = _score_window(_scoring_frames(speed=500), 0, 2)
+    with_spike = _score_window(_scoring_frames(speed=500, spike=True), 0, 2)
+    assert normal is not None
+    assert with_spike is not None
+    assert with_spike.score - normal.score <= 3
+    assert with_spike.metrics["player_peak_mps"] < 3
+
+
+def test_highlight_score_rewards_sustained_activity():
+    calm = _score_window(_scoring_frames(speed=250), 0, 2)
+    active = _score_window(_scoring_frames(speed=1800), 0, 2)
+    assert calm is not None
+    assert active is not None
+    assert active.score > calm.score + 20
+
+
+def test_static_shuttle_positions_do_not_count_as_shuttle_activity():
+    frames = [
+        DetectionFrame(
+            time_sec=index * 0.1,
+            shuttle_xy=(100.0, 100.0),
+            player_positions={"player": (index * 0.12, 0.0)},
+            player_speeds=[1.2],
+        )
+        for index in range(21)
+    ]
+    segment = _score_window(frames, 0, 2)
+    assert segment is not None
+    assert segment.metrics["shuttle_detection_ratio"] == 1
+    assert segment.metrics["shuttle_activity_ratio"] == 0
+    assert segment.metrics["shuttle_score"] == 0
 
 from badminton_analysis.media.video_audio import (
     encode_vscode_compatible_mp4,

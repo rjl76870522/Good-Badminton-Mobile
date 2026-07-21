@@ -19,10 +19,10 @@ void main() {
     expect(find.text('Demo'), findsNothing);
     expect(find.text('附近羽毛球馆'), findsNothing);
     expect(find.text('首页'), findsOneWidget);
-    expect(find.text('导航'), findsOneWidget);
+    expect(find.text('发现'), findsOneWidget);
     expect(find.text('我的'), findsWidgets);
 
-    await tester.tap(find.text('导航'));
+    await tester.tap(find.text('发现'));
     await tester.pump();
     expect(find.text('附近羽毛球馆'), findsOneWidget);
     expect(find.text('高德地图'), findsOneWidget);
@@ -64,7 +64,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
       expect(tester.takeException(), isNull);
 
-      await tester.tap(find.text('导航'));
+      await tester.tap(find.text('发现'));
       await tester.pump(const Duration(milliseconds: 300));
       expect(find.text('附近羽毛球馆'), findsOneWidget);
       expect(tester.takeException(), isNull);
