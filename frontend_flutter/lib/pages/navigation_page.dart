@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 
 import '../services/map_launcher_service.dart';
 import '../widgets/app_background.dart';
@@ -14,10 +15,55 @@ class _NavigationPageState extends State<NavigationPage> {
   final MapLauncherService _mapLauncher = const MapLauncherService();
   MapApp? _launching;
   String? _launchingVenue;
+  Position? _position;
+  bool _locating = false;
+  String? _locationMessage;
+
+  Future<void> _locate() async {
+    setState(() {
+      _locating = true;
+      _locationMessage = null;
+    });
+    try {
+      if (!await Geolocator.isLocationServiceEnabled()) {
+        throw StateError('请先开启手机定位服务');
+      }
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        throw StateError('未获得定位权限，可到系统设置中开启');
+      }
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.medium,
+          timeLimit: Duration(seconds: 12),
+        ),
+      );
+      if (!mounted) return;
+      setState(() {
+        _position = position;
+        _locationMessage = '已定位，将优先搜索当前位置附近的场馆';
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _locationMessage = error.toString().replaceFirst('Bad state: ', '');
+      });
+    } finally {
+      if (mounted) setState(() => _locating = false);
+    }
+  }
 
   Future<void> _launch(MapApp app) async {
     setState(() => _launching = app);
-    final launched = await _mapLauncher.launchNearbyBadminton(app);
+    final launched = await _mapLauncher.launchNearbyBadminton(
+      app,
+      latitude: _position?.latitude,
+      longitude: _position?.longitude,
+    );
     if (!mounted) return;
     setState(() => _launching = null);
     if (launched) return;
@@ -96,6 +142,28 @@ class _NavigationPageState extends State<NavigationPage> {
                       ),
                     ),
                   ],
+                ),
+              ),
+              const SizedBox(height: 18),
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.my_location_outlined),
+                  title: Text(_position == null ? '定位当前位置' : '当前位置已启用'),
+                  subtitle: Text(
+                    _locationMessage ?? '仅在本次搜索中使用，不上传中心服务器',
+                  ),
+                  trailing: _locating
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : IconButton(
+                          tooltip: '定位',
+                          onPressed: _locate,
+                          icon: const Icon(Icons.gps_fixed),
+                        ),
+                  onTap: _locating ? null : _locate,
                 ),
               ),
               const SizedBox(height: 18),

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../models/task_status.dart';
 import '../services/api_service.dart';
+import '../services/notification_service.dart';
 import '../services/task_storage.dart';
 import '../utils/user_facing_error.dart';
 import '../widgets/app_background.dart';
@@ -58,6 +59,11 @@ class _TaskStatusPageState extends State<TaskStatusPage>
       });
       if (!task.isRunning) {
         _timer?.cancel();
+        await NotificationService.instance.notifyTaskFinished(
+          taskId: task.taskId,
+          videoName: task.videoName,
+          completed: task.isCompleted,
+        );
         if (task.isCompleted) {
           await _storage.removeUpload(task.taskId);
         } else {

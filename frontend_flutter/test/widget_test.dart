@@ -26,7 +26,7 @@ void main() {
     await tester.pump();
     expect(find.text('附近羽毛球馆'), findsOneWidget);
     expect(find.text('高德地图'), findsOneWidget);
-    await tester.scrollUntilVisible(find.text('校园场馆示例'), 220);
+    await tester.scrollUntilVisible(find.text('东北大学南湖校区羽乒馆'), 260);
     expect(find.text('东北大学南湖校区羽乒馆'), findsOneWidget);
     await tester.scrollUntilVisible(
       find.text('浙江大学紫金港校区风雨操场'),
@@ -41,6 +41,7 @@ void main() {
     expect(find.text('设置'), findsOneWidget);
     expect(find.text('点击头像可以从相册更换'), findsOneWidget);
     expect(find.text('训练与球馆'), findsOneWidget);
+    expect(find.text('每日签到'), findsOneWidget);
     expect(find.text('数据身份'), findsNothing);
     expect(find.text('检查数据身份'), findsNothing);
     expect(find.textContaining('guest_'), findsNothing);

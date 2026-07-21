@@ -3,7 +3,10 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../services/offline_report_storage.dart';
+import '../services/app_preferences.dart';
+import '../services/notification_service.dart';
 import '../services/user_storage.dart';
+import 'legal_document_page.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -14,12 +17,13 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   static final _website = Uri.parse('https://www.audacity6441.kdns.fr/');
-  static final _privacy = Uri.parse('https://www.audacity6441.kdns.fr/privacy');
   static final _support = Uri.parse('https://www.audacity6441.kdns.fr/support');
 
   final UserStorage _storage = UserStorage();
   final OfflineReportStorage _offlineStorage = OfflineReportStorage();
   bool _autoPlay = false;
+  bool _notifications = false;
+  bool _eyeCare = false;
   int _offlineCount = 0;
 
   @override
@@ -31,9 +35,12 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _load() async {
     final autoPlay = await _storage.getAutoPlayVideos();
     final records = await _offlineStorage.list();
+    final notifications = await AppPreferences.instance.notificationsEnabled();
     if (!mounted) return;
     setState(() {
       _autoPlay = autoPlay;
+      _notifications = notifications;
+      _eyeCare = AppPreferences.instance.eyeCareEnabled.value;
       _offlineCount = records.length;
     });
   }
@@ -71,6 +78,12 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  void _openDocument(LegalDocumentType type) {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => LegalDocumentPage(type: type)),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -78,6 +91,45 @@ class _SettingsPageState extends State<SettingsPage> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          _SettingsGroup(
+            title: '提醒与显示',
+            children: [
+              SwitchListTile(
+                secondary: const Icon(Icons.notifications_outlined),
+                title: const Text('分析完成通知'),
+                subtitle: const Text('应用运行期间，分析完成或失败时提醒'),
+                value: _notifications,
+                onChanged: (value) async {
+                  if (value) {
+                    final allowed =
+                        await NotificationService.instance.requestPermission();
+                    if (!allowed) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('请在系统设置中允许通知权限')),
+                        );
+                      }
+                      return;
+                    }
+                  }
+                  await AppPreferences.instance.setNotificationsEnabled(value);
+                  if (mounted) setState(() => _notifications = value);
+                },
+              ),
+              const Divider(height: 1),
+              SwitchListTile(
+                secondary: const Icon(Icons.visibility_outlined),
+                title: const Text('护眼模式'),
+                subtitle: const Text('降低纯白背景亮度，使用柔和低对比配色'),
+                value: _eyeCare,
+                onChanged: (value) async {
+                  await AppPreferences.instance.setEyeCareEnabled(value);
+                  if (mounted) setState(() => _eyeCare = value);
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
           _SettingsGroup(
             title: '媒体',
             children: [
@@ -136,7 +188,36 @@ class _SettingsPageState extends State<SettingsPage> {
                 leading: const Icon(Icons.privacy_tip_outlined),
                 title: const Text('隐私政策'),
                 trailing: const Icon(Icons.chevron_right),
-                onTap: () => _open(_privacy),
+                onTap: () => _openDocument(LegalDocumentType.privacy),
+              ),
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.description_outlined),
+                title: const Text('用户协议'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => _openDocument(LegalDocumentType.agreement),
+              ),
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.fact_check_outlined),
+                title: const Text('个人信息收集清单'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () =>
+                    _openDocument(LegalDocumentType.personalInformation),
+              ),
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.hub_outlined),
+                title: const Text('第三方信息共享清单'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => _openDocument(LegalDocumentType.thirdPartySharing),
+              ),
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.handshake_outlined),
+                title: const Text('商务合作'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => _openDocument(LegalDocumentType.cooperation),
               ),
               const Divider(height: 1),
               ListTile(
