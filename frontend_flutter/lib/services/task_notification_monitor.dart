@@ -38,11 +38,13 @@ class TaskNotificationMonitor with WidgetsBindingObserver {
         try {
           final task = await api.getTask(taskId);
           if (task.isRunning) continue;
-          await NotificationService.instance.notifyTaskFinished(
+          final notificationHandled =
+              await NotificationService.instance.notifyTaskFinished(
             taskId: task.taskId,
             videoName: task.videoName,
             completed: task.isCompleted,
           );
+          if (!notificationHandled) continue;
           if (task.isCompleted) {
             await _storage.removeUpload(taskId);
           } else {

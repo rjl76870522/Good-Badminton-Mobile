@@ -49,19 +49,21 @@ class _HomePageState extends State<HomePage> {
           if (task.isRunning) {
             runningTasks.add(task);
           } else if (task.isCompleted) {
-            await NotificationService.instance.notifyTaskFinished(
+            final notificationHandled =
+                await NotificationService.instance.notifyTaskFinished(
               taskId: task.taskId,
               videoName: task.videoName,
               completed: true,
             );
-            await _storage.removeUpload(taskId);
+            if (notificationHandled) await _storage.removeUpload(taskId);
           } else {
-            await NotificationService.instance.notifyTaskFinished(
+            final notificationHandled =
+                await NotificationService.instance.notifyTaskFinished(
               taskId: task.taskId,
               videoName: task.videoName,
               completed: false,
             );
-            await _storage.clearActiveTask(taskId);
+            if (notificationHandled) await _storage.clearActiveTask(taskId);
           }
         } on ApiException catch (error) {
           if (error.statusCode == 404) {
