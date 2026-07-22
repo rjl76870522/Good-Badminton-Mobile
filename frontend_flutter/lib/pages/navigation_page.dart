@@ -6,6 +6,7 @@ import 'package:geolocator/geolocator.dart';
 
 import '../services/map_launcher_service.dart';
 import '../widgets/app_background.dart';
+import 'badminton_knowledge_page.dart';
 
 class NavigationPage extends StatefulWidget {
   const NavigationPage({super.key});
@@ -120,8 +121,11 @@ class _NavigationPageState extends State<NavigationPage> {
           top: false,
           bottom: false,
           child: ListView(
+            key: const ValueKey('discover-list'),
             padding: const EdgeInsets.fromLTRB(16, 10, 16, 28),
             children: [
+              const _KnowledgeModules(),
+              const SizedBox(height: 24),
               Container(
                 padding: const EdgeInsets.all(22),
                 decoration: BoxDecoration(
@@ -262,6 +266,113 @@ class _NavigationPageState extends State<NavigationPage> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _KnowledgeModules extends StatelessWidget {
+  const _KnowledgeModules();
+
+  @override
+  Widget build(BuildContext context) {
+    const modules = <({
+      KnowledgeSection section,
+      IconData icon,
+      String title,
+      String subtitle,
+    })>[
+      (
+        section: KnowledgeSection.calendar,
+        icon: Icons.calendar_month_outlined,
+        title: '大赛日历',
+        subtitle: '赛事级别与观赛安排',
+      ),
+      (
+        section: KnowledgeSection.rankings,
+        icon: Icons.leaderboard_outlined,
+        title: '世界排名',
+        subtitle: '五个项目与积分规则',
+      ),
+      (
+        section: KnowledgeSection.players,
+        icon: Icons.person_search_outlined,
+        title: '球星资料',
+        subtitle: '打法特点与观察重点',
+      ),
+      (
+        section: KnowledgeSection.equipment,
+        icon: Icons.sports_tennis_outlined,
+        title: '装备库',
+        subtitle: '球拍、球鞋和用球选择',
+      ),
+    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '羽球内容',
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          '无需离开应用，快速了解赛事、球员与装备',
+          style: Theme.of(context).textTheme.bodyMedium,
+        ),
+        const SizedBox(height: 12),
+        GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: modules.length,
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            mainAxisExtent: 122,
+            crossAxisSpacing: 10,
+            mainAxisSpacing: 10,
+          ),
+          itemBuilder: (context, index) {
+            final module = modules[index];
+            return Card(
+              margin: EdgeInsets.zero,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(8),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => BadmintonKnowledgePage(
+                      initialSection: module.section,
+                    ),
+                  ),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        module.icon,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      const Spacer(),
+                      Text(
+                        module.title,
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        module.subtitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ],
     );
   }
 }
