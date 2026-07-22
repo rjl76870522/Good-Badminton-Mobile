@@ -113,6 +113,36 @@ class ApiService {
     }
   }
 
+  Future<PreviewFrame> previewVenueClip({
+    required String videoId,
+    required int startMs,
+    required int endMs,
+    required String userId,
+    Duration timeout = defaultUploadTimeout,
+  }) async {
+    try {
+      final response = await _client.post(
+        ApiConfig.uri('/api/videos/venue-preview'),
+        headers: {'content-type': 'application/x-www-form-urlencoded'},
+        body: {
+          'video_id': videoId,
+          'start_ms': startMs.toString(),
+          'end_ms': endMs.toString(),
+          'user_id': userId,
+        },
+      ).timeout(timeout);
+      return PreviewFrame.fromJson(_decodeMap(response));
+    } on TimeoutException {
+      throw const ApiException('准备球馆视频片段超时，请稍后重试', isTransient: true);
+    } on SocketException {
+      throw const ApiException('网络连接短暂中断，请稍后重试', isTransient: true);
+    } on http.ClientException {
+      throw const ApiException('网络连接短暂中断，请稍后重试', isTransient: true);
+    } on FormatException catch (error) {
+      throw ApiException(error.message);
+    }
+  }
+
   Future<UploadResult> uploadVideo(
     XFile? file, {
     required String userId,
@@ -272,30 +302,50 @@ class ApiService {
     _decodeMap(response);
   }
 
-  Future<void> setTaskRetained(
-    String taskId, {
-    required String userId,
-    required bool retained,
+  Future<String> downloadFile(
+    String url,
+    String localPath, {
+    void Function(double progress)? onProgress,
   }) async {
-    final response = await _client
-        .put(
-          ApiConfig.uri('/api/tasks/$taskId/retention', {
-            'user_id': userId,
-            'retained': retained.toString(),
-          }),
-        )
-        .timeout(const Duration(seconds: 20));
-    _decodeMap(response);
-  }
-
-  Future<String> downloadFile(String url, String localPath) async {
+    final request = http.Request('GET', Uri.parse(url));
     final response =
-        await _client.get(Uri.parse(url)).timeout(const Duration(minutes: 10));
+        await _client.send(request).timeout(const Duration(minutes: 10));
     if (response.statusCode != 200) {
       throw ApiException('下载失败：HTTP ${response.statusCode}');
     }
     final file = File(localPath);
-    await file.writeAsBytes(response.bodyBytes);
+    final temporaryFile = File('$localPath.part');
+    if (await temporaryFile.exists()) {
+      await temporaryFile.delete();
+    }
+    final sink = temporaryFile.openWrite();
+    final totalBytes = response.contentLength ?? 0;
+    var receivedBytes = 0;
+    try {
+      try {
+        await for (final chunk
+            in response.stream.timeout(const Duration(minutes: 10))) {
+          sink.add(chunk);
+          receivedBytes += chunk.length;
+          if (totalBytes > 0) {
+            onProgress?.call((receivedBytes / totalBytes).clamp(0, 1));
+          }
+        }
+        await sink.flush();
+      } finally {
+        await sink.close();
+      }
+    } catch (_) {
+      try {
+        await temporaryFile.delete();
+      } on FileSystemException {
+        // The original download error is more useful to the caller.
+      }
+      rethrow;
+    }
+    if (await file.exists()) await file.delete();
+    await temporaryFile.rename(file.path);
+    onProgress?.call(1);
     return file.path;
   }
 

@@ -4,6 +4,7 @@ import '../config/api_config.dart';
 import '../models/history_item.dart';
 import '../services/api_service.dart';
 import '../services/offline_report_storage.dart';
+import '../services/offline_save_coordinator.dart';
 import '../services/user_storage.dart';
 import '../utils/user_facing_error.dart';
 import 'report_page.dart';
@@ -21,15 +22,19 @@ class _HistoryPageState extends State<HistoryPage> {
   final ApiService _api = ApiService();
   final UserStorage _userStorage = UserStorage();
   final OfflineReportStorage _offlineStorage = OfflineReportStorage();
+  final OfflineSaveCoordinator _offlineSave = OfflineSaveCoordinator.instance;
   List<HistoryItem> _tasks = const [];
   List<OfflineReportRecord> _offlineRecords = const [];
   String? _error;
   String _statusFilter = 'all';
   bool _loading = true;
+  int _handledOfflineSaveRevision = 0;
 
   @override
   void initState() {
     super.initState();
+    _offlineSave.addListener(_onOfflineSaveChanged);
+    _handledOfflineSaveRevision = _offlineSave.state.revision;
     _load();
   }
 
@@ -63,8 +68,25 @@ class _HistoryPageState extends State<HistoryPage> {
 
   @override
   void dispose() {
+    _offlineSave.removeListener(_onOfflineSaveChanged);
     _api.close();
     super.dispose();
+  }
+
+  void _onOfflineSaveChanged() {
+    if (!mounted) return;
+    final state = _offlineSave.state;
+    setState(() {});
+    if (state.completedRecord != null &&
+        state.revision != _handledOfflineSaveRevision) {
+      _handledOfflineSaveRevision = state.revision;
+      _refreshOfflineRecords();
+    }
+  }
+
+  Future<void> _refreshOfflineRecords() async {
+    final records = await _offlineStorage.list();
+    if (mounted) setState(() => _offlineRecords = records);
   }
 
   void _openTask(HistoryItem task) {
@@ -109,8 +131,7 @@ class _HistoryPageState extends State<HistoryPage> {
     );
     if (confirmed != true) return;
     try {
-      final record = await _offlineStorage.save(
-        api: _api,
+      final record = await _offlineSave.save(
         taskId: task.taskId,
         videoName: task.videoName,
       );
@@ -122,7 +143,7 @@ class _HistoryPageState extends State<HistoryPage> {
         ];
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('报告和图表已保存，可在服务器离线时查看')),
+        const SnackBar(content: Text('报告和图表已保存，暂时无法联网时也能查看')),
       );
     } catch (error) {
       if (!mounted) return;
@@ -159,8 +180,8 @@ class _HistoryPageState extends State<HistoryPage> {
       builder: (context) => AlertDialog(
         title: const Text('删除训练记录？'),
         content: Text(
-          '将删除“${task.videoName.isEmpty ? task.taskId : task.videoName}”'
-          '及后端生成的相关文件，此操作无法撤销。',
+          '将删除“${task.videoName.isEmpty ? '未命名训练' : task.videoName}”'
+          '及中心服务器生成的相关文件，此操作无法撤销。',
         ),
         actions: [
           TextButton(
@@ -199,35 +220,9 @@ class _HistoryPageState extends State<HistoryPage> {
     }
   }
 
-  Future<void> _setRetained(HistoryItem task) async {
-    try {
-      final userId = await _userStorage.getOrCreateUserId();
-      await _api.setTaskRetained(
-        task.taskId,
-        userId: userId,
-        retained: !task.retained,
-      );
-      await _load();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            task.retained ? '已恢复自动存储管理' : '已长期保留，服务器不会自动清理这条训练',
-          ),
-        ),
-      );
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(userFacingError(error, fallback: '修改保留状态失败，请稍后重试。')),
-        ),
-      );
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
+    final offlineSaveState = _offlineSave.state;
     return Scaffold(
       backgroundColor: const Color(0xFF05080B),
       appBar: AppBar(
@@ -315,6 +310,39 @@ class _HistoryPageState extends State<HistoryPage> {
                     ),
                   if (_error != null)
                     _HistoryErrorCard(message: _error!, onRetry: _load),
+                  if (offlineSaveState.running) ...[
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.62),
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.2),
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${offlineSaveState.videoName} · '
+                            '${offlineSaveState.stage}',
+                            style: const TextStyle(color: Colors.white),
+                          ),
+                          const SizedBox(height: 9),
+                          LinearProgressIndicator(
+                            value: offlineSaveState.progress,
+                            color: const Color(0xFFFFC44D),
+                          ),
+                          const SizedBox(height: 5),
+                          Text(
+                            '${(offlineSaveState.progress * 100).round()}%',
+                            style: const TextStyle(color: Colors.white70),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                   if (_offlineRecords.isNotEmpty) ...[
                     _OfflineSection(
                       records: _offlineRecords,
@@ -352,10 +380,11 @@ class _HistoryPageState extends State<HistoryPage> {
                         onTap: () => _openTask(task),
                         onRetry: task.isFailed ? () => _retryTask(task) : null,
                         onDelete: () => _deleteTask(task),
-                        onRetain: () => _setRetained(task),
                         offlineSaved: _offlineRecordFor(task.taskId) != null,
                         onSaveOffline:
-                            task.isCompleted ? () => _saveOffline(task) : null,
+                            task.isCompleted && !offlineSaveState.running
+                                ? () => _saveOffline(task)
+                                : null,
                       ),
                     ),
                   ),
@@ -420,7 +449,6 @@ class _HistoryCard extends StatelessWidget {
     required this.onTap,
     required this.onDelete,
     required this.offlineSaved,
-    required this.onRetain,
     this.onRetry,
     this.onSaveOffline,
   });
@@ -429,7 +457,6 @@ class _HistoryCard extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback onDelete;
   final bool offlineSaved;
-  final VoidCallback onRetain;
   final VoidCallback? onRetry;
   final VoidCallback? onSaveOffline;
 
@@ -470,21 +497,11 @@ class _HistoryCard extends StatelessWidget {
                     children: [
                       Expanded(
                         child: Text(
-                          task.videoName.isEmpty ? task.taskId : task.videoName,
+                          task.videoName.isEmpty ? '未命名训练' : task.videoName,
                           style: Theme.of(context).textTheme.titleMedium,
                         ),
                       ),
                       Chip(label: Text(_statusLabel(task.status))),
-                      if (task.retained) ...[
-                        const SizedBox(width: 6),
-                        const Tooltip(
-                          message: '长期保留',
-                          child: Icon(
-                            Icons.bookmark_rounded,
-                            color: Color(0xFF286B35),
-                          ),
-                        ),
-                      ],
                     ],
                   ),
                   const SizedBox(height: 8),
@@ -537,15 +554,6 @@ class _HistoryCard extends StatelessWidget {
                           ),
                           label: Text(offlineSaved ? '已离线保存' : '离线保存'),
                         ),
-                      OutlinedButton.icon(
-                        onPressed: onRetain,
-                        icon: Icon(
-                          task.retained
-                              ? Icons.bookmark_remove_outlined
-                              : Icons.bookmark_add_outlined,
-                        ),
-                        label: Text(task.retained ? '取消长期保留' : '长期保留'),
-                      ),
                       TextButton.icon(
                         onPressed: onDelete,
                         icon: const Icon(Icons.delete_outline),
@@ -605,7 +613,7 @@ class _OfflineSection extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 6),
-          const Text('服务器关闭后仍可查看核心指标、训练建议和图表'),
+          const Text('暂时无法联网时仍可查看核心指标、训练建议和图表'),
           ...records.map(
             (record) => ListTile(
               contentPadding: EdgeInsets.zero,

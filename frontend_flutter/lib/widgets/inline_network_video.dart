@@ -20,6 +20,7 @@ class InlineNetworkVideo extends StatefulWidget {
 class _InlineNetworkVideoState extends State<InlineNetworkVideo> {
   VideoPlayerController? _controller;
   Future<void>? _initializing;
+  int _controllerGeneration = 0;
 
   @override
   void initState() {
@@ -36,12 +37,24 @@ class _InlineNetworkVideoState extends State<InlineNetworkVideo> {
   }
 
   void _createController() {
+    final generation = ++_controllerGeneration;
     final previous = _controller;
     final controller = VideoPlayerController.networkUrl(Uri.parse(widget.url));
     _controller = controller;
     _initializing = controller.initialize().then((_) async {
+      if (!mounted ||
+          generation != _controllerGeneration ||
+          !identical(_controller, controller)) {
+        await controller.dispose();
+        return;
+      }
       controller.setLooping(false);
       if (await UserStorage().getAutoPlayVideos()) {
+        if (!mounted ||
+            generation != _controllerGeneration ||
+            !identical(_controller, controller)) {
+          return;
+        }
         await controller.play();
       }
     });
@@ -51,6 +64,7 @@ class _InlineNetworkVideoState extends State<InlineNetworkVideo> {
 
   @override
   void dispose() {
+    _controllerGeneration++;
     _controller?.dispose();
     super.dispose();
   }
@@ -121,25 +135,6 @@ class _InlineNetworkVideoState extends State<InlineNetworkVideo> {
                                   const CircularProgressIndicator(
                                     color: Colors.white,
                                   ),
-                                Material(
-                                  color: Colors.black38,
-                                  shape: const CircleBorder(),
-                                  child: IconButton(
-                                    iconSize: 36,
-                                    color: Colors.white,
-                                    tooltip: value.isPlaying ? '暂停' : '播放',
-                                    onPressed: () {
-                                      value.isPlaying
-                                          ? controller.pause()
-                                          : controller.play();
-                                    },
-                                    icon: Icon(
-                                      value.isPlaying
-                                          ? Icons.pause_rounded
-                                          : Icons.play_arrow_rounded,
-                                    ),
-                                  ),
-                                ),
                               ],
                             ),
                           ),
@@ -158,6 +153,19 @@ class _InlineNetworkVideoState extends State<InlineNetworkVideo> {
                           padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
                           child: Row(
                             children: [
+                              IconButton(
+                                tooltip: value.isPlaying ? '暂停' : '播放',
+                                onPressed: () {
+                                  value.isPlaying
+                                      ? controller.pause()
+                                      : controller.play();
+                                },
+                                icon: Icon(
+                                  value.isPlaying
+                                      ? Icons.pause_rounded
+                                      : Icons.play_arrow_rounded,
+                                ),
+                              ),
                               IconButton(
                                 tooltip: value.volume == 0 ? '打开声音' : '静音',
                                 onPressed: () => controller

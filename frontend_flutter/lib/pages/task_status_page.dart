@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../models/task_status.dart';
 import '../services/api_service.dart';
+import '../services/notification_service.dart';
 import '../services/task_storage.dart';
 import '../utils/user_facing_error.dart';
 import '../widgets/app_background.dart';
@@ -58,6 +59,11 @@ class _TaskStatusPageState extends State<TaskStatusPage>
       });
       if (!task.isRunning) {
         _timer?.cancel();
+        await NotificationService.instance.notifyTaskFinished(
+          taskId: task.taskId,
+          videoName: task.videoName,
+          completed: task.isCompleted,
+        );
         if (task.isCompleted) {
           await _storage.removeUpload(task.taskId);
         } else {
@@ -113,8 +119,6 @@ class _TaskStatusPageState extends State<TaskStatusPage>
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.all(16),
               children: [
-                SelectableText('task_id：${widget.taskId}'),
-                const SizedBox(height: 16),
                 if (_loading) const Center(child: CircularProgressIndicator()),
                 if (task != null) ...[
                   Card(
@@ -203,6 +207,17 @@ class _TaskStatusPageState extends State<TaskStatusPage>
                             alignment: Alignment.centerLeft,
                             child: Text('视频：${task.videoName}'),
                           ),
+                          if (task.etaSeconds != null) ...[
+                            const SizedBox(height: 4),
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                task.status == 'queued'
+                                    ? '预计等待：${_formatEta(task.etaSeconds!)}'
+                                    : '预计还需：${_formatEta(task.etaSeconds!)}',
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -247,7 +262,7 @@ class _TaskStatusPageState extends State<TaskStatusPage>
                       ),
                       title: Text(_error!),
                       subtitle: _temporaryNetworkIssue
-                          ? const Text('任务编号已保留，无需重新上传。')
+                          ? const Text('当前任务已保留，无需重新上传')
                           : null,
                     ),
                   ),
@@ -258,6 +273,12 @@ class _TaskStatusPageState extends State<TaskStatusPage>
         ),
       ),
     );
+  }
+
+  String _formatEta(int seconds) {
+    if (seconds < 60) return '约 $seconds 秒';
+    final minutes = (seconds / 60).ceil();
+    return '约 $minutes 分钟';
   }
 
   String _statusLabel(TaskStatus task) {

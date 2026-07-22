@@ -10,6 +10,7 @@ import 'package:video_player/video_player.dart';
 
 import '../models/venue.dart';
 import '../services/api_service.dart';
+import '../services/user_storage.dart';
 import '../utils/user_facing_error.dart';
 import 'upload_page.dart';
 
@@ -25,32 +26,59 @@ class VideoDetailPage extends StatefulWidget {
 
 class _VideoDetailPageState extends State<VideoDetailPage> {
   final ApiService _api = ApiService();
+  final UserStorage _userStorage = UserStorage();
   VideoPlayerController? _controller;
   String? _previewError;
   bool _downloading = false;
+  bool _resettingAtClipEnd = false;
+  bool _playingSelectedClip = false;
+  bool _scrubbing = false;
+  bool _wasPlayingBeforeScrub = false;
+  double _scrubSeconds = 0;
+  double? _pendingScrubSeconds;
+  Future<void>? _scrubSeekWorker;
+  double _previewLoadingProgress = 0;
   double _downloadProgress = 0;
   RangeValues _clipRange = const RangeValues(0, 0);
 
   bool get _isBundledDemo => widget.video.assetPath?.isNotEmpty == true;
+  bool get _videoReady =>
+      _controller != null &&
+      _controller!.value.isInitialized &&
+      _previewLoadingProgress >= 1 &&
+      _previewError == null;
 
   String get _downloadUrl =>
       widget.video.downloadUrl ??
-      Uri.parse(widget.venue.serverUrl)
-          .resolve('/videos/${widget.video.id}/download')
-          .toString();
+      _venueVideoUrl('videos/${widget.video.id}/download');
+
+  String _venueVideoUrl(String path) {
+    final base = Uri.parse(widget.venue.serverUrl);
+    final basePath = base.path.endsWith('/') ? base.path : '${base.path}/';
+    return base
+        .replace(path: '$basePath$path', query: null, fragment: null)
+        .toString();
+  }
 
   Duration get _duration => _controller?.value.duration ?? Duration.zero;
-
   double get _maximumSeconds => math
       .max(1, _duration.inMilliseconds / Duration.millisecondsPerSecond)
       .toDouble();
-
   int get _startMs =>
       (_clipRange.start * Duration.millisecondsPerSecond).round();
   int get _endMs => (_clipRange.end * Duration.millisecondsPerSecond).round();
-
   bool get _isFullSelection =>
       _startMs <= 0 && _endMs >= _duration.inMilliseconds - 150;
+  Uri get _clipUri {
+    final download = Uri.parse(_downloadUrl);
+    final clipPath = download.path.endsWith('/download')
+        ? '${download.path.substring(0, download.path.length - '/download'.length)}/clip'
+        : '${download.path}/clip';
+    return download.replace(path: clipPath, queryParameters: {
+      'start_ms': _startMs.toString(),
+      'end_ms': _endMs.toString(),
+    });
+  }
 
   @override
   void initState() {
@@ -59,11 +87,14 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
   }
 
   Future<void> _initializePreview() async {
-    final controller = _isBundledDemo
-        ? VideoPlayerController.asset(widget.video.assetPath!)
-        : VideoPlayerController.networkUrl(Uri.parse(_downloadUrl));
+    VideoPlayerController? controller;
     try {
-      await controller.initialize();
+      if (_isBundledDemo) {
+        controller = VideoPlayerController.asset(widget.video.assetPath!);
+      } else {
+        controller = VideoPlayerController.networkUrl(Uri.parse(_downloadUrl));
+      }
+      await controller.initialize().timeout(const Duration(seconds: 30));
       if (!mounted) {
         await controller.dispose();
         return;
@@ -72,9 +103,10 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
       setState(() {
         _controller = controller;
         _clipRange = RangeValues(0, _maximumSeconds);
+        _previewLoadingProgress = 1;
       });
     } catch (_) {
-      await controller.dispose();
+      await controller?.dispose();
       if (mounted) {
         setState(() => _previewError = '视频预览暂时不可用，请检查球馆网络。');
       }
@@ -82,26 +114,30 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
   }
 
   void _onVideoChanged() {
+    final controller = _controller;
+    if (controller != null &&
+        _playingSelectedClip &&
+        controller.value.isPlaying &&
+        !_resettingAtClipEnd &&
+        controller.value.position.inMilliseconds >= _endMs) {
+      _resettingAtClipEnd = true;
+      controller.pause().then(
+            (_) => controller
+                .seekTo(Duration(milliseconds: _startMs))
+                .whenComplete(() {
+              _playingSelectedClip = false;
+              _resettingAtClipEnd = false;
+            }),
+          );
+    }
     if (mounted) setState(() {});
   }
 
-  String _formatTime(int milliseconds) {
-    final totalSeconds = milliseconds ~/ Duration.millisecondsPerSecond;
-    final minutes = totalSeconds ~/ 60;
-    final seconds = totalSeconds % 60;
-    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
-  }
-
-  Uri get _clipUri => Uri.parse(widget.venue.serverUrl)
-          .resolve('/videos/${widget.video.id}/clip')
-          .replace(queryParameters: {
-        'start_ms': _startMs.toString(),
-        'end_ms': _endMs.toString(),
-      });
-
-  Future<File> _downloadSelectedClip() async {
-    if (_isBundledDemo && !_isFullSelection) {
-      throw StateError('内置演示视频暂不支持截取，请选择完整视频保存或分析。');
+  Future<File> _downloadToCache({
+    void Function(double progress)? onProgress,
+  }) async {
+    if (!_videoReady) {
+      throw StateError('完整视频仍在缓存，请稍候。');
     }
     final directory = await getTemporaryDirectory();
     final videoDirectory =
@@ -109,8 +145,8 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
     if (!await videoDirectory.exists()) {
       await videoDirectory.create(recursive: true);
     }
-    final suffix = '$_startMs' '_' '$_endMs';
-    final targetPath = '${videoDirectory.path}/${widget.video.id}_$suffix.mp4';
+    final fileName = '${widget.video.id}_${_startMs}_$_endMs.mp4';
+    final targetPath = '${videoDirectory.path}/$fileName';
     if (_isBundledDemo) {
       final data = await rootBundle.load(widget.video.assetPath!);
       final file = File(targetPath);
@@ -118,20 +154,147 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
         data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
         flush: true,
       );
+      onProgress?.call(1);
       return file;
     }
     final url = _isFullSelection ? _downloadUrl : _clipUri.toString();
-    final savedPath = await _api.downloadFile(url, targetPath);
+    final savedPath = await _api.downloadFile(
+      url,
+      targetPath,
+      onProgress: onProgress,
+    );
     return File(savedPath);
   }
 
-  void _resetClip() {
-    setState(() => _clipRange = RangeValues(0, _maximumSeconds));
+  void _showDownloadProgress(double progress) {
+    if (!mounted) return;
+    final normalized = progress.clamp(0.0, 1.0).toDouble();
+    setState(() => _downloadProgress = .05 + normalized * .85);
   }
 
-  Future<void> _selectClipAction() async {
-    if (_duration <= Duration.zero) return;
-    final action = await showModalBottomSheet<_ClipAction>(
+  String _formatTime(int milliseconds) {
+    final totalSeconds = milliseconds ~/ Duration.millisecondsPerSecond;
+    final minutes = totalSeconds ~/ 60;
+    final seconds = totalSeconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:'
+        '${seconds.toString().padLeft(2, '0')}';
+  }
+
+  Future<void> _resetClip() async {
+    setState(() => _clipRange = RangeValues(0, _maximumSeconds));
+    await _controller?.seekTo(Duration.zero);
+  }
+
+  Future<void> _updateClipRange(RangeValues values) async {
+    const minimumSpan = 1.0;
+    var start = values.start;
+    var end = values.end;
+    if (end - start < minimumSpan) {
+      if (start + minimumSpan <= _maximumSeconds) {
+        end = start + minimumSpan;
+      } else {
+        start = end - minimumSpan;
+      }
+    }
+    final previous = _clipRange;
+    final startMoved = (start - previous.start).abs();
+    final endMoved = (end - previous.end).abs();
+    final seekSeconds = startMoved >= endMoved ? start : end;
+    setState(() => _clipRange = RangeValues(start, end));
+    final controller = _controller;
+    if (controller != null) {
+      await controller.pause();
+      await controller.seekTo(
+        Duration(
+          milliseconds: (seekSeconds * Duration.millisecondsPerSecond).round(),
+        ),
+      );
+    }
+  }
+
+  Future<void> _previewSelectedClip() async {
+    final controller = _controller;
+    if (controller == null) return;
+    await controller.pause();
+    await controller.seekTo(Duration(milliseconds: _startMs));
+    _playingSelectedClip = true;
+    await controller.play();
+  }
+
+  Future<void> _togglePlayback() async {
+    final controller = _controller;
+    if (controller == null) return;
+    if (controller.value.isPlaying) {
+      _playingSelectedClip = false;
+      await controller.pause();
+      return;
+    }
+    _playingSelectedClip = false;
+    final position = controller.value.position.inMilliseconds;
+    if (position < _startMs || position >= _endMs) {
+      await controller.seekTo(Duration(milliseconds: _startMs));
+    }
+    await controller.play();
+  }
+
+  void _startScrubbing(double value) {
+    final controller = _controller;
+    if (controller == null) return;
+    _playingSelectedClip = false;
+    _wasPlayingBeforeScrub = controller.value.isPlaying;
+    controller.pause();
+    setState(() {
+      _scrubbing = true;
+      _scrubSeconds = value;
+    });
+    _queueScrubSeek(value);
+  }
+
+  void _scrubTo(double value) {
+    if (_controller == null) return;
+    setState(() => _scrubSeconds = value);
+    _queueScrubSeek(value);
+  }
+
+  void _queueScrubSeek(double value) {
+    _pendingScrubSeconds = value;
+    _scrubSeekWorker ??= _drainScrubSeeks().whenComplete(
+      () => _scrubSeekWorker = null,
+    );
+  }
+
+  Future<void> _drainScrubSeeks() async {
+    while (_pendingScrubSeconds != null) {
+      final target = _pendingScrubSeconds!;
+      _pendingScrubSeconds = null;
+      final controller = _controller;
+      if (controller == null) return;
+      await controller.seekTo(
+        Duration(
+          milliseconds: (target * Duration.millisecondsPerSecond).round(),
+        ),
+      );
+      if (mounted) setState(() {});
+    }
+  }
+
+  Future<void> _finishScrubbing(double value) async {
+    final controller = _controller;
+    if (controller == null) return;
+    _queueScrubSeek(value);
+    await _scrubSeekWorker;
+    if (_wasPlayingBeforeScrub) await controller.play();
+    if (mounted) {
+      setState(() {
+        _scrubbing = false;
+        _scrubSeconds = value;
+      });
+    }
+  }
+
+  Future<void> _selectDownloadAction() async {
+    if (!_videoReady || _downloading) return;
+    final action = await showModalBottomSheet<_VideoAction>(
       context: context,
       showDragHandle: true,
       builder: (context) => SafeArea(
@@ -141,21 +304,25 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('使用选中片段', style: Theme.of(context).textTheme.titleLarge),
+              Text('获取比赛视频', style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 6),
-              Text('片段范围：${_formatTime(_startMs)} - ${_formatTime(_endMs)}'),
+              Text(
+                _isFullSelection
+                    ? '当前选择完整视频'
+                    : '当前片段：${_formatTime(_startMs)} - ${_formatTime(_endMs)}',
+              ),
               const SizedBox(height: 12),
               ListTile(
                 leading: const Icon(Icons.photo_library_outlined),
                 title: const Text('保存到系统相册'),
-                subtitle: const Text('保存选中的视频片段'),
-                onTap: () => Navigator.pop(context, _ClipAction.saveToGallery),
+                subtitle: const Text('可在手机相册的 Good-Badminton 相簿中查看'),
+                onTap: () => Navigator.pop(context, _VideoAction.saveToGallery),
               ),
               ListTile(
                 leading: const Icon(Icons.analytics_outlined),
                 title: const Text('直接进行分析'),
-                subtitle: const Text('将选中片段带入现有上传和分析流程'),
-                onTap: () => Navigator.pop(context, _ClipAction.analyze),
+                subtitle: const Text('带入现有的视频上传与分析流程'),
+                onTap: () => Navigator.pop(context, _VideoAction.analyze),
               ),
             ],
           ),
@@ -163,10 +330,10 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
       ),
     );
     switch (action) {
-      case _ClipAction.saveToGallery:
+      case _VideoAction.saveToGallery:
         await _saveToGallery();
         return;
-      case _ClipAction.analyze:
+      case _VideoAction.analyze:
         await _downloadAndAnalyze();
         return;
       case null:
@@ -177,12 +344,12 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
   Future<void> _saveToGallery() async {
     setState(() {
       _downloading = true;
-      _downloadProgress = .2;
+      _downloadProgress = .05;
     });
     try {
-      final file = await _downloadSelectedClip();
+      final file = await _downloadToCache(onProgress: _showDownloadProgress);
       if (!mounted) return;
-      setState(() => _downloadProgress = .8);
+      setState(() => _downloadProgress = .95);
       final hasAccess = await Gal.hasAccess(toAlbum: true);
       final granted = hasAccess || await Gal.requestAccess(toAlbum: true);
       if (!granted) {
@@ -192,19 +359,22 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
       try {
         await file.delete();
       } on FileSystemException {
-        // 已成功导入系统相册；清理缓存失败不影响保存结果。
+        // 已成功导入系统相册；清理临时文件失败不影响保存结果。
       }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('选中片段已保存到系统相册：Good-Badminton')),
+          const SnackBar(
+            content: Text('已保存到系统相册：Good-Badminton'),
+            duration: Duration(seconds: 2),
+          ),
         );
       }
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content:
-                  Text(userFacingError(error, fallback: '保存视频片段失败，请检查网络后重试。'))),
+            content: Text(userFacingError(error, fallback: '保存视频失败，请检查网络后重试。')),
+          ),
         );
       }
     } finally {
@@ -220,17 +390,38 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
   Future<void> _downloadAndAnalyze() async {
     setState(() {
       _downloading = true;
-      _downloadProgress = .2;
+      _downloadProgress = .05;
     });
     try {
-      final file = await _downloadSelectedClip();
+      if (_isBundledDemo) {
+        final file = await _downloadToCache(onProgress: _showDownloadProgress);
+        if (!mounted) return;
+        setState(() => _downloadProgress = 1);
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => UploadPage(
+              initialVideoPath: file.path,
+              initialVideoName: XFile(file.path).name,
+            ),
+          ),
+        );
+        return;
+      }
+      setState(() => _downloadProgress = .35);
+      final userId = await _userStorage.getOrCreateUserId();
+      final preview = await _api.previewVenueClip(
+        videoId: widget.video.id,
+        startMs: _startMs,
+        endMs: _endMs,
+        userId: userId,
+      );
       if (!mounted) return;
       setState(() => _downloadProgress = 1);
       await Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => UploadPage(
-            initialVideoPath: file.path,
-            initialVideoName: XFile(file.path).name,
+            initialPreview: preview,
+            initialVideoName: '${widget.video.id}_${_startMs}_$_endMs.mp4',
           ),
         ),
       );
@@ -238,8 +429,9 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text(
-                  userFacingError(error, fallback: '获取视频片段失败，请检查球馆网络后重试。'))),
+            content:
+                Text(userFacingError(error, fallback: '准备球馆视频失败，请检查网络后重试。')),
+          ),
         );
       }
     } finally {
@@ -264,26 +456,76 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
   Widget build(BuildContext context) {
     final controller = _controller;
     return Scaffold(
-      appBar: AppBar(title: const Text('视频预览')),
+      appBar: AppBar(title: const Text('选择视频')),
       body: SafeArea(
         top: false,
         child: ListView(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(20),
           children: [
             _previewCard(controller),
             const SizedBox(height: 16),
-            Text(widget.video.court,
-                style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 4),
-            Text('${widget.video.time} · ${widget.video.duration}'),
-            const SizedBox(height: 18),
-            if (controller != null) _clipSelector(context),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('球馆：${widget.venue.name}'),
+                    const SizedBox(height: 8),
+                    Text('视频：${widget.video.court}'),
+                    const SizedBox(height: 8),
+                    Text('时间：${widget.video.time}'),
+                    const SizedBox(height: 8),
+                    Text('时长：${widget.video.duration}'),
+                    if (widget.video.isPreparedClip) ...[
+                      const SizedBox(height: 12),
+                      const Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(Icons.content_cut_rounded,
+                              size: 20, color: Color(0xFF2E7D32)),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              '已从球馆存储的完整视频中截取出准备分析的视频片段',
+                              style: TextStyle(height: 1.45),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            if (controller != null && !_isBundledDemo) ...[
+              _clipSelector(context),
+              const SizedBox(height: 20),
+            ],
             if (_downloading) ...[
-              const SizedBox(height: 16),
               LinearProgressIndicator(value: _downloadProgress),
               const SizedBox(height: 8),
-              const Text('正在准备选中片段…'),
+              const Text('正在获取球馆视频…'),
+              const SizedBox(height: 12),
             ],
+            FilledButton.icon(
+              onPressed:
+                  _downloading || !_videoReady ? null : _selectDownloadAction,
+              icon: _videoReady
+                  ? const Icon(Icons.download_rounded)
+                  : const SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+              label: Text(
+                _videoReady
+                    ? '获取视频'
+                    : _previewError != null
+                        ? '视频暂不可用'
+                        : '正在加载视频',
+              ),
+            ),
           ],
         ),
       ),
@@ -300,54 +542,44 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
                 children: [
                   const Icon(Icons.content_cut_rounded),
                   const SizedBox(width: 8),
-                  Text('截取视频片段',
-                      style: Theme.of(context).textTheme.titleMedium),
+                  Text(
+                    '选择要分析的回合',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
                   const Spacer(),
-                  TextButton(onPressed: _resetClip, child: const Text('完整视频')),
+                  TextButton(
+                    onPressed: _resetClip,
+                    child: const Text('完整视频'),
+                  ),
                 ],
               ),
-              const SizedBox(height: 6),
-              Text('拖动两端选择要保存或分析的时间范围。',
-                  style: Theme.of(context).textTheme.bodySmall),
+              const SizedBox(height: 4),
+              const Text('拖动两端，尽量避开回合之间的捡球和休息时间'),
               RangeSlider(
                 values: _clipRange,
                 min: 0,
                 max: _maximumSeconds,
                 divisions:
-                    math.min(120, _maximumSeconds.ceil()).clamp(1, 120).toInt(),
-                labels: RangeLabels(_formatTime(_startMs), _formatTime(_endMs)),
-                onChanged: _downloading
-                    ? null
-                    : (values) {
-                        final minSpan =
-                            _maximumSeconds > 1 ? 1.0 : _maximumSeconds;
-                        var start = values.start;
-                        var end = values.end;
-                        if (end - start < minSpan) {
-                          if (end + minSpan <= _maximumSeconds) {
-                            end = start + minSpan;
-                          } else {
-                            start = end - minSpan;
-                          }
-                        }
-                        setState(() => _clipRange = RangeValues(start, end));
-                      },
+                    math.min(180, _maximumSeconds.ceil()).clamp(1, 180).toInt(),
+                labels: RangeLabels(
+                  _formatTime(_startMs),
+                  _formatTime(_endMs),
+                ),
+                onChangeStart:
+                    _downloading ? null : (_) => _controller?.pause(),
+                onChanged: _downloading ? null : _updateClipRange,
               ),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(_formatTime(_startMs)),
-                  Text(_formatTime(_endMs))
+                  OutlinedButton.icon(
+                    onPressed: _downloading ? null : _previewSelectedClip,
+                    icon: const Icon(Icons.play_arrow_rounded),
+                    label: const Text('预览所选片段'),
+                  ),
+                  Text(_formatTime(_endMs)),
                 ],
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: _downloading ? null : _selectClipAction,
-                  icon: const Icon(Icons.content_cut_rounded),
-                  label: const Text('使用选中片段'),
-                ),
               ),
             ],
           ),
@@ -359,16 +591,17 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
       return _placeholder(const Icon(Icons.wifi_off_outlined), _previewError!);
     }
     if (controller == null) {
-      return _placeholder(const CircularProgressIndicator(), '正在加载视频预览…');
+      return _placeholder(
+        const CircularProgressIndicator(),
+        '正在加载视频预览…',
+      );
     }
     return ClipRRect(
       borderRadius: BorderRadius.circular(20),
       child: Column(
         children: [
           GestureDetector(
-            onTap: () => controller.value.isPlaying
-                ? controller.pause()
-                : controller.play(),
+            onTap: _togglePlayback,
             child: ColoredBox(
               color: Colors.black,
               child: AspectRatio(
@@ -379,31 +612,69 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
           ),
           ColoredBox(
             color: const Color(0xFF111714),
-            child: Row(
+            child: Column(
               children: [
-                IconButton(
-                  tooltip: controller.value.isPlaying ? '暂停' : '播放',
-                  color: Colors.white,
-                  onPressed: () => controller.value.isPlaying
-                      ? controller.pause()
-                      : controller.play(),
-                  icon: Icon(controller.value.isPlaying
-                      ? Icons.pause_rounded
-                      : Icons.play_arrow_rounded),
-                ),
-                Expanded(
-                  child: VideoProgressIndicator(
-                    controller,
-                    allowScrubbing: true,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    colors: const VideoProgressColors(
-                      playedColor: Color(0xFF62A76B),
-                      bufferedColor: Color(0xFF53645A),
-                      backgroundColor: Color(0xFF303A34),
+                Row(
+                  children: [
+                    IconButton(
+                      tooltip: controller.value.isPlaying ? '暂停' : '播放',
+                      color: Colors.white,
+                      onPressed: _togglePlayback,
+                      icon: Icon(
+                        controller.value.isPlaying
+                            ? Icons.pause_rounded
+                            : Icons.play_arrow_rounded,
+                      ),
                     ),
+                    Expanded(
+                      child: Slider(
+                        value: (_scrubbing
+                                ? _scrubSeconds
+                                : controller.value.position.inMilliseconds /
+                                    Duration.millisecondsPerSecond)
+                            .clamp(0, _maximumSeconds),
+                        min: 0,
+                        max: _maximumSeconds,
+                        label: _formatTime(
+                          ((_scrubbing
+                                      ? _scrubSeconds
+                                      : controller
+                                              .value.position.inMilliseconds /
+                                          Duration.millisecondsPerSecond) *
+                                  Duration.millisecondsPerSecond)
+                              .round(),
+                        ),
+                        onChangeStart: _startScrubbing,
+                        onChanged: _scrubTo,
+                        onChangeEnd: _finishScrubbing,
+                      ),
+                    ),
+                  ],
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(52, 0, 16, 10),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        _formatTime(
+                          ((_scrubbing
+                                      ? _scrubSeconds
+                                      : controller
+                                              .value.position.inMilliseconds /
+                                          Duration.millisecondsPerSecond) *
+                                  Duration.millisecondsPerSecond)
+                              .round(),
+                        ),
+                        style: const TextStyle(color: Colors.white70),
+                      ),
+                      Text(
+                        _formatTime(_duration.inMilliseconds),
+                        style: const TextStyle(color: Colors.white70),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(width: 14),
               ],
             ),
           ),
@@ -430,4 +701,4 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
       );
 }
 
-enum _ClipAction { saveToGallery, analyze }
+enum _VideoAction { saveToGallery, analyze }

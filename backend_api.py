@@ -7,6 +7,7 @@ Run from the project root:
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import os
@@ -16,7 +17,11 @@ import threading
 import time
 import uuid
 import gc
-from contextlib import asynccontextmanager
+import math
+import statistics
+from collections import Counter, defaultdict, deque
+from contextlib import asynccontextmanager, contextmanager
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -51,6 +56,10 @@ from badminton_analysis.user_registry import (
     search_users_by_display_name,
     update_display_name,
 )
+from mock_venue_server.main import (
+    app as virtual_venue_app,
+    download_clip as create_virtual_venue_clip,
+)
 from webui.pipeline import prepare_court, run_analysis
 
 
@@ -66,6 +75,8 @@ FRONTEND_DIR = PROJECT_ROOT / "mobile_frontend"
 DEFAULT_USER_ID = "guest"
 USER_ID_RULE_MESSAGE = "用户 ID 需要 3-32 位，只能使用小写英文字母、数字、下划线或短横线，且必须以字母或数字开头。"
 MAX_UPLOAD_BYTES = 200 * 1024 * 1024
+MAX_QUEUED_TASKS_PER_USER = 3
+MAX_TASKS_PER_USER_PER_MINUTE = 2
 STORAGE_WARNING_PERCENT = float(os.getenv("STORAGE_WARNING_PERCENT", "70"))
 STORAGE_BLOCK_PERCENT = float(os.getenv("STORAGE_BLOCK_PERCENT", "80"))
 MIN_VIDEO_DURATION_SEC = 5.0
@@ -80,8 +91,8 @@ MAX_PREVIEW_DARK_RATIO = 0.65
 MIN_PREVIEW_SHARPNESS = 12.0
 MIN_PREVIEW_COURT_AREA_RATIO = 0.025
 MAX_PREVIEW_COURT_AREA_RATIO = 0.92
-PREVIEW_IMAGE_MAX_WIDTH = 480
-PREVIEW_IMAGE_JPEG_QUALITY = 65
+PREVIEW_IMAGE_MAX_WIDTH = 960
+PREVIEW_IMAGE_JPEG_QUALITY = 90
 DEFAULT_TEMPLATE_CANDIDATES = [
     PROJECT_ROOT / "templates" / "badminton_template.png",
     PROJECT_ROOT / "templates" / "my_template.png",
@@ -173,11 +184,17 @@ app.add_middleware(
 )
 app.mount("/outputs", StaticFiles(directory=str(OUTPUTS_DIR)), name="outputs")
 app.mount("/preview-frames", StaticFiles(directory=str(PREVIEW_FRAME_DIR)), name="preview_frames")
+app.mount("/venue-demo", virtual_venue_app, name="virtual_venue")
 if FRONTEND_DIR.is_dir():
     app.mount("/app", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="mobile_frontend")
 
 USER_REGISTRY_LOCK = threading.Lock()
 STARTUP_RECOVERY_LOCK = threading.Lock()
+TASK_CREATION_LOCK = threading.Lock()
+VIDEO_NAMING_LOCK = threading.Lock()
+VIDEO_DAILY_SEQUENCE: dict[tuple[str, str], int] = {}
+TASK_CREATION_TIMES: dict[str, deque[float]] = defaultdict(deque)
+TASK_CREATION_RESERVATIONS: Counter[str] = Counter()
 
 
 class RegisterUserRequest(BaseModel):
@@ -315,6 +332,53 @@ def search_users(
     return {"users": users, "count": len(users)}
 
 
+@contextmanager
+def _task_creation_slot(user_id: str):
+    now = time.time()
+    with TASK_CREATION_LOCK:
+        recent = TASK_CREATION_TIMES[user_id]
+        while recent and recent[0] <= now - 60:
+            recent.popleft()
+        reservations = TASK_CREATION_RESERVATIONS[user_id]
+        if len(recent) + reservations >= MAX_TASKS_PER_USER_PER_MINUTE:
+            retry_after = max(1, round(60 - (now - recent[0]))) if recent else 60
+            raise_api_error(
+                status_code=429,
+                code="TASK_RATE_LIMITED",
+                message=f"创建任务过于频繁，请约 {retry_after} 秒后再试。",
+                hint="每位用户每分钟最多创建 2 个分析任务。",
+            )
+        session = get_session()
+        try:
+            queued = (
+                session.query(Task)
+                .filter(Task.user_id == user_id, Task.status == "queued")
+                .count()
+            )
+        finally:
+            session.close()
+        if queued + reservations >= MAX_QUEUED_TASKS_PER_USER:
+            raise_api_error(
+                status_code=429,
+                code="USER_QUEUE_FULL",
+                message="你已有 3 个视频正在等待分析，请等待其中一个开始后再上传。",
+                hint="正在分析的任务不会占用等待名额。",
+            )
+        TASK_CREATION_RESERVATIONS[user_id] += 1
+
+    succeeded = False
+    try:
+        yield
+        succeeded = True
+    finally:
+        with TASK_CREATION_LOCK:
+            TASK_CREATION_RESERVATIONS[user_id] -= 1
+            if TASK_CREATION_RESERVATIONS[user_id] <= 0:
+                TASK_CREATION_RESERVATIONS.pop(user_id, None)
+            if succeeded:
+                TASK_CREATION_TIMES[user_id].append(time.time())
+
+
 @app.post("/api/videos/upload")
 def upload_video(
     file: UploadFile | None = File(default=None),
@@ -335,10 +399,34 @@ def upload_video(
         )
 
     user_id = _safe_user_id(user_id)
+    with _task_creation_slot(user_id):
+        return _create_analysis_task(
+            file=file,
+            user_id=user_id,
+            source_upload_id=source_upload_id,
+            template_path=template_path,
+            corners_json=corners_json,
+            language=language,
+            pose_mode=pose_mode,
+            keep_audio=keep_audio,
+        )
+
+
+def _create_analysis_task(
+    *,
+    file: UploadFile | None,
+    user_id: str,
+    source_upload_id: str | None,
+    template_path: str | None,
+    corners_json: str | None,
+    language: str,
+    pose_mode: str,
+    keep_audio: bool,
+) -> dict[str, Any]:
     task_id = uuid.uuid4().hex
     if source_upload_id:
         source_path, source_name = _resolve_preview_upload(source_upload_id)
-        safe_name = source_name
+        original_name = source_name
     else:
         if file is None or not file.filename:
             raise_api_error(
@@ -347,39 +435,47 @@ def upload_video(
                 message="请选择要上传的视频文件。",
             )
         source_path = None
-        safe_name = _safe_filename(file.filename)
-    upload_path = UPLOAD_DIR / f"{task_id}_{safe_name}"
+        original_name = _safe_filename(file.filename)
 
-    if source_upload_id:
-        shutil.copyfile(source_path, upload_path)
-    else:
-        with upload_path.open("wb") as out:
-            shutil.copyfileobj(file.file, out)
-    _validate_uploaded_video(upload_path)
+    video_name = _next_daily_video_name(user_id, original_name)
+    user_upload_dir = UPLOAD_DIR / user_id
+    user_upload_dir.mkdir(parents=True, exist_ok=True)
+    upload_path = user_upload_dir / f"{task_id}_{video_name}"
 
-    template = _resolve_template(template_path)
-    corners = _parse_corners(corners_json)
-    if corners:
-        _validate_corners_for_video(corners, upload_path)
-    task = {
-        "task_id": task_id,
-        "status": "queued",
-        "progress": 0.0,
-        "stage": "queued",
-        "error": None,
-        "video_name": safe_name,
-        "user_id": user_id,
-        "upload_path": str(upload_path),
-        "template_path": str(template),
-        "corners_json": json.dumps(corners) if corners else None,
-        "language": language,
-        "pose_mode": pose_mode,
-        "keep_audio": keep_audio,
-        "created_at": time.time(),
-        "updated_at": time.time(),
-        "report": None,
-    }
-    _set_task(task_id, task)
+    try:
+        if source_upload_id:
+            shutil.copyfile(source_path, upload_path)
+        else:
+            with upload_path.open("wb") as out:
+                shutil.copyfileobj(file.file, out)
+        _validate_uploaded_video(upload_path)
+
+        template = _resolve_template(template_path)
+        corners = _parse_corners(corners_json)
+        if corners:
+            _validate_corners_for_video(corners, upload_path)
+        task = {
+            "task_id": task_id,
+            "status": "queued",
+            "progress": 0.0,
+            "stage": "queued",
+            "error": None,
+            "video_name": video_name,
+            "user_id": user_id,
+            "upload_path": str(upload_path),
+            "template_path": str(template),
+            "corners_json": json.dumps(corners) if corners else None,
+            "language": language,
+            "pose_mode": pose_mode,
+            "keep_audio": keep_audio,
+            "created_at": time.time(),
+            "updated_at": time.time(),
+            "report": None,
+        }
+        _set_task(task_id, task)
+    except Exception:
+        upload_path.unlink(missing_ok=True)
+        raise
     if source_upload_id:
         _remove_preview_artifacts(source_upload_id, source_path)
     TASK_WORKER.notify()
@@ -409,16 +505,65 @@ def create_preview_frame(
     source_upload_id = uuid.uuid4().hex
     safe_name = _safe_filename(file.filename)
     source_path = PREVIEW_UPLOAD_DIR / f"{source_upload_id}_{safe_name}"
-    with source_path.open("wb") as out:
-        shutil.copyfileobj(file.file, out)
-    _validate_uploaded_video(source_path)
-
-    preview = _select_preview_frame(source_path, source_upload_id)
+    try:
+        with source_path.open("wb") as out:
+            shutil.copyfileobj(file.file, out)
+        _validate_uploaded_video(source_path)
+        preview = _select_preview_frame(source_path, source_upload_id)
+    except Exception:
+        _remove_preview_artifacts(source_upload_id, source_path)
+        raise
     preview.update(
         {
             "source_upload_id": source_upload_id,
             "user_id": user_id,
             "video_name": safe_name,
+        }
+    )
+    return preview
+
+
+@app.post("/api/videos/venue-preview")
+def create_venue_preview(
+    video_id: str = Form(...),
+    start_ms: int = Form(..., ge=0),
+    end_ms: int = Form(..., gt=0),
+    user_id: str = Form(default=DEFAULT_USER_ID),
+) -> dict[str, Any]:
+    """Prepare a venue clip locally without routing video bytes through the phone."""
+    _require_upload_capacity()
+    user_id = _safe_user_id(user_id)
+    source_upload_id = uuid.uuid4().hex
+    source_path = PREVIEW_UPLOAD_DIR / f"{source_upload_id}_{video_id}.mp4"
+    try:
+        clip_response = create_virtual_venue_clip(
+            video_id=video_id,
+            start_ms=start_ms,
+            end_ms=end_ms,
+        )
+        clip_path = Path(str(clip_response.path))
+        if not clip_path.is_file():
+            raise_api_error(
+                status_code=500,
+                code="VENUE_CLIP_NOT_FOUND",
+                message="球馆视频片段生成失败，请稍后重试。",
+            )
+        shutil.copyfile(clip_path, source_path)
+        _validate_uploaded_video(source_path)
+        preview = _select_preview_frame(source_path, source_upload_id)
+        preview_path = PREVIEW_FRAME_DIR / f"{source_upload_id}.jpg"
+        preview["image_data_url"] = (
+            "data:image/jpeg;base64,"
+            + base64.b64encode(preview_path.read_bytes()).decode("ascii")
+        )
+    except Exception:
+        _remove_preview_artifacts(source_upload_id, source_path)
+        raise
+    preview.update(
+        {
+            "source_upload_id": source_upload_id,
+            "user_id": user_id,
+            "video_name": f"{video_id}_{start_ms}_{end_ms}.mp4",
         }
     )
     return preview
@@ -768,6 +913,9 @@ def _decorate_highlight_segments(segments: Any) -> list[dict[str, Any]]:
         segment["display_metrics"] = {
             "player_peak_mps": _round_float(metrics.get("player_peak_mps")),
             "player_distance_m": _round_float(metrics.get("player_distance_m")),
+            "player_movement_rate_mps": _round_float(
+                metrics.get("player_movement_rate_mps")
+            ),
             "shuttle_peak_px_s": _round_float(metrics.get("shuttle_peak_px_s")),
         }
         decorated.append(segment)
@@ -776,33 +924,30 @@ def _decorate_highlight_segments(segments: Any) -> list[dict[str, Any]]:
 
 def _highlight_reason_zh(reason: str, metrics: dict[str, Any]) -> str:
     player_peak = _to_float(metrics.get("player_peak_mps"))
-    player_distance = _to_float(metrics.get("player_distance_m"))
+    movement_rate = _to_float(metrics.get("player_movement_rate_mps"))
     shuttle_peak = _to_float(metrics.get("shuttle_peak_px_s"))
     parts: list[str] = []
     if player_peak >= 5.0:
-        parts.append("球员出现快速启动或冲刺")
-    if player_distance >= 12.0:
-        parts.append("片段内移动距离较大")
+        parts.append(f"球员代表性峰值速度约 {player_peak:.1f} 米/秒")
+    if movement_rate >= 2.8:
+        parts.append(f"每秒累计跑动约 {movement_rate:.1f} 米")
     if shuttle_peak >= 1000.0:
-        parts.append("球速变化明显")
+        parts.append("羽毛球在画面中的移动速度较突出")
     if not parts:
-        if "fast" in reason.lower():
-            parts.append("速度指标较高")
-        else:
-            parts.append("该片段综合运动强度较高")
-    return "，".join(parts) + "，因此被选入精彩集锦。"
+        parts.append("片段内检测到连续的球员移动或羽毛球运动")
+    return "；".join(parts)
 
 
 def _highlight_tags(reason: str, metrics: dict[str, Any]) -> list[str]:
     tags: list[str] = []
     player_peak = _to_float(metrics.get("player_peak_mps"))
-    player_distance = _to_float(metrics.get("player_distance_m"))
+    movement_rate = _to_float(metrics.get("player_movement_rate_mps"))
     shuttle_peak = _to_float(metrics.get("shuttle_peak_px_s"))
     if player_peak >= 5.0 or "fast player" in reason.lower():
         tags.append("快速启动")
-    if player_distance >= 12.0:
+    if movement_rate >= 2.8:
         tags.append("高强度跑动")
-    if player_distance >= 18.0:
+    if movement_rate >= 3.8:
         tags.append("覆盖范围大")
     if shuttle_peak >= 1000.0:
         tags.append("高速来球")
@@ -1152,6 +1297,7 @@ def _first_matching(urls: list[str | None], needle: str) -> str | None:
 def _public_task(task: dict[str, Any]) -> dict[str, Any]:
     failure = _failure_info(task.get("error"))
     queue_position = _queue_position(task) if task.get("status") == "queued" else None
+    eta_seconds = _estimated_remaining_seconds(task, queue_position)
     return {
         "task_id": task["task_id"],
         "user_id": task.get("user_id", DEFAULT_USER_ID),
@@ -1169,6 +1315,7 @@ def _public_task(task: dict[str, Any]) -> dict[str, Any]:
         "upload_deleted": task.get("upload_deleted_at") is not None,
         "report_url": f"/api/tasks/{task['task_id']}/report",
         "queue_position": queue_position,
+        "eta_seconds": eta_seconds,
     }
 
 
@@ -1723,6 +1870,41 @@ def _queue_position(task: dict[str, Any]) -> int | None:
         session.close()
 
 
+def _recent_average_task_seconds() -> float:
+    session = get_session()
+    try:
+        rows = (
+            session.query(Task.created_at, Task.updated_at)
+            .filter(Task.status == "completed", Task.updated_at > Task.created_at)
+            .order_by(Task.updated_at.desc())
+            .limit(30)
+            .all()
+        )
+    finally:
+        session.close()
+    durations = [
+        min(3600.0, max(10.0, float(updated) - float(created)))
+        for created, updated in rows
+    ]
+    return statistics.median(durations) if durations else 180.0
+
+
+def _estimated_remaining_seconds(
+    task: dict[str, Any],
+    queue_position: int | None = None,
+) -> int | None:
+    status = task.get("status")
+    average = _recent_average_task_seconds()
+    if status == "queued" and queue_position:
+        capacity = max(1, TASK_WORKER.capacity)
+        processing_waves = math.ceil(queue_position / capacity)
+        return max(10, round(processing_waves * average))
+    if status == "processing":
+        progress = min(0.95, max(0.0, float(task.get("progress") or 0.0)))
+        return max(5, round(average * (1.0 - progress)))
+    return None
+
+
 def _queue_summary() -> dict[str, Any]:
     session = get_session()
     try:
@@ -1804,6 +1986,36 @@ def _safe_filename(filename: str) -> str:
     return "".join(ch if ch.isalnum() or ch in "._-" else "_" for ch in name)
 
 
+def _next_daily_video_name(user_id: str, original_name: str) -> str:
+    """Return a readable per-user daily sequence while physical paths use task IDs."""
+    now = datetime.now().astimezone()
+    day_start = now.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+    day_end = day_start + 24 * 60 * 60
+    key = (user_id, now.strftime("%Y-%m-%d"))
+    with VIDEO_NAMING_LOCK:
+        sequence = VIDEO_DAILY_SEQUENCE.get(key)
+        if sequence is None:
+            session = get_session()
+            try:
+                sequence = (
+                    session.query(Task)
+                    .filter(
+                        Task.user_id == user_id,
+                        Task.created_at >= day_start,
+                        Task.created_at < day_end,
+                    )
+                    .count()
+                )
+            finally:
+                session.close()
+        sequence += 1
+        VIDEO_DAILY_SEQUENCE[key] = sequence
+    extension = Path(original_name).suffix.lower()
+    if not extension or len(extension) > 10:
+        extension = ".mp4"
+    return f"{now:%Y-%m-%d}_{sequence:02d}{extension}"
+
+
 def _storage_status() -> dict[str, Any]:
     usage = shutil.disk_usage(PROJECT_ROOT)
     used_percent = (usage.used / usage.total * 100) if usage.total else 0.0
@@ -1849,7 +2061,7 @@ def _validate_uploaded_video(path: Path) -> None:
             status_code=413,
             code="VIDEO_TOO_LARGE",
             message="视频文件过大，请上传 200MB 以内的视频。",
-            hint="建议先使用 30 秒到 3 分钟的横屏固定机位视频。",
+            hint="建议只保留一个完整回合，并去掉休息和捡球片段。",
         )
 
     cap = cv2.VideoCapture(str(path))
@@ -1871,7 +2083,7 @@ def _validate_uploaded_video(path: Path) -> None:
             status_code=400,
             code="VIDEO_TOO_SHORT",
             message="视频太短，请上传至少 5 秒的视频。",
-            hint="正式训练复盘建议上传 30 秒到 3 分钟的视频。",
+            hint="请选择包含完整对打过程的单个回合。",
         )
     if duration > MAX_VIDEO_DURATION_SEC:
         path.unlink(missing_ok=True)

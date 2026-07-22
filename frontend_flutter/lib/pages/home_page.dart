@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../config/api_config.dart';
+import '../models/venue.dart';
 import '../models/task_status.dart';
 import '../services/api_service.dart';
 import '../services/task_storage.dart';
@@ -10,6 +11,7 @@ import 'history_page.dart';
 import 'qr_scan_page.dart';
 import 'task_status_page.dart';
 import 'upload_page.dart';
+import 'venue_video_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -181,6 +183,27 @@ class _HomePageState extends State<HomePage> {
                 _HeroCard(onTap: _openUpload),
                 const SizedBox(height: 14),
                 _VenueScanEntry(
+                  icon: Icons.stadium_outlined,
+                  title: '进入示例球场',
+                  subtitle: '选择场地、完整录像和需要分析的回合片段',
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const VenueVideoPage(
+                        venue: VenueInfo(
+                          id: 'example',
+                          name: '示例球场',
+                          serverUrl:
+                              'https://api.audacity6441.kdns.fr/venue-demo',
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                _VenueScanEntry(
+                  icon: Icons.qr_code_scanner_rounded,
+                  title: '扫描合作球馆',
+                  subtitle: '扫描球馆二维码，选择场地录像并截取回合',
                   onTap: () => Navigator.of(context).push(
                     MaterialPageRoute(builder: (_) => const QrScanPage()),
                   ),
@@ -224,7 +247,7 @@ class _HomePageState extends State<HomePage> {
                     Expanded(
                       child: _QuickAccessCard(
                         icon: Icons.language_outlined,
-                        label: '官网',
+                        label: '宣传页面',
                         color: const Color(0xFFFFF4D9),
                         onTap: _openWebsite,
                       ),
@@ -463,8 +486,16 @@ class _HeroCard extends StatelessWidget {
 }
 
 class _VenueScanEntry extends StatelessWidget {
-  const _VenueScanEntry({required this.onTap});
+  const _VenueScanEntry({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
 
+  final IconData icon;
+  final String title;
+  final String subtitle;
   final VoidCallback onTap;
 
   @override
@@ -485,21 +516,21 @@ class _VenueScanEntry extends StatelessWidget {
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Icon(
-                  Icons.qr_code_scanner_rounded,
+                  icon,
                   color: Theme.of(context).colorScheme.onPrimaryContainer,
                 ),
               ),
               const SizedBox(width: 14),
-              const Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '扫描球馆二维码',
-                      style: TextStyle(fontWeight: FontWeight.w800),
+                      title,
+                      style: const TextStyle(fontWeight: FontWeight.w800),
                     ),
-                    SizedBox(height: 3),
-                    Text('获取合作球馆的可用比赛视频'),
+                    const SizedBox(height: 3),
+                    Text(subtitle),
                   ],
                 ),
               ),

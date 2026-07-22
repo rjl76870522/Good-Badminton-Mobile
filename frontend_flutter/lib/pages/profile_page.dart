@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import '../services/user_storage.dart';
 import '../widgets/app_background.dart';
 import 'history_page.dart';
+import 'daily_check_in_page.dart';
 import 'qr_scan_page.dart';
 import 'settings_page.dart';
 
@@ -191,6 +192,18 @@ class _ProfilePageState extends State<ProfilePage> {
               Card(
                 child: Column(
                   children: [
+                    ListTile(
+                      leading: const Icon(Icons.calendar_month_outlined),
+                      title: const Text('每日签到'),
+                      subtitle: const Text('记录坚持，领取今日羽球故事'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const DailyCheckInPage(),
+                        ),
+                      ),
+                    ),
+                    const Divider(height: 1),
                     ListTile(
                       leading: const Icon(Icons.history),
                       title: const Text('训练历史'),

@@ -346,6 +346,7 @@ class HighlightSegment {
     this.reasonZh = '',
     this.tags = const [],
     this.displayMetrics = const {},
+    this.selectionNote = '',
   });
 
   final double startSec;
@@ -356,6 +357,7 @@ class HighlightSegment {
   final String reasonZh;
   final List<String> tags;
   final Map<String, double> displayMetrics;
+  final String selectionNote;
 
   factory HighlightSegment.fromJson(Map<String, dynamic> json) {
     final rawMetrics = mapValue(json['metrics']);
@@ -376,6 +378,7 @@ class HighlightSegment {
       displayMetrics: mapValue(json['display_metrics']).map(
         (key, value) => MapEntry(key, numberValue(value)),
       ),
+      selectionNote: json['selection_note']?.toString() ?? '',
     );
   }
 }

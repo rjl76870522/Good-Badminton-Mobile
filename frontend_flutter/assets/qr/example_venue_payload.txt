@@ -1,0 +1,1 @@
+{"type":"venue","venue_id":"example","venue_name":"示例球场","server_url":"https://api.audacity6441.kdns.fr/venue-demo"}

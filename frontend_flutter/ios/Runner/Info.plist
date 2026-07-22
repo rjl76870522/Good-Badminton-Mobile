@@ -34,6 +34,8 @@
 	<string>用于将分析视频、精彩集锦、热力图和轨迹图保存到系统相册。</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>用于连接同一局域网内的合作球馆设备并获取比赛视频。</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>用于在用户主动查找时定位附近的羽毛球馆，位置信息不会上传到中心服务器。</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>

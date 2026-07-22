@@ -17,6 +17,7 @@ from badminton_analysis.system import BadmintonAnalysisSystem, load_runtime_depe
 
 _MAX_WEBUI_OUTPUTS = 10
 _VISUALIZATION_LOCK = threading.Lock()
+_THREAD_MODELS = threading.local()
 
 _dependencies_loaded = False
 
@@ -56,6 +57,27 @@ def _ensure_dependencies():
     if not _dependencies_loaded:
         load_runtime_dependencies()
         _dependencies_loaded = True
+
+
+def _thread_inference_models(pose_family, pose_mode, pose_path, ball_path):
+    """Reuse model weights inside each persistent analysis worker thread."""
+    cache = getattr(_THREAD_MODELS, "cache", None)
+    if cache is None:
+        cache = {}
+        _THREAD_MODELS.cache = cache
+
+    key = (pose_family, pose_mode, os.path.abspath(pose_path), os.path.abspath(ball_path))
+    if key not in cache:
+        from ultralytics import YOLO
+        from badminton_analysis.detection.rtmpose import RTMPoseProcessor
+        from badminton_analysis.detection.yolo_pose import YOLOPoseProcessor
+
+        if pose_family == "yolo-pose":
+            pose_processor = YOLOPoseProcessor(model_path=pose_path)
+        else:
+            pose_processor = RTMPoseProcessor(mode=pose_mode, pose_family=pose_family)
+        cache[key] = (pose_processor, YOLO(ball_path))
+    return cache[key]
 
 
 def prepare_court(template_path, manual_corners=None):
@@ -232,6 +254,12 @@ def run_analysis(video_path, template_path, corners, options, progress_cb=None):
     visualize_positions = options.get("visualize_positions", True)
     court_match_threshold = options.get("court_match_threshold", 0.75)
     always_process_court = options.get("always_process_court", False)
+    pose_processor, ball_model_instance = _thread_inference_models(
+        pose_family,
+        pose_mode,
+        yolo_pose_model,
+        ball_model,
+    )
 
     system = BadmintonAnalysisSystem(
         video_path,
@@ -253,6 +281,8 @@ def run_analysis(video_path, template_path, corners, options, progress_cb=None):
         show_pose_roi=show_pose_roi,
         court_match_threshold=court_match_threshold,
         always_process_court=always_process_court,
+        pose_processor=pose_processor,
+        ball_model=ball_model_instance,
     )
     system.keep_audio = keep_audio
     system.process_video(progress_callback=progress_cb)

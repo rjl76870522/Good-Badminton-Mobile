@@ -45,7 +45,7 @@ class _MainShellPageState extends State<MainShellPage> {
                 NavigationDestination(
                   icon: Icon(Icons.navigation_outlined),
                   selectedIcon: Icon(Icons.navigation),
-                  label: '导航',
+                  label: '发现',
                 ),
                 NavigationDestination(
                   icon: Icon(Icons.person_outline),

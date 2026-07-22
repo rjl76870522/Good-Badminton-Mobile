@@ -1,9 +1,11 @@
 from pathlib import Path
 import time
+from types import SimpleNamespace
 
 import cv2
 from fastapi.testclient import TestClient
 import numpy as np
+import pytest
 
 import backend_api
 
@@ -20,6 +22,7 @@ def _configure_data_dirs(monkeypatch, tmp_path: Path) -> None:
         directory.mkdir()
         monkeypatch.setattr(backend_api, name, directory)
     backend_api.init_db(tmp_path / "badminton.db")
+    backend_api.VIDEO_DAILY_SEQUENCE.clear()
 
 
 def _fake_preview(video_path: Path, source_upload_id: str) -> dict:
@@ -105,9 +108,10 @@ def test_preview_then_source_upload_matches_flutter_contract(monkeypatch, tmp_pa
 
         status = client.get(upload["status_url"]).json()
         assert status["user_id"] == "phone-user"
-        assert status["video_name"] == "training.mp4"
+        assert status["video_name"].endswith("_01.mp4")
         task = backend_api._get_task_or_404(upload["task_id"])
         assert Path(task["upload_path"]).read_bytes() == b"video-bytes"
+        assert Path(task["upload_path"]).parent.name == "phone-user"
         assert not list(
             backend_api.PREVIEW_UPLOAD_DIR.glob(
                 f"{preview['source_upload_id']}_*",
@@ -124,6 +128,52 @@ def test_preview_then_source_upload_matches_flutter_contract(monkeypatch, tmp_pa
         assert other_history["total"] == 0
 
 
+def test_venue_preview_hands_clip_directly_to_analysis(monkeypatch, tmp_path):
+    _configure_data_dirs(monkeypatch, tmp_path)
+    venue_clip = tmp_path / "venue-clip.mp4"
+    venue_clip.write_bytes(b"venue-video-bytes")
+    monkeypatch.setattr(
+        backend_api,
+        "create_virtual_venue_clip",
+        lambda **_kwargs: SimpleNamespace(path=str(venue_clip)),
+    )
+    monkeypatch.setattr(backend_api, "_select_preview_frame", _fake_preview)
+    monkeypatch.setattr(backend_api, "_validate_uploaded_video", lambda _path: None)
+    monkeypatch.setattr(backend_api, "_run_analysis_task", lambda **_kwargs: None)
+
+    with TestClient(backend_api.app) as client:
+        preview_response = client.post(
+            "/api/videos/venue-preview",
+            data={
+                "video_id": "court2-full-recording",
+                "start_ms": "1000",
+                "end_ms": "9000",
+                "user_id": "venue-user",
+            },
+        )
+        assert preview_response.status_code == 200
+        preview = preview_response.json()
+        assert preview["video_name"] == "court2-full-recording_1000_9000.mp4"
+        assert preview["image_data_url"].startswith("data:image/jpeg;base64,")
+        source_id = preview["source_upload_id"]
+        source_files = list(backend_api.PREVIEW_UPLOAD_DIR.glob(f"{source_id}_*"))
+        assert len(source_files) == 1
+        assert source_files[0].read_bytes() == b"venue-video-bytes"
+
+        upload_response = client.post(
+            "/api/videos/upload",
+            data={
+                "source_upload_id": source_id,
+                "user_id": "venue-user",
+                "keep_audio": "true",
+            },
+        )
+        assert upload_response.status_code == 200
+        task = backend_api._get_task_or_404(upload_response.json()["task_id"])
+        assert Path(task["upload_path"]).read_bytes() == b"venue-video-bytes"
+        assert not list(backend_api.PREVIEW_UPLOAD_DIR.glob(f"{source_id}_*"))
+
+
 def test_upload_rejects_unsupported_video(monkeypatch, tmp_path):
     _configure_data_dirs(monkeypatch, tmp_path)
     with TestClient(backend_api.app) as client:
@@ -133,6 +183,46 @@ def test_upload_rejects_unsupported_video(monkeypatch, tmp_path):
         )
     assert response.status_code == 400
     assert response.json()["detail"]["code"] == "VIDEO_UNREADABLE"
+
+
+def test_invalid_corners_do_not_leave_an_orphan_upload(monkeypatch, tmp_path):
+    _configure_data_dirs(monkeypatch, tmp_path)
+    monkeypatch.setattr(backend_api, "_validate_uploaded_video", lambda _path: None)
+
+    with TestClient(backend_api.app) as client:
+        response = client.post(
+            "/api/videos/upload",
+            data={
+                "user_id": "cleanup-user",
+                "corners_json": "[[1,2]]",
+            },
+            files={"file": ("match.mp4", b"video-bytes", "video/mp4")},
+        )
+
+    assert response.status_code == 400
+    assert not [path for path in backend_api.UPLOAD_DIR.rglob("*") if path.is_file()]
+
+
+def test_preview_failure_removes_temporary_upload(monkeypatch, tmp_path):
+    _configure_data_dirs(monkeypatch, tmp_path)
+    monkeypatch.setattr(backend_api, "_validate_uploaded_video", lambda _path: None)
+    monkeypatch.setattr(
+        backend_api,
+        "_select_preview_frame",
+        lambda *_args: (_ for _ in ()).throw(RuntimeError("preview failed")),
+    )
+
+    with pytest.raises(RuntimeError, match="preview failed"):
+        with TestClient(backend_api.app) as client:
+            client.post(
+                "/api/videos/preview-frame",
+                data={"user_id": "cleanup-user"},
+                files={"file": ("match.mp4", b"video-bytes", "video/mp4")},
+            )
+
+    assert not [
+        path for path in backend_api.PREVIEW_UPLOAD_DIR.rglob("*") if path.is_file()
+    ]
 
 
 def test_legacy_direct_file_upload_still_works(monkeypatch, tmp_path):
@@ -146,11 +236,20 @@ def test_legacy_direct_file_upload_still_works(monkeypatch, tmp_path):
             data={"user_id": "legacy-user"},
             files={"file": ("match.MP4", b"video-bytes", "video/mp4")},
         )
+        second_response = client.post(
+            "/api/videos/upload",
+            data={"user_id": "legacy-user"},
+            files={"file": ("another.mov", b"more-video-bytes", "video/quicktime")},
+        )
 
     assert response.status_code == 200
+    assert second_response.status_code == 200
     task = backend_api._get_task_or_404(response.json()["task_id"])
-    assert task["video_name"] == "match.MP4"
+    second_task = backend_api._get_task_or_404(second_response.json()["task_id"])
+    assert task["video_name"].endswith("_01.mp4")
+    assert second_task["video_name"].endswith("_02.mov")
     assert Path(task["upload_path"]).read_bytes() == b"video-bytes"
+    assert Path(task["upload_path"]).parent.name == "legacy-user"
 
 
 def test_output_path_converts_to_public_url(monkeypatch, tmp_path):
@@ -190,6 +289,43 @@ def test_gpu_capacity_recommendation_is_conservative():
     assert backend_api._recommend_analysis_workers(16_384, 14_000) == 4
     assert backend_api._recommend_analysis_workers(24_576, 17_000) == 3
     assert backend_api._recommend_analysis_workers(24_576, 20_000) == 4
+
+
+def test_task_creation_rate_limit_allows_two_per_minute(monkeypatch, tmp_path):
+    _configure_data_dirs(monkeypatch, tmp_path)
+    user_id = "rate-user"
+    backend_api.TASK_CREATION_TIMES.pop(user_id, None)
+
+    with backend_api._task_creation_slot(user_id):
+        pass
+    with backend_api._task_creation_slot(user_id):
+        pass
+
+    with pytest.raises(backend_api.HTTPException) as exc_info:
+        with backend_api._task_creation_slot(user_id):
+            pass
+    assert exc_info.value.status_code == 429
+    assert exc_info.value.detail["code"] == "TASK_RATE_LIMITED"
+
+
+def test_task_creation_rejects_fourth_queued_task(monkeypatch, tmp_path):
+    _configure_data_dirs(monkeypatch, tmp_path)
+    user_id = "full-queue-user"
+    backend_api.TASK_CREATION_TIMES.pop(user_id, None)
+    now = time.time()
+    for index in range(3):
+        _insert_queued_task(
+            tmp_path,
+            f"queued-{index}",
+            now + index,
+            user_id=user_id,
+        )
+
+    with pytest.raises(backend_api.HTTPException) as exc_info:
+        with backend_api._task_creation_slot(user_id):
+            pass
+    assert exc_info.value.status_code == 429
+    assert exc_info.value.detail["code"] == "USER_QUEUE_FULL"
 
 
 def test_replace_output_file_index_tracks_report_files():

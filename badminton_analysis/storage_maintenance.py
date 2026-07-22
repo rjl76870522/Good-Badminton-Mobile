@@ -14,8 +14,6 @@ from badminton_analysis.database import Task, get_session, init_db
 
 @dataclass(frozen=True)
 class RetentionPolicy:
-    upload_days: int = 30
-    task_days: int = 90
     failed_days: int = 7
     preview_hours: int = 24
     backup_days: int = 30
@@ -60,15 +58,11 @@ def run_maintenance(
     try:
         tasks = session.query(Task).all()
         for task in tasks:
-            if task.retained or task.status in {"queued", "processing"}:
+            if task.status in {"queued", "processing", "completed"}:
                 continue
             age = max(0.0, timestamp - task.updated_at)
-            delete_task = (
-                task.status in {"failed", "cancelled"}
-                and age >= policy.failed_days * 86400
-            ) or (
-                task.status == "completed"
-                and age >= policy.task_days * 86400
+            delete_task = task.status in {"failed", "cancelled"} and (
+                age >= policy.failed_days * 86400
             )
             if delete_task:
                 if not dry_run:
@@ -76,16 +70,6 @@ def run_maintenance(
                     _delete_tree(task.output_dir, outputs_dir)
                     session.delete(task)
                 result["tasks_deleted"] = int(result["tasks_deleted"]) + 1
-                continue
-            if (
-                task.status == "completed"
-                and task.upload_deleted_at is None
-                and age >= policy.upload_days * 86400
-            ):
-                if not dry_run:
-                    _delete_file(task.upload_path, uploads_dir)
-                    task.upload_deleted_at = timestamp
-                result["uploads_deleted"] = int(result["uploads_deleted"]) + 1
         if not dry_run:
             session.commit()
     except Exception:

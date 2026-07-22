@@ -163,7 +163,7 @@ class VenueService {
   }
 
   Future<List<VenueVideo>> getVideos(VenueInfo venue) async {
-    final uri = Uri.parse(venue.serverUrl).resolve('/videos');
+    final uri = _endpoint(venue.serverUrl, 'videos');
     try {
       final response = await http.get(uri).timeout(const Duration(seconds: 12));
       if (response.statusCode != 200) {
@@ -193,7 +193,10 @@ class VenueService {
           downloadUrl:
               item['download_url']?.toString().trim().isNotEmpty == true
                   ? item['download_url'].toString().trim()
-                  : uri.resolve('/videos/$id/download').toString(),
+                  : _endpoint(
+                      venue.serverUrl,
+                      'videos/$id/download',
+                    ).toString(),
           isPreparedClip: item['is_prepared_clip'] == true,
         ));
       }
@@ -210,10 +213,18 @@ class VenueService {
     }
   }
 
+  Uri _endpoint(String serverUrl, String relativePath) {
+    final base = Uri.parse(serverUrl);
+    final basePath = base.path.endsWith('/') ? base.path : '${base.path}/';
+    final child =
+        relativePath.startsWith('/') ? relativePath.substring(1) : relativePath;
+    return base.replace(path: '$basePath$child', query: null, fragment: null);
+  }
+
   List<VenueVideo> getMockVideos() {
     return const [
       VenueVideo(
-        id: 'venue24-court1-demo01',
+        id: 'example-court1-demo01',
         court: '1号场',
         time: '球馆录像片段 01',
         duration: '8秒',
@@ -221,7 +232,7 @@ class VenueService {
         isPreparedClip: true,
       ),
       VenueVideo(
-        id: 'venue24-court2-demo02',
+        id: 'example-court2-demo02',
         court: '2号场',
         time: '球馆录像片段 02',
         duration: '11秒',

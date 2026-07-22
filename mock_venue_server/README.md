@@ -1,17 +1,28 @@
-# 模拟球馆服务
+# 示例球场服务
 
-`mock_venue_server` 是独立的合作球馆模拟服务，用于联调 Flutter 的“扫码 → 选择场地 → 选择视频 → 截取 / 保存 / 分析”流程。它不修改 Good-Badminton 的主后端、算法或数据库。
+`mock_venue_server` 是独立的合作球馆示例服务，用于联调 Flutter 的“扫码 → 选择场地 → 选择视频 → 截取 / 保存 / 分析”流程。它不修改 Good-Badminton 的主后端、算法或数据库。
 
-## 本次更新：10 场地视频运营模拟
+生产演示入口通过主 API 的只读子路径提供：
 
-- 智慧羽毛球馆现在有 **1～10 号场**。
-- 每块场地默认有 2 条模拟摄像头录像，共 20 条视频；默认录像复用仓库内的两段小样本，不复制大文件。
+```text
+https://api.audacity6441.kdns.fr/venue-demo
+```
+
+手机 App 直接使用该地址读取场地和录像。公网入口禁止上传；只有 Ubuntu
+本机运行的运营台允许添加完整录像。
+
+## 10 场地视频运营示例
+
+- 示例球场有 **1～10 号场**。默认录像映射为 1～7 号场对应
+  `001.mp4`～`007.mp4`，8～10 号场分别复用 `005.mp4`～`007.mp4`。
+- 每块场地默认有 1 条完整摄像头录像；同一完整录像可以反复截取多个回合片段。
+- 运营台可按时间继续添加完整录像，因此同一场地可以浏览多个不同时间的录像。
 - 新增视频运营台网页：选择场地、本地录像文件，点击“开始模拟录制”，再点击“结束录制并上传”。
 - 上传记录会保存到本机 `venue_library.json`，刷新 Flutter 视频库即可显示新增录像。
 - Flutter 球馆视频库支持“全部 / 1～10 号场”筛选，避免长列表堆叠。
 - App 视频详情页支持选择时间范围；保存片段到系统相册或把片段带入现有分析流程。
 
-> 片段由本模拟服务使用 OpenCV 重新编码生成，当前演示版片段不保留原视频音轨。
+> 片段由本模拟服务使用 FFmpeg 重新编码，原视频包含音轨时会保留声音。
 
 ## 页面
 
@@ -37,6 +48,23 @@
 | `GET /videos/{id}/clip?start_ms=1000&end_ms=4000` | 生成并下载指定时间段 MP4 片段。 |
 
 ## 启动
+
+Ubuntu 服务器：
+
+```bash
+sudo cp deploy/good-badminton-venue.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now good-badminton-venue.service
+```
+
+本机访问 `http://127.0.0.1:9000/operator`。手机联调时，使用与手机可互通的
+Ubuntu 地址重新生成二维码：
+
+```bash
+.venv/bin/python mock_venue_server/generate_qr.py 你的局域网IP
+```
+
+Windows：
 
 ```powershell
 cd C:\Users\lanld\Good-Badminton

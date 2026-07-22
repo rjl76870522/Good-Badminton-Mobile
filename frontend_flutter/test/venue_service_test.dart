@@ -14,13 +14,13 @@ void main() {
     expect(venue.serverUrl, 'http://192.168.1.100');
   });
 
-  test('parses the bundled venue 24 demo QR payload', () {
+  test('parses the bundled example venue QR payload', () {
     final venue = service.parseVenueQr(
-      '{"type":"venue","venue_id":"24","venue_name":"演示球馆","server_url":"https://venue.example.com"}',
+      '{"type":"venue","venue_id":"example","venue_name":"示例球场","server_url":"https://venue.example.com"}',
     );
 
-    expect(venue.id, '24');
-    expect(venue.name, '演示球馆');
+    expect(venue.id, 'example');
+    expect(venue.name, '示例球场');
   });
 
   test('parses a venue QR link with query parameters', () {

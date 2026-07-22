@@ -92,8 +92,11 @@ class OfflineReportStorage {
     required ApiService api,
     required String taskId,
     required String videoName,
+    void Function(double progress, String stage)? onProgress,
   }) async {
+    onProgress?.call(0.05, '正在读取训练报告');
     final payload = await api.getReportPayload(taskId);
+    onProgress?.call(0.2, '正在保存图表');
     final root = await _root();
     final directory = Directory('${root.path}/$taskId');
     await directory.create(recursive: true);
@@ -102,14 +105,38 @@ class OfflineReportStorage {
     final fileMap = files is Map
         ? files.map((key, value) => MapEntry(key.toString(), value))
         : <String, dynamic>{};
-    final heatmapPath =
-        await _downloadImage(api, fileMap['heatmap'], directory, 'heatmap.png');
-    final trajectoryPath = await _downloadImage(
-      api,
-      fileMap['trajectory'],
-      directory,
-      'trajectory.png',
-    );
+    var heatmapProgress = 0.0;
+    var trajectoryProgress = 0.0;
+    void reportDownloadProgress() {
+      final combined = (heatmapProgress + trajectoryProgress) / 2;
+      onProgress?.call(0.2 + combined * 0.65, '正在下载热力图和轨迹图');
+    }
+
+    final paths = await Future.wait([
+      _downloadImage(
+        api,
+        fileMap['heatmap'],
+        directory,
+        'heatmap.png',
+        onProgress: (value) {
+          heatmapProgress = value;
+          reportDownloadProgress();
+        },
+      ),
+      _downloadImage(
+        api,
+        fileMap['trajectory'],
+        directory,
+        'trajectory.png',
+        onProgress: (value) {
+          trajectoryProgress = value;
+          reportDownloadProgress();
+        },
+      ),
+    ]);
+    final heatmapPath = paths[0];
+    final trajectoryPath = paths[1];
+    onProgress?.call(0.9, '正在写入手机存储');
     final reportFile = File('${directory.path}/report.json');
     await reportFile.writeAsString(jsonEncode(payload), flush: true);
 
@@ -126,6 +153,7 @@ class OfflineReportStorage {
         .toList()
       ..insert(0, record);
     await _writeIndex(records);
+    onProgress?.call(1, '离线保存完成');
     return record;
   }
 
@@ -156,14 +184,23 @@ class OfflineReportStorage {
     ApiService api,
     dynamic relativeUrl,
     Directory directory,
-    String filename,
-  ) async {
+    String filename, {
+    void Function(double progress)? onProgress,
+  }) async {
     final url = ApiConfig.absoluteFileUrl(relativeUrl?.toString());
-    if (url == null) return null;
+    if (url == null) {
+      onProgress?.call(1);
+      return null;
+    }
     try {
-      return await api.downloadFile(url, '${directory.path}/$filename');
+      return await api.downloadFile(
+        url,
+        '${directory.path}/$filename',
+        onProgress: onProgress,
+      );
     } on Exception {
       // The text report remains useful when an optional chart is unavailable.
+      onProgress?.call(1);
       return null;
     }
   }

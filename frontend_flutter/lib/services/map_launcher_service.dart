@@ -59,7 +59,14 @@ class MapLauncherService {
     ]);
   }
 
-  Future<bool> launchNearbyBadminton(MapApp app) async {
+  Future<bool> launchNearbyBadminton(
+    MapApp app, {
+    double? latitude,
+    double? longitude,
+  }) async {
+    final location = latitude == null || longitude == null
+        ? null
+        : '${longitude.toStringAsFixed(6)},${latitude.toStringAsFixed(6)}';
     switch (app) {
       case MapApp.amap:
         return _launchFirstAvailable([
@@ -67,24 +74,27 @@ class MapLauncherService {
             Uri(
               scheme: 'iosamap',
               host: 'poi',
-              queryParameters: const {
+              queryParameters: {
                 'sourceApplication': 'good-badminton',
                 'keywords': _keyword,
                 'dev': '0',
+                if (location != null) 'location': location,
               },
             )
           else
             Uri(
               scheme: 'androidamap',
               host: 'poi',
-              queryParameters: const {
+              queryParameters: {
                 'sourceApplication': 'good-badminton',
                 'keywords': _keyword,
                 'dev': '0',
+                if (location != null) 'location': location,
               },
             ),
           Uri.https('uri.amap.com', '/search', {
             'keyword': _keyword,
+            if (location != null) 'center': location,
             'callnative': '1',
           }),
         ]);
@@ -94,13 +104,18 @@ class MapLauncherService {
             scheme: 'baidumap',
             host: 'map',
             path: '/place/search',
-            queryParameters: const {
+            queryParameters: {
               'query': _keyword,
               'region': '全国',
               'src': 'good-badminton',
+              if (latitude != null && longitude != null)
+                'location': '$latitude,$longitude',
             },
           ),
-          Uri.https('map.baidu.com', '/search/$_keyword'),
+          Uri.https('map.baidu.com', '/search/$_keyword', {
+            if (latitude != null && longitude != null)
+              'center': '$longitude,$latitude',
+          }),
         ]);
       case MapApp.meituan:
         return _launchFirstAvailable([
@@ -114,8 +129,14 @@ class MapLauncherService {
         ]);
       case MapApp.browser:
         return _launchFirstAvailable([
-          if (Platform.isAndroid) Uri.parse('geo:0,0?q=$_keyword'),
-          Uri.https('uri.amap.com', '/search', {'keyword': _keyword}),
+          if (Platform.isAndroid)
+            Uri.parse(
+              'geo:${latitude ?? 0},${longitude ?? 0}?q=$_keyword',
+            ),
+          Uri.https('uri.amap.com', '/search', {
+            'keyword': _keyword,
+            if (location != null) 'center': location,
+          }),
           Uri.https('map.baidu.com', '/search/$_keyword'),
         ]);
     }

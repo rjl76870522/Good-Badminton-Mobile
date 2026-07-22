@@ -12,20 +12,21 @@ void main() {
     expect(find.text('Good-Badminton'), findsOneWidget);
     expect(find.text('羽毛球 AI 视觉分析'), findsOneWidget);
     expect(find.text('开始上传视频'), findsOneWidget);
-    expect(find.text('扫描球馆二维码'), findsOneWidget);
-    await tester.scrollUntilVisible(find.text('官网'), 160);
-    expect(find.text('官网'), findsOneWidget);
+    expect(find.text('进入示例球场'), findsOneWidget);
+    expect(find.text('扫描合作球馆'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('宣传页面'), 160);
+    expect(find.text('宣传页面'), findsOneWidget);
     expect(find.text('Demo'), findsNothing);
     expect(find.text('附近羽毛球馆'), findsNothing);
     expect(find.text('首页'), findsOneWidget);
-    expect(find.text('导航'), findsOneWidget);
+    expect(find.text('发现'), findsOneWidget);
     expect(find.text('我的'), findsWidgets);
 
-    await tester.tap(find.text('导航'));
+    await tester.tap(find.text('发现'));
     await tester.pump();
     expect(find.text('附近羽毛球馆'), findsOneWidget);
     expect(find.text('高德地图'), findsOneWidget);
-    await tester.scrollUntilVisible(find.text('校园场馆示例'), 220);
+    await tester.scrollUntilVisible(find.text('东北大学南湖校区羽乒馆'), 260);
     expect(find.text('东北大学南湖校区羽乒馆'), findsOneWidget);
     await tester.scrollUntilVisible(
       find.text('浙江大学紫金港校区风雨操场'),
@@ -40,6 +41,7 @@ void main() {
     expect(find.text('设置'), findsOneWidget);
     expect(find.text('点击头像可以从相册更换'), findsOneWidget);
     expect(find.text('训练与球馆'), findsOneWidget);
+    expect(find.text('每日签到'), findsOneWidget);
     expect(find.text('数据身份'), findsNothing);
     expect(find.text('检查数据身份'), findsNothing);
     expect(find.textContaining('guest_'), findsNothing);
@@ -63,7 +65,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
       expect(tester.takeException(), isNull);
 
-      await tester.tap(find.text('导航'));
+      await tester.tap(find.text('发现'));
       await tester.pump(const Duration(milliseconds: 300));
       expect(find.text('附近羽毛球馆'), findsOneWidget);
       expect(tester.takeException(), isNull);

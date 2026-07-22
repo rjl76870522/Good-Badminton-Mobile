@@ -14,10 +14,12 @@ class CornerPickerPage extends StatefulWidget {
     super.key,
     required this.preview,
     this.localVideoPath,
+    this.localVideoSeekSec,
   });
 
   final PreviewFrame preview;
   final String? localVideoPath;
+  final double? localVideoSeekSec;
 
   @override
   State<CornerPickerPage> createState() => _CornerPickerPageState();
@@ -34,6 +36,7 @@ class _CornerPickerPageState extends State<CornerPickerPage>
   )..repeat(reverse: true);
   VideoPlayerController? _localVideoController;
   bool _localVideoReady = false;
+  Uint8List? _embeddedPreviewBytes;
 
   @override
   void initState() {
@@ -41,7 +44,20 @@ class _CornerPickerPageState extends State<CornerPickerPage>
     _points = widget.preview.autoCorners.length == 4
         ? List.of(widget.preview.autoCorners)
         : [];
+    _embeddedPreviewBytes = _decodeEmbeddedPreview();
     _initializeLocalVideoPreview();
+  }
+
+  Uint8List? _decodeEmbeddedPreview() {
+    final dataUrl = widget.preview.imageDataUrl;
+    if (dataUrl == null || !dataUrl.startsWith('data:image/')) return null;
+    final commaIndex = dataUrl.indexOf(',');
+    if (commaIndex <= 0) return null;
+    try {
+      return base64Decode(dataUrl.substring(commaIndex + 1));
+    } on FormatException {
+      return null;
+    }
   }
 
   Future<void> _initializeLocalVideoPreview() async {
@@ -51,7 +67,9 @@ class _CornerPickerPageState extends State<CornerPickerPage>
     try {
       await controller.initialize();
       final seekTarget = Duration(
-        milliseconds: (widget.preview.timeSec * 1000).round(),
+        milliseconds:
+            ((widget.localVideoSeekSec ?? widget.preview.timeSec) * 1000)
+                .round(),
       );
       await controller.seekTo(seekTarget);
       await controller.pause();
@@ -108,21 +126,13 @@ class _CornerPickerPageState extends State<CornerPickerPage>
       );
     }
 
-    final dataUrl = widget.preview.imageDataUrl;
-    if (dataUrl != null && dataUrl.startsWith('data:image/')) {
-      final commaIndex = dataUrl.indexOf(',');
-      if (commaIndex > 0) {
-        try {
-          final bytes = base64Decode(dataUrl.substring(commaIndex + 1));
-          return Image.memory(
-            bytes,
-            fit: BoxFit.fill,
-            gaplessPlayback: true,
-          );
-        } on FormatException {
-          // Fall through to the network URL below.
-        }
-      }
+    final embeddedBytes = _embeddedPreviewBytes;
+    if (embeddedBytes != null) {
+      return Image.memory(
+        embeddedBytes,
+        fit: BoxFit.fill,
+        gaplessPlayback: true,
+      );
     }
     return Image.network(
       imageUrl,

@@ -12,6 +12,8 @@ class TaskStatus {
     this.createdAt,
     this.updatedAt,
     this.reportUrl,
+    this.queuePosition,
+    this.etaSeconds,
   });
 
   final String taskId;
@@ -26,6 +28,8 @@ class TaskStatus {
   final double? createdAt;
   final double? updatedAt;
   final String? reportUrl;
+  final int? queuePosition;
+  final int? etaSeconds;
 
   bool get isRunning => status == 'queued' || status == 'processing';
   bool get isCompleted => status == 'completed';
@@ -46,6 +50,8 @@ class TaskStatus {
       createdAt: _asNullableDouble(json['created_at']),
       updatedAt: _asNullableDouble(json['updated_at']),
       reportUrl: json['report_url']?.toString(),
+      queuePosition: _asNullableInt(json['queue_position']),
+      etaSeconds: _asNullableInt(json['eta_seconds']),
     );
   }
 
@@ -58,5 +64,10 @@ class TaskStatus {
       return value.toDouble();
     }
     return double.tryParse(value?.toString() ?? '');
+  }
+
+  static int? _asNullableInt(dynamic value) {
+    if (value is num) return value.round();
+    return int.tryParse(value?.toString() ?? '');
   }
 }

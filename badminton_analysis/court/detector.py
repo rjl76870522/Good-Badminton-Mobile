@@ -630,6 +630,21 @@ def _compute_adboard_penalty(corners, line_mask, image_shape):
 
 def _detect_surface_court_corners(image, court_reference, line_support):
     height, width = image.shape[:2]
+    support_lines = (
+        line_support.get("support_mask")
+        if isinstance(line_support, dict)
+        else None
+    )
+    if not isinstance(support_lines, np.ndarray):
+        support_lines = np.zeros((height, width), dtype=np.uint8)
+    elif support_lines.shape[:2] != (height, width):
+        support_lines = cv2.resize(
+            support_lines,
+            (width, height),
+            interpolation=cv2.INTER_NEAREST,
+        )
+    support_lines = np.asarray(support_lines, dtype=np.uint8)
+
     mask = _build_green_court_mask(
         image,
         fallback_bottom_roi=False,
@@ -693,7 +708,7 @@ def _detect_surface_court_corners(image, court_reference, line_support):
             255,
         )
         support_density = cv2.countNonZero(
-            cv2.bitwise_and(line_support, support_mask)
+            cv2.bitwise_and(support_lines, support_mask)
         ) / max(1, cv2.countNonZero(support_mask))
         if reference_score >= 0.10 and support_density >= 0.003:
             details = {

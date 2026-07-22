@@ -1,1 +1,0 @@
-{"type":"venue","venue_id":"24","venue_name":"演示球馆","server_url":"https://venue.example.com"}

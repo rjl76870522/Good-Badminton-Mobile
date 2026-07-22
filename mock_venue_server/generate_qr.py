@@ -19,8 +19,8 @@ def main() -> None:
     address = sys.argv[1] if len(sys.argv) > 1 else "电脑IP"
     payload = {
         "type": "venue",
-        "venue_id": "SZ_BADMINTON_001",
-        "venue_name": "智慧羽毛球馆",
+        "venue_id": "example",
+        "venue_name": "示例球场",
         "server_url": normalize_server_url(address),
     }
     image = qrcode.make(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
