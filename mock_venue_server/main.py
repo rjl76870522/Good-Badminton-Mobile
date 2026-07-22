@@ -77,6 +77,12 @@ def _default_library() -> list[dict]:
             durations[filename] = _probe_duration_seconds(VIDEOS_DIR / filename)
         duration = durations[filename]
         source_number = Path(filename).stem
+        source_path = VIDEOS_DIR / filename
+        revision = (
+            f"{source_number}-{source_path.stat().st_mtime_ns}"
+            if source_path.is_file()
+            else source_number
+        )
         recordings.append(
             {
                 "id": f"court{court_id}-full-recording",
@@ -86,6 +92,7 @@ def _default_library() -> list[dict]:
                 "thumbnail": "",
                 "filename": filename,
                 "source": "camera",
+                "revision": revision,
             }
         )
     return recordings
@@ -225,6 +232,7 @@ async def upload_recording(court_id: int, file: UploadFile = File(...)) -> dict:
         "thumbnail": "",
         "filename": stored_name,
         "source": "operator_upload",
+        "revision": Path(stored_name).stem,
     }
     uploaded = _load_uploaded_library()
     uploaded.insert(0, item)
@@ -300,10 +308,20 @@ def download_clip(
         finally:
             temporary_path.unlink(missing_ok=True)
 
-    return FileResponse(clip_path, media_type="video/mp4", filename=f"{video_id}_{start_ms}_{end_ms}.mp4")
+    return FileResponse(
+        clip_path,
+        media_type="video/mp4",
+        filename=f"{video_id}_{start_ms}_{end_ms}.mp4",
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @app.get("/videos/{video_id}/download")
 def download_video(video_id: str) -> FileResponse:
     file_path = _video_path(_find_video(video_id))
-    return FileResponse(file_path, media_type="video/mp4", filename=f"{video_id}.mp4")
+    return FileResponse(
+        file_path,
+        media_type="video/mp4",
+        filename=f"{video_id}.mp4",
+        headers={"Cache-Control": "no-store"},
+    )

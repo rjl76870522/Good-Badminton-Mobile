@@ -29,6 +29,7 @@ void main() {
     expect(find.text('世界排名'), findsOneWidget);
     expect(find.text('球星资料'), findsOneWidget);
     expect(find.text('装备库'), findsOneWidget);
+    expect(find.text('近期赛事与球星新闻'), findsOneWidget);
     await tester.drag(
       find.byKey(const ValueKey('discover-list')),
       const Offset(0, -650),

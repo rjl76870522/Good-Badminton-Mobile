@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../services/map_launcher_service.dart';
 import '../widgets/app_background.dart';
@@ -273,6 +274,20 @@ class _NavigationPageState extends State<NavigationPage> {
 class _KnowledgeModules extends StatelessWidget {
   const _KnowledgeModules();
 
+  static final _newsUri = Uri.parse('https://www.badmintoncn.com/');
+
+  Future<void> _openNews(BuildContext context) async {
+    final opened = await launchUrl(
+      _newsUri,
+      mode: LaunchMode.externalApplication,
+    );
+    if (!opened && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('暂时无法打开羽球资讯')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     const modules = <({
@@ -371,6 +386,30 @@ class _KnowledgeModules extends StatelessWidget {
               ),
             );
           },
+        ),
+        const SizedBox(height: 10),
+        Card(
+          margin: EdgeInsets.zero,
+          child: ListTile(
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            leading: Container(
+              width: 46,
+              height: 46,
+              decoration: BoxDecoration(
+                color: const Color(0xFFE8F5E9),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.newspaper_outlined),
+            ),
+            title: const Text(
+              '近期赛事与球星新闻',
+              style: TextStyle(fontWeight: FontWeight.w800),
+            ),
+            subtitle: const Text('前往中羽在线查看最新羽球资讯'),
+            trailing: const Icon(Icons.open_in_new),
+            onTap: () => _openNews(context),
+          ),
         ),
       ],
     );

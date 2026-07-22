@@ -50,6 +50,19 @@ def test_default_courts_use_the_configured_recordings():
         "01.mp4",
         "02.mp4",
     ]
+    assert [item["duration"] for item in recordings] == [
+        "8 秒",
+        "11 秒",
+        "18 秒",
+        "35 秒",
+        "47 秒",
+        "8 秒",
+        "11 秒",
+        "18 秒",
+        "35 秒",
+        "47 秒",
+    ]
+    assert all(item["revision"] for item in recordings)
 
 
 def test_operator_can_add_multiple_recordings_at_different_times(
