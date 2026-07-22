@@ -32,4 +32,19 @@ void main() {
       contains('UNUserNotificationCenter.current().delegate = self'),
     );
   });
+
+  test('QR scanner keeps the iOS rear-camera path and simulator guidance', () {
+    final source = File('lib/pages/qr_scan_page.dart').readAsStringSync();
+
+    expect(source, contains('typeCamera: TypeCamera.back'));
+    expect(source, contains('Appetize 等 iOS 模拟器通常不提供真实摄像头'));
+  });
+
+  test('venue videos always expose the clip range selector', () {
+    final source = File('lib/pages/video_detail_page.dart').readAsStringSync();
+
+    expect(source, contains("Key('venue-clip-selector')"));
+    expect(source, isNot(contains('controller != null && !_isBundledDemo')));
+    expect(source, contains("_venueVideoUrl('videos/\$serverVideoId/clip')"));
+  });
 }

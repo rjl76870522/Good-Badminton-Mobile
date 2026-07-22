@@ -134,7 +134,7 @@ class _QrScanPageState extends State<QrScanPage> {
       return '相机权限未开启，请到系统设置中允许“智羽”使用相机';
     }
     if (normalized.contains('camera_not_found')) {
-      return '没有找到可用的后置相机';
+      return '没有找到可用的后置相机。Appetize 等 iOS 模拟器通常不提供真实摄像头，请使用 iPhone 真机测试扫码。';
     }
     if (normalized.contains('cameraaccess') || normalized.contains('in_use')) {
       return '相机正在被其他应用占用，请关闭其他相机应用后重试';

@@ -42,6 +42,11 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
   RangeValues _clipRange = const RangeValues(0, 0);
 
   bool get _isBundledDemo => widget.video.assetPath?.isNotEmpty == true;
+  String? get _bundledServerVideoId => switch (widget.video.id) {
+        'example-court1-demo01' => 'court1-full-recording',
+        'example-court2-demo02' => 'court2-full-recording',
+        _ => null,
+      };
   bool get _videoReady =>
       _controller != null &&
       _controller!.value.isInitialized &&
@@ -148,6 +153,21 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
     final fileName = '${widget.video.id}_${_startMs}_$_endMs.mp4';
     final targetPath = '${videoDirectory.path}/$fileName';
     if (_isBundledDemo) {
+      final serverVideoId = _bundledServerVideoId;
+      if (!_isFullSelection && serverVideoId != null) {
+        final clipUrl = Uri.parse(
+          _venueVideoUrl('videos/$serverVideoId/clip'),
+        ).replace(queryParameters: {
+          'start_ms': _startMs.toString(),
+          'end_ms': _endMs.toString(),
+        }).toString();
+        final savedPath = await _api.downloadFile(
+          clipUrl,
+          targetPath,
+          onProgress: onProgress,
+        );
+        return File(savedPath);
+      }
       final data = await rootBundle.load(widget.video.assetPath!);
       final file = File(targetPath);
       await file.writeAsBytes(
@@ -499,7 +519,7 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
               ),
             ),
             const SizedBox(height: 20),
-            if (controller != null && !_isBundledDemo) ...[
+            if (controller != null) ...[
               _clipSelector(context),
               const SizedBox(height: 20),
             ],
@@ -533,6 +553,7 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
   }
 
   Widget _clipSelector(BuildContext context) => Card(
+        key: const Key('venue-clip-selector'),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
