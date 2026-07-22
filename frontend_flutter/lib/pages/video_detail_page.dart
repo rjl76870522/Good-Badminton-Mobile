@@ -39,6 +39,7 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
   Future<void>? _scrubSeekWorker;
   double _previewLoadingProgress = 0;
   double _downloadProgress = 0;
+  double _videoDurationSeconds = 1;
   RangeValues _clipRange = const RangeValues(0, 0);
 
   bool get _isBundledDemo => widget.video.assetPath?.isNotEmpty == true;
@@ -66,9 +67,7 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
   }
 
   Duration get _duration => _controller?.value.duration ?? Duration.zero;
-  double get _maximumSeconds => math
-      .max(1, _duration.inMilliseconds / Duration.millisecondsPerSecond)
-      .toDouble();
+  double get _maximumSeconds => _videoDurationSeconds;
   int get _startMs =>
       (_clipRange.start * Duration.millisecondsPerSecond).round();
   int get _endMs => (_clipRange.end * Duration.millisecondsPerSecond).round();
@@ -105,9 +104,17 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
         return;
       }
       controller.addListener(_onVideoChanged);
+      final durationSeconds = math
+          .max(
+            1,
+            controller.value.duration.inMilliseconds /
+                Duration.millisecondsPerSecond,
+          )
+          .toDouble();
       setState(() {
         _controller = controller;
-        _clipRange = RangeValues(0, _maximumSeconds);
+        _videoDurationSeconds = durationSeconds;
+        _clipRange = RangeValues(0, durationSeconds);
         _previewLoadingProgress = 1;
       });
     } catch (_) {
@@ -577,7 +584,10 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
               const SizedBox(height: 4),
               const Text('拖动两端，尽量避开回合之间的捡球和休息时间'),
               RangeSlider(
-                values: _clipRange,
+                values: RangeValues(
+                  _clipRange.start.clamp(0, _maximumSeconds),
+                  _clipRange.end.clamp(0, _maximumSeconds),
+                ),
                 min: 0,
                 max: _maximumSeconds,
                 divisions:
