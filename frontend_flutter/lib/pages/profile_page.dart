@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../services/user_storage.dart';
 import '../widgets/app_background.dart';
@@ -19,6 +21,7 @@ class ProfilePage extends StatefulWidget {
 }
 
 class _ProfilePageState extends State<ProfilePage> {
+  static const _developerEmail = 'jialeR01@126.com';
   final UserStorage _storage = UserStorage();
   final ImagePicker _imagePicker = ImagePicker();
   String _nickname = '';
@@ -97,6 +100,27 @@ class _ProfilePageState extends State<ProfilePage> {
     if (value == null) return;
     await _storage.setNickname(value);
     await _load();
+  }
+
+  Future<void> _contactDeveloper() async {
+    final uri = Uri(
+      scheme: 'mailto',
+      path: _developerEmail,
+      queryParameters: const {
+        'subject': '智羽 App 使用问题',
+        'body': '你好，我在使用智羽 App 时遇到了以下问题：\n\n问题描述：\n\n出现步骤：\n\n手机型号和系统版本：',
+      },
+    );
+    try {
+      if (await launchUrl(uri, mode: LaunchMode.externalApplication)) return;
+    } catch (_) {
+      // 没有配置邮件应用时复制邮箱，仍为用户保留可用入口。
+    }
+    await Clipboard.setData(const ClipboardData(text: _developerEmail));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('未找到邮件应用，开发者邮箱已复制')),
+    );
   }
 
   @override
@@ -245,6 +269,14 @@ class _ProfilePageState extends State<ProfilePage> {
                       onTap: () => Navigator.of(context).push(
                         MaterialPageRoute(builder: (_) => const SettingsPage()),
                       ),
+                    ),
+                    const Divider(height: 1),
+                    ListTile(
+                      leading: const Icon(Icons.support_agent_outlined),
+                      title: const Text('遇到问题，联系开发者'),
+                      subtitle: const Text(_developerEmail),
+                      trailing: const Icon(Icons.mail_outline),
+                      onTap: _contactDeveloper,
                     ),
                     const Divider(height: 1),
                     const ListTile(

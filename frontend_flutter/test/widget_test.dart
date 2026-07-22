@@ -50,6 +50,8 @@ void main() {
 
     expect(find.text('我的'), findsWidgets);
     expect(find.text('设置'), findsOneWidget);
+    expect(find.text('遇到问题，联系开发者'), findsOneWidget);
+    expect(find.text('jialeR01@126.com'), findsOneWidget);
     expect(find.text('点击头像可以从相册更换'), findsOneWidget);
     expect(find.text('训练与球馆'), findsOneWidget);
     expect(find.text('每日签到'), findsOneWidget);
