@@ -96,7 +96,7 @@ class _BadmintonKnowledgePageState extends State<BadmintonKnowledgePage> {
         _IntroCard(
           icon: Icons.event_available_outlined,
           title: '观赛日历',
-          body: '按赛事级别安排观赛，具体比赛日期和签表以赛事官方发布为准',
+          body: '按赛事级别安排观赛，了解每类比赛的看点',
         ),
         _InfoCard(
           title: '世界巡回赛',
@@ -124,21 +124,20 @@ class _BadmintonKnowledgePageState extends State<BadmintonKnowledgePage> {
         _IntroCard(
           icon: Icons.workspace_premium_outlined,
           title: '认识世界排名',
-          body: '世界排名会随参赛和积分变化，本页先帮助理解项目分类和排名用途，不展示可能过期的名次',
+          body: '了解五个竞赛项目、积分来源和排名用途',
         ),
         _InfoCard(title: '男子单打', badge: 'MS', body: '重视连续进攻、全场移动和多拍稳定性'),
         _InfoCard(title: '女子单打', badge: 'WS', body: '观察节奏变化、落点控制和攻守转换效率'),
         _InfoCard(title: '男子双打', badge: 'MD', body: '强调前三拍、平抽挡速度和轮转衔接'),
         _InfoCard(title: '女子双打', badge: 'WD', body: '重视防守韧性、连贯压制和搭档覆盖'),
         _InfoCard(title: '混合双打', badge: 'XD', body: '前后场分工与轮转速度是主要观察重点'),
-        _NoteCard(text: '正式接入排名数据时，应记录数据来源与更新时间，避免把缓存名次当作实时结果'),
       ];
 
   List<Widget> get _playerContent => const [
         _IntroCard(
           icon: Icons.person_search_outlined,
           title: '从球星学习',
-          body: '资料聚焦可观察的技术特点，不给球员贴固定标签，也不使用未经核实的大众评价',
+          body: '从比赛中观察优秀球员的技术特点和回合处理',
         ),
         _InfoCard(
           title: '石宇奇',
@@ -166,7 +165,7 @@ class _BadmintonKnowledgePageState extends State<BadmintonKnowledgePage> {
         _IntroCard(
           icon: Icons.inventory_2_outlined,
           title: '按需求选择装备',
-          body: '装备没有统一的最好选择，应结合力量、打法、训练频率和伤病情况判断',
+          body: '结合力量、打法和训练频率选择适合自己的装备',
         ),
         _InfoCard(
           title: '球拍',
@@ -188,7 +187,6 @@ class _BadmintonKnowledgePageState extends State<BadmintonKnowledgePage> {
           badge: '速度与耐打',
           body: '球速受温度、海拔和球馆环境影响，训练时应选择适合当地条件的速度型号',
         ),
-        _NoteCard(text: '价格和用户评价变化较快，后续装备数据应标注更新时间，并区分客观参数与主观体验'),
       ];
 }
 
@@ -274,27 +272,6 @@ class _InfoCard extends StatelessWidget {
             Text(body, style: const TextStyle(height: 1.5)),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _NoteCard extends StatelessWidget {
-  const _NoteCard({required this.text});
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 8, 4, 0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Icon(Icons.info_outline, size: 20),
-          const SizedBox(width: 8),
-          Expanded(child: Text(text, style: const TextStyle(height: 1.5))),
-        ],
       ),
     );
   }

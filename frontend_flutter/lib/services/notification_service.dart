@@ -40,6 +40,14 @@ class NotificationService {
     return android ?? ios ?? true;
   }
 
+  Future<bool> enable() async {
+    final allowed = await requestPermission();
+    if (allowed) {
+      await AppPreferences.instance.setNotificationsEnabled(true);
+    }
+    return allowed;
+  }
+
   Future<void> notifyTaskFinished({
     required String taskId,
     required String videoName,
@@ -61,23 +69,25 @@ class NotificationService {
     await preferences.setBool(key, true);
   }
 
-  Future<void> showTestNotification() async {
-    await initialize();
+  Future<bool> showTestNotification() async {
+    if (!await enable()) return false;
     await _plugin.show(
       10001,
       '智羽通知测试',
       '通知功能可以正常显示，训练分析完成后会在这里提醒你',
       _notificationDetails,
     );
+    return true;
   }
 
   static const _notificationDetails = NotificationDetails(
     android: AndroidNotificationDetails(
-      'analysis_results',
+      'analysis_results_v2',
       '分析结果',
       channelDescription: '视频分析完成或失败时发送提醒',
       importance: Importance.high,
       priority: Priority.high,
+      icon: 'ic_stat_badminton',
     ),
     iOS: DarwinNotificationDetails(),
   );

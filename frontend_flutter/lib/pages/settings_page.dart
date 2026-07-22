@@ -101,8 +101,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 value: _notifications,
                 onChanged: (value) async {
                   if (value) {
-                    final allowed =
-                        await NotificationService.instance.requestPermission();
+                    final allowed = await NotificationService.instance.enable();
                     if (!allowed) {
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
@@ -124,7 +123,16 @@ class _SettingsPageState extends State<SettingsPage> {
                   subtitle: const Text('立即检查系统通知能否正常显示'),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () async {
-                    await NotificationService.instance.showTestNotification();
+                    final shown = await NotificationService.instance
+                        .showTestNotification();
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          shown ? '测试通知已发送，请查看系统通知栏' : '系统没有允许通知权限',
+                        ),
+                      ),
+                    );
                   },
                 ),
               ],
