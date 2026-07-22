@@ -484,6 +484,10 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
           children: [
             _previewCard(controller),
             const SizedBox(height: 16),
+            if (controller != null) ...[
+              _clipSelector(context),
+              const SizedBox(height: 16),
+            ],
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(20),
@@ -519,10 +523,6 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
               ),
             ),
             const SizedBox(height: 20),
-            if (controller != null) ...[
-              _clipSelector(context),
-              const SizedBox(height: 20),
-            ],
             if (_downloading) ...[
               LinearProgressIndicator(value: _downloadProgress),
               const SizedBox(height: 8),

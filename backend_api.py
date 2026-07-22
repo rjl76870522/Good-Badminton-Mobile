@@ -448,6 +448,9 @@ def _create_analysis_task(
         else:
             with upload_path.open("wb") as out:
                 shutil.copyfileobj(file.file, out)
+        upload_path = _normalize_video_for_analysis(upload_path)
+        if upload_path.suffix.lower() == ".mp4":
+            video_name = Path(video_name).with_suffix(".mp4").name
         _validate_uploaded_video(upload_path)
 
         template = _resolve_template(template_path)
@@ -508,6 +511,7 @@ def create_preview_frame(
     try:
         with source_path.open("wb") as out:
             shutil.copyfileobj(file.file, out)
+        source_path = _normalize_video_for_analysis(source_path)
         _validate_uploaded_video(source_path)
         preview = _select_preview_frame(source_path, source_upload_id)
     except Exception:
@@ -517,7 +521,7 @@ def create_preview_frame(
         {
             "source_upload_id": source_upload_id,
             "user_id": user_id,
-            "video_name": safe_name,
+            "video_name": source_path.name.removeprefix(f"{source_upload_id}_"),
         }
     )
     return preview
@@ -2092,6 +2096,102 @@ def _validate_uploaded_video(path: Path) -> None:
             code="VIDEO_TOO_LONG",
             message="视频太长，请上传 3 分钟以内的视频。",
             hint="当前服务器按短视频训练复盘优化，长视频请先裁剪。",
+        )
+
+
+def _probe_video_codec(path: Path) -> str | None:
+    ffprobe = shutil.which("ffprobe")
+    if not ffprobe:
+        return None
+    try:
+        result = subprocess.run(
+            [
+                ffprobe,
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=codec_name",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                str(path),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    codec = result.stdout.strip().lower()
+    return codec or None
+
+
+def _normalize_video_for_analysis(path: Path) -> Path:
+    """Convert Apple MOV/HEVC inputs to a stable H.264/AAC MP4 when needed."""
+    codec = _probe_video_codec(path)
+    requires_conversion = (
+        path.suffix.lower() in {".mov", ".m4v"} and codec is not None
+    ) or codec in {"hevc", "h265"}
+    if not requires_conversion:
+        return path
+
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        raise_api_error(
+            status_code=500,
+            code="VIDEO_CONVERTER_MISSING",
+            message="中心服务器暂时无法转换此视频格式。",
+            hint="请稍后重试，或在手机中导出为兼容性最佳的 H.264 MP4。",
+        )
+
+    destination = path.with_suffix(".mp4")
+    temporary = destination.with_name(f"{destination.stem}.{uuid.uuid4().hex}.tmp.mp4")
+    try:
+        subprocess.run(
+            [
+                ffmpeg,
+                "-y",
+                "-i",
+                str(path),
+                "-map",
+                "0:v:0",
+                "-map",
+                "0:a:0?",
+                "-c:v",
+                "libx264",
+                "-preset",
+                "veryfast",
+                "-crf",
+                "20",
+                "-pix_fmt",
+                "yuv420p",
+                "-c:a",
+                "aac",
+                "-b:a",
+                "160k",
+                "-movflags",
+                "+faststart",
+                str(temporary),
+            ],
+            check=True,
+            capture_output=True,
+            timeout=300,
+        )
+        if not temporary.is_file() or temporary.stat().st_size == 0:
+            raise subprocess.CalledProcessError(1, "ffmpeg")
+        temporary.replace(destination)
+        if path != destination:
+            path.unlink(missing_ok=True)
+        return destination
+    except (OSError, subprocess.SubprocessError):
+        temporary.unlink(missing_ok=True)
+        raise_api_error(
+            status_code=400,
+            code="VIDEO_CONVERSION_FAILED",
+            message="无法转换所选视频。",
+            hint="请确认视频可以正常播放，或在 iPhone 相机设置中选择“兼容性最佳”。",
         )
 
 
