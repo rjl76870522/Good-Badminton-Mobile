@@ -1,10 +1,12 @@
 import 'dart:async';
 
+import 'package:flutter/widgets.dart';
+
 import 'api_service.dart';
 import 'notification_service.dart';
 import 'task_storage.dart';
 
-class TaskNotificationMonitor {
+class TaskNotificationMonitor with WidgetsBindingObserver {
   TaskNotificationMonitor._();
 
   static final TaskNotificationMonitor instance = TaskNotificationMonitor._();
@@ -14,11 +16,17 @@ class TaskNotificationMonitor {
   bool _checking = false;
 
   void start() {
+    WidgetsBinding.instance.addObserver(this);
     _timer ??= Timer.periodic(
-      const Duration(seconds: 15),
+      const Duration(seconds: 5),
       (_) => checkNow(),
     );
     checkNow();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) checkNow();
   }
 
   Future<void> checkNow() async {

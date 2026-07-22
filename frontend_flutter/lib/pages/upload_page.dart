@@ -297,13 +297,11 @@ class _UploadPageState extends State<UploadPage> {
         );
       }
       if (!mounted) return;
-      if (file != null) {
-        await _storage.saveActiveTask(
-          taskId: result.taskId,
-          videoPath: file.path,
-          videoName: file.name,
-        );
-      }
+      await _storage.saveActiveTask(
+        taskId: result.taskId,
+        videoPath: file?.path ?? '',
+        videoName: file?.name ?? widget.initialVideoName ?? '球馆训练视频',
+      );
       if (!mounted) return;
       await Navigator.of(context).pushReplacement(
         MaterialPageRoute(

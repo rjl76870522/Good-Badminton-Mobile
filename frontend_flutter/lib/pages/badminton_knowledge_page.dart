@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 enum KnowledgeSection { calendar, rankings, players, equipment }
 
@@ -23,6 +24,27 @@ class _BadmintonKnowledgePageState extends State<BadmintonKnowledgePage> {
     KnowledgeSection.players: (title: '球星资料', icon: Icons.people_alt),
     KnowledgeSection.equipment: (title: '装备库', icon: Icons.sports_tennis),
   };
+
+  Uri? get _officialUri => switch (_section) {
+        KnowledgeSection.calendar =>
+          Uri.parse('https://bwfbadminton.com/calendar/'),
+        KnowledgeSection.rankings =>
+          Uri.parse('https://bwfbadminton.com/rankings/'),
+        KnowledgeSection.players =>
+          Uri.parse('https://bwfbadminton.com/players/'),
+        KnowledgeSection.equipment => null,
+      };
+
+  Future<void> _openOfficialPage() async {
+    final uri = _officialUri;
+    if (uri == null) return;
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!opened && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('暂时无法打开 BWF 官方页面')),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -57,6 +79,14 @@ class _BadmintonKnowledgePageState extends State<BadmintonKnowledgePage> {
             KnowledgeSection.players => _playerContent,
             KnowledgeSection.equipment => _equipmentContent,
           },
+          if (_officialUri != null) ...[
+            const SizedBox(height: 14),
+            OutlinedButton.icon(
+              onPressed: _openOfficialPage,
+              icon: const Icon(Icons.open_in_new),
+              label: Text('前往 BWF 官方${_sections[_section]!.title}'),
+            ),
+          ],
         ],
       ),
     );
