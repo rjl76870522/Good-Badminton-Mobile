@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 
@@ -36,12 +39,27 @@ class _NavigationPageState extends State<NavigationPage> {
           permission == LocationPermission.deniedForever) {
         throw StateError('未获得定位权限，可到系统设置中开启');
       }
-      final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.medium,
-          timeLimit: Duration(seconds: 12),
-        ),
+      Position? position = await Geolocator.getLastKnownPosition(
+        forceAndroidLocationManager: Platform.isAndroid,
       );
+      try {
+        position = await Geolocator.getCurrentPosition(
+          locationSettings: Platform.isAndroid
+              ? AndroidSettings(
+                  accuracy: LocationAccuracy.high,
+                  forceLocationManager: true,
+                  timeLimit: Duration(seconds: 25),
+                )
+              : AppleSettings(
+                  accuracy: LocationAccuracy.best,
+                  timeLimit: Duration(seconds: 20),
+                ),
+        );
+      } on TimeoutException {
+        if (position == null) {
+          throw StateError('暂时无法获得位置，请到开阔处开启定位后重试');
+        }
+      }
       if (!mounted) return;
       setState(() {
         _position = position;
@@ -149,9 +167,8 @@ class _NavigationPageState extends State<NavigationPage> {
                 child: ListTile(
                   leading: const Icon(Icons.my_location_outlined),
                   title: Text(_position == null ? '定位当前位置' : '当前位置已启用'),
-                  subtitle: Text(
-                    _locationMessage ?? '仅在本次搜索中使用，不上传中心服务器',
-                  ),
+                  subtitle:
+                      _locationMessage == null ? null : Text(_locationMessage!),
                   trailing: _locating
                       ? const SizedBox(
                           width: 22,

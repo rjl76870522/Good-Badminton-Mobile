@@ -135,29 +135,33 @@ class _DailyCheckInPageState extends State<DailyCheckInPage> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('今日羽球故事',
-                            style: Theme.of(context).textTheme.titleMedium),
-                        const SizedBox(height: 12),
-                        Text(story.player,
-                            style:
-                                const TextStyle(fontWeight: FontWeight.w800)),
-                        const SizedBox(height: 8),
-                        Text(story.text, style: const TextStyle(height: 1.6)),
-                        const SizedBox(height: 8),
-                        Text(
-                          '内容为项目团队根据公开生涯经历整理，不是运动员原话',
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      ],
+                if (_checkedToday)
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('今日羽球故事',
+                              style: Theme.of(context).textTheme.titleMedium),
+                          const SizedBox(height: 12),
+                          Text(story.player,
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.w800)),
+                          const SizedBox(height: 8),
+                          Text(story.text, style: const TextStyle(height: 1.6)),
+                        ],
+                      ),
+                    ),
+                  )
+                else
+                  const Card(
+                    child: ListTile(
+                      leading: Icon(Icons.lock_outline),
+                      title: Text('签到后解锁今日内容'),
+                      subtitle: Text('每天都有一则励志寄语或羽球趣味故事'),
                     ),
                   ),
-                ),
                 const SizedBox(height: 18),
                 FilledButton.icon(
                   onPressed: _checkedToday ? null : _checkIn,

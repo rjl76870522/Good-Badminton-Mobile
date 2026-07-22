@@ -26,6 +26,7 @@ void main() {
     await tester.pump();
     expect(find.text('附近羽毛球馆'), findsOneWidget);
     expect(find.text('高德地图'), findsOneWidget);
+    expect(find.textContaining('中心服务器'), findsNothing);
     await tester.scrollUntilVisible(find.text('东北大学南湖校区羽乒馆'), 260);
     expect(find.text('东北大学南湖校区羽乒馆'), findsOneWidget);
     await tester.scrollUntilVisible(
