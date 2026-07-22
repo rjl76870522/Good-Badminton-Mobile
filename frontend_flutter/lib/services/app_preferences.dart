@@ -23,7 +23,12 @@ class AppPreferences {
 
   Future<bool> notificationsEnabled() async {
     final preferences = await SharedPreferences.getInstance();
-    return preferences.getBool(_notificationsKey) ?? false;
+    return preferences.getBool(_notificationsKey) ?? true;
+  }
+
+  Future<bool> hasNotificationsPreference() async {
+    final preferences = await SharedPreferences.getInstance();
+    return preferences.containsKey(_notificationsKey);
   }
 
   Future<void> setNotificationsEnabled(bool value) async {

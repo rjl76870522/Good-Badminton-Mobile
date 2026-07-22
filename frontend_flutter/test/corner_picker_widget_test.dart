@@ -43,6 +43,8 @@ void main() {
     await tester.pump();
 
     expect(find.text('四个角点已设置'), findsOneWidget);
+    expect(find.textContaining('自动角点仅供参考'), findsOneWidget);
+    expect(find.textContaining('角点位置会直接影响移动距离'), findsOneWidget);
 
     await tester.scrollUntilVisible(find.text('重新选择'), 200);
     await tester.tap(find.text('重新选择'));

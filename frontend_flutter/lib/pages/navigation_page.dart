@@ -1,8 +1,13 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../services/map_launcher_service.dart';
 import '../widgets/app_background.dart';
+import 'badminton_knowledge_page.dart';
 
 class NavigationPage extends StatefulWidget {
   const NavigationPage({super.key});
@@ -36,12 +41,27 @@ class _NavigationPageState extends State<NavigationPage> {
           permission == LocationPermission.deniedForever) {
         throw StateError('未获得定位权限，可到系统设置中开启');
       }
-      final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.medium,
-          timeLimit: Duration(seconds: 12),
-        ),
+      Position? position = await Geolocator.getLastKnownPosition(
+        forceAndroidLocationManager: Platform.isAndroid,
       );
+      try {
+        position = await Geolocator.getCurrentPosition(
+          locationSettings: Platform.isAndroid
+              ? AndroidSettings(
+                  accuracy: LocationAccuracy.high,
+                  forceLocationManager: true,
+                  timeLimit: Duration(seconds: 25),
+                )
+              : AppleSettings(
+                  accuracy: LocationAccuracy.best,
+                  timeLimit: Duration(seconds: 20),
+                ),
+        );
+      } on TimeoutException {
+        if (position == null) {
+          throw StateError('暂时无法获得位置，请到开阔处开启定位后重试');
+        }
+      }
       if (!mounted) return;
       setState(() {
         _position = position;
@@ -102,8 +122,11 @@ class _NavigationPageState extends State<NavigationPage> {
           top: false,
           bottom: false,
           child: ListView(
+            key: const ValueKey('discover-list'),
             padding: const EdgeInsets.fromLTRB(16, 10, 16, 28),
             children: [
+              const _KnowledgeModules(),
+              const SizedBox(height: 24),
               Container(
                 padding: const EdgeInsets.all(22),
                 decoration: BoxDecoration(
@@ -149,9 +172,8 @@ class _NavigationPageState extends State<NavigationPage> {
                 child: ListTile(
                   leading: const Icon(Icons.my_location_outlined),
                   title: Text(_position == null ? '定位当前位置' : '当前位置已启用'),
-                  subtitle: Text(
-                    _locationMessage ?? '仅在本次搜索中使用，不上传中心服务器',
-                  ),
+                  subtitle:
+                      _locationMessage == null ? null : Text(_locationMessage!),
                   trailing: _locating
                       ? const SizedBox(
                           width: 22,
@@ -245,6 +267,151 @@ class _NavigationPageState extends State<NavigationPage> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _KnowledgeModules extends StatelessWidget {
+  const _KnowledgeModules();
+
+  static final _newsUri = Uri.parse('https://www.badmintoncn.com/');
+
+  Future<void> _openNews(BuildContext context) async {
+    final opened = await launchUrl(
+      _newsUri,
+      mode: LaunchMode.externalApplication,
+    );
+    if (!opened && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('暂时无法打开羽球资讯')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const modules = <({
+      KnowledgeSection section,
+      IconData icon,
+      String title,
+      String subtitle,
+    })>[
+      (
+        section: KnowledgeSection.calendar,
+        icon: Icons.calendar_month_outlined,
+        title: '大赛日历',
+        subtitle: '赛事级别与观赛安排',
+      ),
+      (
+        section: KnowledgeSection.rankings,
+        icon: Icons.leaderboard_outlined,
+        title: '世界排名',
+        subtitle: '五个项目与积分规则',
+      ),
+      (
+        section: KnowledgeSection.players,
+        icon: Icons.person_search_outlined,
+        title: '球星资料',
+        subtitle: '打法特点与观察重点',
+      ),
+      (
+        section: KnowledgeSection.equipment,
+        icon: Icons.sports_tennis_outlined,
+        title: '装备库',
+        subtitle: '球拍、球鞋和用球选择',
+      ),
+    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '羽球内容',
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          '无需离开应用，快速了解赛事、球员与装备',
+          style: Theme.of(context).textTheme.bodyMedium,
+        ),
+        const SizedBox(height: 12),
+        GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: modules.length,
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            mainAxisExtent: 122,
+            crossAxisSpacing: 10,
+            mainAxisSpacing: 10,
+          ),
+          itemBuilder: (context, index) {
+            final module = modules[index];
+            return Card(
+              margin: EdgeInsets.zero,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(8),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => BadmintonKnowledgePage(
+                      initialSection: module.section,
+                    ),
+                  ),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        module.icon,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      const Spacer(),
+                      Text(
+                        module.title,
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        module.subtitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+        const SizedBox(height: 10),
+        Card(
+          margin: EdgeInsets.zero,
+          child: ListTile(
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            leading: Container(
+              width: 46,
+              height: 46,
+              decoration: BoxDecoration(
+                color: const Color(0xFFE8F5E9),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.newspaper_outlined),
+            ),
+            title: const Text(
+              '近期赛事与球星新闻',
+              style: TextStyle(fontWeight: FontWeight.w800),
+            ),
+            subtitle: const Text('前往中羽在线查看最新羽球资讯'),
+            trailing: const Icon(Icons.open_in_new),
+            onTap: () => _openNews(context),
+          ),
+        ),
+      ],
     );
   }
 }

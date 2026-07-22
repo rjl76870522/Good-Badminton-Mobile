@@ -59,11 +59,13 @@ class _TaskStatusPageState extends State<TaskStatusPage>
       });
       if (!task.isRunning) {
         _timer?.cancel();
-        await NotificationService.instance.notifyTaskFinished(
+        final notificationHandled =
+            await NotificationService.instance.notifyTaskFinished(
           taskId: task.taskId,
           videoName: task.videoName,
           completed: task.isCompleted,
         );
+        if (!notificationHandled) return;
         if (task.isCompleted) {
           await _storage.removeUpload(task.taskId);
         } else {

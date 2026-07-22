@@ -87,6 +87,8 @@ footer a { text-decoration: none; } footer a:hover { text-decoration: underline;
 .legal-content h2, .support-grid h2, .support-closing h2 { margin: 0; font-size: clamp(28px, 3vw, 40px); line-height: 1.25; }
 .legal-content p, .support-grid p { margin: 12px 0 0; color: #5f6871; font-size: clamp(18px, 1.8vw, 22px); line-height: 1.85; }
 .legal-content p a { margin: 0 5px; color: var(--blue); text-decoration: none; }
+.support-grid p a { color: var(--blue); text-decoration: none; overflow-wrap: anywhere; }
+.support-grid p a:hover { text-decoration: underline; }
 .support-hero { min-height: 580px; background: radial-gradient(circle at 50% 110%, #d7ebfa, #edf5fb 52%, #f7fafc); }
 .support-grid { width: min(1120px, calc(100% - 48px)); display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0 auto; padding: 80px 0; }
 .support-grid article { min-height: 290px; padding: 36px 42px; border-top: 1px solid #d8dce0; }

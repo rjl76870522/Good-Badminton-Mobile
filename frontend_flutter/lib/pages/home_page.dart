@@ -6,6 +6,7 @@ import '../models/venue.dart';
 import '../models/task_status.dart';
 import '../services/api_service.dart';
 import '../services/task_storage.dart';
+import '../services/notification_service.dart';
 import '../utils/user_facing_error.dart';
 import 'history_page.dart';
 import 'qr_scan_page.dart';
@@ -48,9 +49,21 @@ class _HomePageState extends State<HomePage> {
           if (task.isRunning) {
             runningTasks.add(task);
           } else if (task.isCompleted) {
-            await _storage.removeUpload(taskId);
+            final notificationHandled =
+                await NotificationService.instance.notifyTaskFinished(
+              taskId: task.taskId,
+              videoName: task.videoName,
+              completed: true,
+            );
+            if (notificationHandled) await _storage.removeUpload(taskId);
           } else {
-            await _storage.clearActiveTask(taskId);
+            final notificationHandled =
+                await NotificationService.instance.notifyTaskFinished(
+              taskId: task.taskId,
+              videoName: task.videoName,
+              completed: false,
+            );
+            if (notificationHandled) await _storage.clearActiveTask(taskId);
           }
         } on ApiException catch (error) {
           if (error.statusCode == 404) {

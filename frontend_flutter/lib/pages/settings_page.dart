@@ -97,12 +97,11 @@ class _SettingsPageState extends State<SettingsPage> {
               SwitchListTile(
                 secondary: const Icon(Icons.notifications_outlined),
                 title: const Text('分析完成通知'),
-                subtitle: const Text('应用运行期间，分析完成或失败时提醒'),
+                subtitle: const Text('应用运行期间或再次打开应用时提醒分析结果'),
                 value: _notifications,
                 onChanged: (value) async {
                   if (value) {
-                    final allowed =
-                        await NotificationService.instance.requestPermission();
+                    final allowed = await NotificationService.instance.enable();
                     if (!allowed) {
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
@@ -116,6 +115,27 @@ class _SettingsPageState extends State<SettingsPage> {
                   if (mounted) setState(() => _notifications = value);
                 },
               ),
+              if (_notifications) ...[
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.notifications_active_outlined),
+                  title: const Text('发送测试通知'),
+                  subtitle: const Text('立即检查系统通知能否正常显示'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () async {
+                    final shown = await NotificationService.instance
+                        .showTestNotification();
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          shown ? '测试通知已发送，请查看系统通知栏' : '系统没有允许通知权限',
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ],
               const Divider(height: 1),
               SwitchListTile(
                 secondary: const Icon(Icons.visibility_outlined),

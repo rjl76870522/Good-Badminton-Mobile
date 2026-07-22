@@ -296,7 +296,13 @@ def run_analysis(video_path, template_path, corners, options, progress_cb=None):
         # Matplotlib has process-global state. Keep GPU inference concurrent but
         # serialize the short report-rendering phase to avoid cross-task figures.
         with _VISUALIZATION_LOCK:
-            analyze_player_positions(system.detections_path, vis_dir, fps=system.fps)
+            analyze_player_positions(
+                system.detections_path,
+                vis_dir,
+                fps=system.fps,
+                generate_rallies=False,
+                render_dpi=180,
+            )
 
     web_video_path = _reencode_for_browser(system.output_video_path, output_dir)
 

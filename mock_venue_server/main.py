@@ -22,16 +22,16 @@ COURT_COUNT = 10
 ALLOWED_SUFFIXES = {".mp4", ".mov", ".m4v", ".avi"}
 ALLOW_OPERATOR_UPLOADS = os.getenv("VENUE_ALLOW_UPLOADS", "").lower() == "true"
 DEFAULT_COURT_RECORDINGS = {
-    1: "01.mp4",
-    2: "02.mp4",
+    1: "05.mp4",
+    2: "04.mp4",
     3: "03.mp4",
-    4: "04.mp4",
-    5: "05.mp4",
-    6: "01.mp4",
-    7: "02.mp4",
+    4: "01.mp4",
+    5: "02.mp4",
+    6: "05.mp4",
+    7: "04.mp4",
     8: "03.mp4",
-    9: "04.mp4",
-    10: "05.mp4",
+    9: "01.mp4",
+    10: "02.mp4",
 }
 
 VENUE = {
@@ -77,6 +77,12 @@ def _default_library() -> list[dict]:
             durations[filename] = _probe_duration_seconds(VIDEOS_DIR / filename)
         duration = durations[filename]
         source_number = Path(filename).stem
+        source_path = VIDEOS_DIR / filename
+        revision = (
+            f"{source_number}-{source_path.stat().st_mtime_ns}"
+            if source_path.is_file()
+            else source_number
+        )
         recordings.append(
             {
                 "id": f"court{court_id}-full-recording",
@@ -86,6 +92,7 @@ def _default_library() -> list[dict]:
                 "thumbnail": "",
                 "filename": filename,
                 "source": "camera",
+                "revision": revision,
             }
         )
     return recordings
@@ -225,6 +232,7 @@ async def upload_recording(court_id: int, file: UploadFile = File(...)) -> dict:
         "thumbnail": "",
         "filename": stored_name,
         "source": "operator_upload",
+        "revision": Path(stored_name).stem,
     }
     uploaded = _load_uploaded_library()
     uploaded.insert(0, item)
@@ -300,10 +308,20 @@ def download_clip(
         finally:
             temporary_path.unlink(missing_ok=True)
 
-    return FileResponse(clip_path, media_type="video/mp4", filename=f"{video_id}_{start_ms}_{end_ms}.mp4")
+    return FileResponse(
+        clip_path,
+        media_type="video/mp4",
+        filename=f"{video_id}_{start_ms}_{end_ms}.mp4",
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @app.get("/videos/{video_id}/download")
 def download_video(video_id: str) -> FileResponse:
     file_path = _video_path(_find_video(video_id))
-    return FileResponse(file_path, media_type="video/mp4", filename=f"{video_id}.mp4")
+    return FileResponse(
+        file_path,
+        media_type="video/mp4",
+        filename=f"{video_id}.mp4",
+        headers={"Cache-Control": "no-store"},
+    )

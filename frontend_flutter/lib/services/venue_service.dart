@@ -181,6 +181,7 @@ class VenueService {
         final item = Map<String, dynamic>.from(rawItem);
         final id = item['id']?.toString().trim() ?? '';
         final court = item['court']?.toString().trim() ?? '';
+        final revision = item['revision']?.toString().trim() ?? '';
         if (id.isEmpty || court.isEmpty) {
           throw const VenueVideoException('球馆视频库包含无效视频');
         }
@@ -196,7 +197,13 @@ class VenueService {
                   : _endpoint(
                       venue.serverUrl,
                       'videos/$id/download',
-                    ).toString(),
+                    )
+                      .replace(
+                        queryParameters: revision.isEmpty
+                            ? null
+                            : <String, String>{'v': revision},
+                      )
+                      .toString(),
           isPreparedClip: item['is_prepared_clip'] == true,
         ));
       }

@@ -19,7 +19,16 @@ class PlayerPositionVisualizer:
     Player Position Visualization Class
     """
     
-    def __init__(self, detections_path, output_dir=None, court_width=6.1, court_length=13.4, fps=30):
+    def __init__(
+        self,
+        detections_path,
+        output_dir=None,
+        court_width=6.1,
+        court_length=13.4,
+        fps=30,
+        generate_rallies=True,
+        render_dpi=300,
+    ):
         """
         Initialize the player position visualizer
         Args:
@@ -29,6 +38,8 @@ class PlayerPositionVisualizer:
             court_length: Badminton court length in meters (default: 13.4m)
         """
         self.detections_path = detections_path
+        self.generate_rallies = generate_rallies
+        self.render_dpi = render_dpi
         self.court_width = court_width
         self.court_length = court_length
         
@@ -543,7 +554,7 @@ class PlayerPositionVisualizer:
         
         # Save plot
         save_path = os.path.join(self.output_dir, 'heatmaps', filename)
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        plt.savefig(save_path, dpi=self.render_dpi, bbox_inches='tight')
         plt.close()
         
         print(f"Heatmap saved to: {save_path}")
@@ -729,7 +740,7 @@ class PlayerPositionVisualizer:
         
         # Save plot
         save_path = os.path.join(self.output_dir, 'scatter_plots', filename)
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        plt.savefig(save_path, dpi=self.render_dpi, bbox_inches='tight')
         plt.close()
         
         print(f"Scatter plot saved to: {save_path}")
@@ -741,8 +752,8 @@ class PlayerPositionVisualizer:
             return False
             
         try:
-            # Generate visualizations for each rally
-            self._generate_rally_visualizations()
+            if self.generate_rallies:
+                self._generate_rally_visualizations()
             
             # Generate visualizations for the entire match
             self._generate_match_visualizations()
@@ -753,7 +764,13 @@ class PlayerPositionVisualizer:
             return False
             
             
-def analyze_player_positions(detections_path, output_dir=None, fps=30):
+def analyze_player_positions(
+    detections_path,
+    output_dir=None,
+    fps=30,
+    generate_rallies=True,
+    render_dpi=300,
+):
     """
     Analyze player position data and generate visualizations
     
@@ -767,7 +784,13 @@ def analyze_player_positions(detections_path, output_dir=None, fps=30):
     print(f"\nAnalyzing player position data: {detections_path}")
     
     # Create visualizer
-    visualizer = PlayerPositionVisualizer(detections_path, output_dir, fps=fps)
+    visualizer = PlayerPositionVisualizer(
+        detections_path,
+        output_dir,
+        fps=fps,
+        generate_rallies=generate_rallies,
+        render_dpi=render_dpi,
+    )
     
     # Execute visualization
     success = visualizer.visualize()

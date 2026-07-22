@@ -217,7 +217,40 @@ class _CornerPickerPageState extends State<CornerPickerPage>
                                           fontWeight: FontWeight.w800,
                                         ),
                                   ),
-                                  const SizedBox(height: 4),
+                                  const SizedBox(height: 10),
+                                  Container(
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF4A3A16),
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                        color: const Color(0xFFFFCC80),
+                                      ),
+                                    ),
+                                    child: const Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Icon(
+                                          Icons.warning_amber_rounded,
+                                          color: Color(0xFFFFCC80),
+                                        ),
+                                        SizedBox(width: 10),
+                                        Expanded(
+                                          child: Text(
+                                            '球场画面环境复杂，自动角点仅供参考，难以保证每次都落在最外侧白线的准确交点。多数情况下请放大画面并手动重新点选。\n\n'
+                                            '角点位置会直接影响移动距离、速度、轨迹和热力图等分析结果，请认真确认四个点后再开始分析。',
+                                            style: TextStyle(
+                                              color: Color(0xFFFFF3E0),
+                                              height: 1.45,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 10),
                                   const Text(
                                     '顺序：左上角 → 右上角 → 右下角 → 左下角',
                                     style: TextStyle(color: Colors.white70),

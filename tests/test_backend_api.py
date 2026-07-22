@@ -419,3 +419,33 @@ def test_recovery_requeues_interrupted_tasks_without_spawning_threads(monkeypatc
     assert recovered["status"] == "queued"
     assert recovered["stage"] == "queued_after_restart"
     assert recovered["progress"] == 0.0
+
+
+def test_mov_input_is_normalized_to_mp4(monkeypatch, tmp_path):
+    source = tmp_path / "iphone.mov"
+    source.write_bytes(b"mov-video")
+    monkeypatch.setattr(backend_api, "_probe_video_codec", lambda _path: "hevc")
+    monkeypatch.setattr(backend_api.shutil, "which", lambda _name: "/usr/bin/ffmpeg")
+
+    def fake_run(command, **_kwargs):
+        Path(command[-1]).write_bytes(b"h264-mp4")
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(backend_api.subprocess, "run", fake_run)
+
+    normalized = backend_api._normalize_video_for_analysis(source)
+
+    assert normalized.suffix == ".mp4"
+    assert normalized.read_bytes() == b"h264-mp4"
+    assert not source.exists()
+
+
+def test_h264_mp4_is_not_reencoded(monkeypatch, tmp_path):
+    source = tmp_path / "android.mp4"
+    source.write_bytes(b"h264-mp4")
+    monkeypatch.setattr(backend_api, "_probe_video_codec", lambda _path: "h264")
+
+    normalized = backend_api._normalize_video_for_analysis(source)
+
+    assert normalized == source
+    assert normalized.read_bytes() == b"h264-mp4"

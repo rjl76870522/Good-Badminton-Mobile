@@ -39,9 +39,15 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
   Future<void>? _scrubSeekWorker;
   double _previewLoadingProgress = 0;
   double _downloadProgress = 0;
+  double _videoDurationSeconds = 1;
   RangeValues _clipRange = const RangeValues(0, 0);
 
   bool get _isBundledDemo => widget.video.assetPath?.isNotEmpty == true;
+  String? get _bundledServerVideoId => switch (widget.video.id) {
+        'example-court1-demo01' => 'court1-full-recording',
+        'example-court2-demo02' => 'court2-full-recording',
+        _ => null,
+      };
   bool get _videoReady =>
       _controller != null &&
       _controller!.value.isInitialized &&
@@ -61,9 +67,7 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
   }
 
   Duration get _duration => _controller?.value.duration ?? Duration.zero;
-  double get _maximumSeconds => math
-      .max(1, _duration.inMilliseconds / Duration.millisecondsPerSecond)
-      .toDouble();
+  double get _maximumSeconds => _videoDurationSeconds;
   int get _startMs =>
       (_clipRange.start * Duration.millisecondsPerSecond).round();
   int get _endMs => (_clipRange.end * Duration.millisecondsPerSecond).round();
@@ -100,9 +104,17 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
         return;
       }
       controller.addListener(_onVideoChanged);
+      final durationSeconds = math
+          .max(
+            1,
+            controller.value.duration.inMilliseconds /
+                Duration.millisecondsPerSecond,
+          )
+          .toDouble();
       setState(() {
         _controller = controller;
-        _clipRange = RangeValues(0, _maximumSeconds);
+        _videoDurationSeconds = durationSeconds;
+        _clipRange = RangeValues(0, durationSeconds);
         _previewLoadingProgress = 1;
       });
     } catch (_) {
@@ -148,6 +160,21 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
     final fileName = '${widget.video.id}_${_startMs}_$_endMs.mp4';
     final targetPath = '${videoDirectory.path}/$fileName';
     if (_isBundledDemo) {
+      final serverVideoId = _bundledServerVideoId;
+      if (!_isFullSelection && serverVideoId != null) {
+        final clipUrl = Uri.parse(
+          _venueVideoUrl('videos/$serverVideoId/clip'),
+        ).replace(queryParameters: {
+          'start_ms': _startMs.toString(),
+          'end_ms': _endMs.toString(),
+        }).toString();
+        final savedPath = await _api.downloadFile(
+          clipUrl,
+          targetPath,
+          onProgress: onProgress,
+        );
+        return File(savedPath);
+      }
       final data = await rootBundle.load(widget.video.assetPath!);
       final file = File(targetPath);
       await file.writeAsBytes(
@@ -464,6 +491,10 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
           children: [
             _previewCard(controller),
             const SizedBox(height: 16),
+            if (controller != null) ...[
+              _clipSelector(context),
+              const SizedBox(height: 16),
+            ],
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(20),
@@ -499,10 +530,6 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
               ),
             ),
             const SizedBox(height: 20),
-            if (controller != null && !_isBundledDemo) ...[
-              _clipSelector(context),
-              const SizedBox(height: 20),
-            ],
             if (_downloading) ...[
               LinearProgressIndicator(value: _downloadProgress),
               const SizedBox(height: 8),
@@ -533,6 +560,7 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
   }
 
   Widget _clipSelector(BuildContext context) => Card(
+        key: const Key('venue-clip-selector'),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
@@ -556,7 +584,10 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
               const SizedBox(height: 4),
               const Text('拖动两端，尽量避开回合之间的捡球和休息时间'),
               RangeSlider(
-                values: _clipRange,
+                values: RangeValues(
+                  _clipRange.start.clamp(0, _maximumSeconds),
+                  _clipRange.end.clamp(0, _maximumSeconds),
+                ),
                 min: 0,
                 max: _maximumSeconds,
                 divisions:

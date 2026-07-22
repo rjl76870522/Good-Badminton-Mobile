@@ -25,7 +25,18 @@ void main() {
     await tester.tap(find.text('发现'));
     await tester.pump();
     expect(find.text('附近羽毛球馆'), findsOneWidget);
-    expect(find.text('高德地图'), findsOneWidget);
+    expect(find.text('大赛日历'), findsOneWidget);
+    expect(find.text('世界排名'), findsOneWidget);
+    expect(find.text('球星资料'), findsOneWidget);
+    expect(find.text('装备库'), findsOneWidget);
+    expect(find.text('近期赛事与球星新闻'), findsOneWidget);
+    await tester.drag(
+      find.byKey(const ValueKey('discover-list')),
+      const Offset(0, -650),
+    );
+    await tester.pump();
+    expect(find.text('高德地图'), findsWidgets);
+    expect(find.textContaining('中心服务器'), findsNothing);
     await tester.scrollUntilVisible(find.text('东北大学南湖校区羽乒馆'), 260);
     expect(find.text('东北大学南湖校区羽乒馆'), findsOneWidget);
     await tester.scrollUntilVisible(
@@ -39,6 +50,8 @@ void main() {
 
     expect(find.text('我的'), findsWidgets);
     expect(find.text('设置'), findsOneWidget);
+    expect(find.text('遇到问题，联系开发者'), findsOneWidget);
+    expect(find.text('jialeR01@126.com'), findsOneWidget);
     expect(find.text('点击头像可以从相册更换'), findsOneWidget);
     expect(find.text('训练与球馆'), findsOneWidget);
     expect(find.text('每日签到'), findsOneWidget);
