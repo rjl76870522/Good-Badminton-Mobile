@@ -43,8 +43,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('venue-clip-selector')), findsOneWidget);
-    expect(find.byType(RangeSlider), findsOneWidget);
+    expect(find.byType(RangeSlider), findsNothing);
+    expect(find.byType(Slider), findsNWidgets(3));
     expect(find.text('选择要分析的回合'), findsOneWidget);
+    expect(find.text('开始'), findsOneWidget);
+    expect(find.text('结束'), findsOneWidget);
     await tester.scrollUntilVisible(find.text('获取视频'), 300);
     expect(find.text('获取视频'), findsOneWidget);
     expect(tester.takeException(), isNull);

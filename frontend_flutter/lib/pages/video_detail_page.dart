@@ -582,23 +582,23 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
                 ],
               ),
               const SizedBox(height: 4),
-              const Text('拖动两端，尽量避开回合之间的捡球和休息时间'),
-              RangeSlider(
-                values: RangeValues(
-                  _clipRange.start.clamp(0, _maximumSeconds),
-                  _clipRange.end.clamp(0, _maximumSeconds),
-                ),
+              const Text('分别拖动开始和结束位置，避开捡球与休息时间'),
+              const SizedBox(height: 8),
+              _clipBoundarySlider(
+                label: '开始',
+                value: _clipRange.start,
                 min: 0,
+                max: math.max(0, _clipRange.end - 1),
+                onChanged: (value) =>
+                    _updateClipRange(RangeValues(value, _clipRange.end)),
+              ),
+              _clipBoundarySlider(
+                label: '结束',
+                value: _clipRange.end,
+                min: math.min(_maximumSeconds, _clipRange.start + 1),
                 max: _maximumSeconds,
-                divisions:
-                    math.min(180, _maximumSeconds.ceil()).clamp(1, 180).toInt(),
-                labels: RangeLabels(
-                  _formatTime(_startMs),
-                  _formatTime(_endMs),
-                ),
-                onChangeStart:
-                    _downloading ? null : (_) => _controller?.pause(),
-                onChanged: _downloading ? null : _updateClipRange,
+                onChanged: (value) =>
+                    _updateClipRange(RangeValues(_clipRange.start, value)),
               ),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -616,6 +616,47 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
           ),
         ),
       );
+
+  Widget _clipBoundarySlider({
+    required String label,
+    required double value,
+    required double min,
+    required double max,
+    required ValueChanged<double> onChanged,
+  }) {
+    final safeMin = min.clamp(0, _maximumSeconds).toDouble();
+    final safeMax = max.clamp(safeMin, _maximumSeconds).toDouble();
+    final safeValue = value.clamp(safeMin, safeMax).toDouble();
+    return Row(
+      children: [
+        SizedBox(width: 42, child: Text(label)),
+        Expanded(
+          child: Slider(
+            value: safeValue,
+            min: safeMin,
+            max: safeMax,
+            divisions: safeMax > safeMin
+                ? math.min(180, (safeMax - safeMin).ceil()).clamp(1, 180)
+                : null,
+            label: _formatTime(
+              (safeValue * Duration.millisecondsPerSecond).round(),
+            ),
+            onChangeStart: _downloading ? null : (_) => _controller?.pause(),
+            onChanged: _downloading || safeMax <= safeMin ? null : onChanged,
+          ),
+        ),
+        SizedBox(
+          width: 48,
+          child: Text(
+            _formatTime(
+              (safeValue * Duration.millisecondsPerSecond).round(),
+            ),
+            textAlign: TextAlign.end,
+          ),
+        ),
+      ],
+    );
+  }
 
   Widget _previewCard(VideoPlayerController? controller) {
     if (_previewError != null) {
