@@ -95,7 +95,8 @@ workflows:
       - name: Build iOS simulator app
         script: |
           flutter build ios --simulator --debug \
-            --dart-define=API_BASE_URL="$API_BASE_URL"
+            --dart-define=API_BASE_URL="$API_BASE_URL" \
+            --dart-define=BUILD_REVISION="$CM_COMMIT"
 
       - name: Package simulator app for Appetize
         script: |
