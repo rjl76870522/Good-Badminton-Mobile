@@ -8,7 +8,6 @@ import '../config/upload_constraints.dart';
 import '../models/preview_frame.dart';
 import '../services/api_service.dart';
 import '../services/app_preferences.dart';
-import '../services/background_task_service.dart';
 import '../services/notification_service.dart';
 import '../services/task_storage.dart';
 import '../services/user_storage.dart';
@@ -305,7 +304,6 @@ class _UploadPageState extends State<UploadPage> {
         videoPath: file?.path ?? '',
         videoName: file?.name ?? widget.initialVideoName ?? '球馆训练视频',
       );
-      await BackgroundTaskService.instance.scheduleTaskCheck(result.taskId);
       if (!await AppPreferences.instance.hasNotificationsPreference()) {
         await NotificationService.instance.enable();
       }
