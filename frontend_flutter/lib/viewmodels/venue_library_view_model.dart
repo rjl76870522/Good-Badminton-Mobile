@@ -57,9 +57,15 @@ class VenueLibraryViewModel extends ChangeNotifier {
   int videoCountFor(String court) =>
       filteredVideos.where((video) => video.court == court).length;
 
+  int allVideoCountFor(String court) =>
+      _videos.where((video) => video.court == court).length;
+
   List<VenueVideo> videosFor(String court) => filteredVideos
       .where((video) => video.court == court)
       .toList(growable: false);
+
+  List<VenueVideo> allVideosFor(String court) =>
+      _videos.where((video) => video.court == court).toList(growable: false);
 
   bool isFavorite(VenueVideo video) =>
       video.isFavorite || _favoriteKeys.contains(storage.keyFor(venue, video));

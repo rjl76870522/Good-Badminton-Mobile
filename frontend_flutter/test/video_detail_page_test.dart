@@ -10,10 +10,12 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   late VideoPlayerPlatform originalPlatform;
+  late _FakeIosVideoPlayerPlatform fakePlatform;
 
   setUp(() {
     originalPlatform = VideoPlayerPlatform.instance;
-    VideoPlayerPlatform.instance = _FakeIosVideoPlayerPlatform();
+    fakePlatform = _FakeIosVideoPlayerPlatform();
+    VideoPlayerPlatform.instance = fakePlatform;
   });
 
   tearDown(() {
@@ -47,6 +49,17 @@ void main() {
     expect(find.byType(Slider), findsOneWidget);
     expect(find.byKey(const Key('venue-custom-clip-track')), findsOneWidget);
     expect(find.text('选择要分析的回合'), findsOneWidget);
+    await tester.ensureVisible(
+      find.byKey(const Key('venue-custom-clip-track')),
+    );
+    await tester.pumpAndSettle();
+    await tester.drag(
+      find.byKey(const Key('venue-custom-clip-track')),
+      const Offset(80, 0),
+    );
+    await tester.pumpAndSettle();
+    expect(fakePlatform.seekPositions, isNotEmpty);
+    expect(fakePlatform.seekPositions.last, greaterThan(Duration.zero));
     await tester.scrollUntilVisible(find.text('获取视频'), 300);
     expect(find.text('获取视频'), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -88,6 +101,7 @@ void main() {
 
 class _FakeIosVideoPlayerPlatform extends VideoPlayerPlatform {
   final _events = <int, StreamController<VideoEvent>>{};
+  final seekPositions = <Duration>[];
   int _nextId = 1;
 
   @override
@@ -133,6 +147,11 @@ class _FakeIosVideoPlayerPlatform extends VideoPlayerPlatform {
 
   @override
   Future<void> setPlaybackSpeed(int playerId, double speed) async {}
+
+  @override
+  Future<void> seekTo(int playerId, Duration position) async {
+    seekPositions.add(position);
+  }
 
   @override
   Future<void> dispose(int playerId) async {

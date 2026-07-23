@@ -45,6 +45,8 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
   double _scrubSeconds = 0;
   double? _pendingScrubSeconds;
   Future<void>? _scrubSeekWorker;
+  double? _pendingClipSeekSeconds;
+  Future<void>? _clipSeekWorker;
   double _previewLoadingProgress = 0;
   double _downloadProgress = 0;
   double _videoDurationSeconds = 1;
@@ -253,7 +255,7 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
     await _controller?.seekTo(Duration.zero);
   }
 
-  Future<void> _updateClipRange(RangeValues values) async {
+  void _updateClipRange(RangeValues values) {
     const minimumSpan = 1.0;
     var start = values.start;
     var end = values.end;
@@ -268,15 +270,33 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
     final startMoved = (start - previous.start).abs();
     final endMoved = (end - previous.end).abs();
     final seekSeconds = startMoved >= endMoved ? start : end;
-    setState(() => _clipRange = RangeValues(start, end));
+    setState(() {
+      _clipRange = RangeValues(start, end);
+      _scrubSeconds = seekSeconds;
+    });
+    _queueClipSeek(seekSeconds);
+  }
+
+  void _queueClipSeek(double seconds) {
+    _pendingClipSeekSeconds = seconds;
+    _clipSeekWorker ??= _drainClipSeeks().whenComplete(
+      () => _clipSeekWorker = null,
+    );
+  }
+
+  Future<void> _drainClipSeeks() async {
     final controller = _controller;
-    if (controller != null) {
-      await controller.pause();
+    if (controller == null) return;
+    await controller.pause();
+    while (_pendingClipSeekSeconds != null) {
+      final target = _pendingClipSeekSeconds!;
+      _pendingClipSeekSeconds = null;
       await controller.seekTo(
         Duration(
-          milliseconds: (seekSeconds * Duration.millisecondsPerSecond).round(),
+          milliseconds: (target * Duration.millisecondsPerSecond).round(),
         ),
       );
+      if (mounted) setState(() {});
     }
   }
 

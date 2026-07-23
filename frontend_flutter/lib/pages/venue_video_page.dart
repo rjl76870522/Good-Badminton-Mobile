@@ -67,7 +67,7 @@ class _VenueVideoPageState extends State<VenueVideoPage> {
   }
 
   Future<void> _openCourtSheet(String court) async {
-    final videos = _viewModel.videosFor(court);
+    final videos = _viewModel.allVideosFor(court);
     if (videos.isEmpty) return;
     setState(() => _selectedCourt = court);
     await Future<void>.delayed(const Duration(milliseconds: 140));
@@ -218,7 +218,7 @@ class _VenueVideoPageState extends State<VenueVideoPage> {
               ? _FloorplanView(
                   key: const ValueKey('map-mode'),
                   courts: _viewModel.floorplanCourts,
-                  countFor: _viewModel.videoCountFor,
+                  countFor: _viewModel.allVideoCountFor,
                   selectedCourt: _selectedCourt,
                   onTap: _openCourtSheet,
                 )
@@ -362,6 +362,7 @@ class _FavoritePill extends StatelessWidget {
   Widget build(BuildContext context) => Material(
         color: Colors.transparent,
         child: InkWell(
+          key: const Key('venue-favorites-filter'),
           borderRadius: BorderRadius.circular(18),
           onTap: () => onChanged(!selected),
           child: AnimatedContainer(

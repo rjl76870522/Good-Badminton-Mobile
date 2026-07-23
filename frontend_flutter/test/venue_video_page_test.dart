@@ -66,4 +66,17 @@ void main() {
     expect(find.text('1号场 · 1 段录像'), findsOneWidget);
     expect(find.text('2号场 · 1 段录像'), findsOneWidget);
   });
+
+  testWidgets('favorite filter never disables floorplan courts',
+      (tester) async {
+    await tester.pumpWidget(page);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('venue-favorites-filter')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('court-tile-1号场')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('1号场 录像列表（共 1 条）'), findsOneWidget);
+  });
 }
