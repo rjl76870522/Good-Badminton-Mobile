@@ -76,7 +76,7 @@ class _BadmintonKnowledgePageState extends State<BadmintonKnowledgePage> {
           ...switch (_section) {
             KnowledgeSection.calendar => _calendarContent,
             KnowledgeSection.rankings => _rankingContent,
-            KnowledgeSection.players => _playerContent,
+            KnowledgeSection.players => _latestPlayerContent,
             KnowledgeSection.equipment => _equipmentContent,
           },
           if (_officialUri != null) ...[
@@ -133,6 +133,9 @@ class _BadmintonKnowledgePageState extends State<BadmintonKnowledgePage> {
         _InfoCard(title: '混合双打', badge: 'XD', body: '前后场分工与轮转速度是主要观察重点'),
       ];
 
+  // Retained temporarily as legacy lesson copy; the player tab uses the
+  // ranking-aware _latestPlayerContent collection below.
+  // ignore: unused_element
   List<Widget> get _playerContent => const [
         _IntroCard(
           icon: Icons.person_search_outlined,
@@ -158,6 +161,50 @@ class _BadmintonKnowledgePageState extends State<BadmintonKnowledgePage> {
           title: '郑思维 / 黄雅琼',
           badge: '混双',
           body: '观察重点：前三拍压迫、连续进攻与前后场快速轮转',
+        ),
+      ];
+
+  List<Widget> get _latestPlayerContent => const [
+        _PlayersHeroCard(),
+        _WorldNumberOneCard(
+          event: '男单 MS',
+          names: '石宇奇',
+          country: '中国',
+          icon: Icons.sports_tennis_rounded,
+          accent: Color(0xFF1B5E20),
+          focus: '主动变速、网前控制，以及由防守快速转入进攻的衔接。',
+        ),
+        _WorldNumberOneCard(
+          event: '女单 WS',
+          names: '安洗莹',
+          country: '韩国',
+          icon: Icons.bolt_rounded,
+          accent: Color(0xFF2F6F9F),
+          focus: '多拍稳定性、全场防守覆盖，以及耐心组织下一次进攻机会。',
+        ),
+        _WorldNumberOneCard(
+          event: '男双 MD',
+          names: '金元昊 / 徐承宰',
+          country: '韩国',
+          icon: Icons.groups_2_rounded,
+          accent: Color(0xFF6D4C41),
+          focus: '前三区压迫、平抽挡速度与攻守转换中的轮转默契。',
+        ),
+        _WorldNumberOneCard(
+          event: '女双 WD',
+          names: '刘圣书 / 谭宁',
+          country: '中国',
+          icon: Icons.handshake_rounded,
+          accent: Color(0xFF8E3A64),
+          focus: '连续压制、搭档补位，以及防守反击中的落点质量。',
+        ),
+        _WorldNumberOneCard(
+          event: '混双 XD',
+          names: '冯彦哲 / 黄东萍',
+          country: '中国',
+          icon: Icons.hub_rounded,
+          accent: Color(0xFF7B6517),
+          focus: '前三拍抢攻、前后场分工与连续进攻中的节奏控制。',
         ),
       ];
 
@@ -188,6 +235,208 @@ class _BadmintonKnowledgePageState extends State<BadmintonKnowledgePage> {
           body: '球速受温度、海拔和球馆环境影响，训练时应选择适合当地条件的速度型号',
         ),
       ];
+}
+
+class _PlayersHeroCard extends StatelessWidget {
+  const _PlayersHeroCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(24),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF195C29), Color(0xFF4F9B55)],
+        ),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x332E7D32),
+            blurRadius: 20,
+            offset: Offset(0, 10),
+          ),
+        ],
+      ),
+      child: const Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _HeroMedal(),
+          SizedBox(width: 15),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '世界第一 · 现役标杆',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 21,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                SizedBox(height: 7),
+                Text(
+                  '按五个单项观察顶尖球员的节奏、落点与轮转。\nBWF 世界排名 · 2026 年 7 月更新',
+                  style: TextStyle(
+                    color: Color(0xE8FFFFFF),
+                    height: 1.45,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HeroMedal extends StatelessWidget {
+  const _HeroMedal();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 52,
+      height: 52,
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(17),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
+      ),
+      child: const Icon(Icons.workspace_premium_rounded,
+          color: Colors.white, size: 29),
+    );
+  }
+}
+
+class _WorldNumberOneCard extends StatelessWidget {
+  const _WorldNumberOneCard({
+    required this.event,
+    required this.names,
+    required this.country,
+    required this.icon,
+    required this.accent,
+    required this.focus,
+  });
+
+  final String event;
+  final String names;
+  final String country;
+  final IconData icon;
+  final Color accent;
+  final String focus;
+
+  @override
+  Widget build(BuildContext context) {
+    final onAccent =
+        ThemeData.estimateBrightnessForColor(accent) == Brightness.dark
+            ? Colors.white
+            : const Color(0xFF162118);
+    return Card(
+      margin: const EdgeInsets.only(bottom: 11),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 54,
+                  height: 54,
+                  decoration: BoxDecoration(
+                    color: accent.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: accent.withValues(alpha: 0.30),
+                    ),
+                  ),
+                  child: Icon(icon, color: accent, size: 27),
+                ),
+                const SizedBox(width: 11),
+                Expanded(
+                  child: Row(
+                    children: [
+                      Icon(icon, color: accent, size: 16),
+                      const SizedBox(width: 5),
+                      Text(
+                        event,
+                        style: TextStyle(
+                          color: accent,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.2,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: accent,
+                    borderRadius: BorderRadius.circular(99),
+                  ),
+                  child: Text(
+                    '世界第 1',
+                    style: TextStyle(
+                      color: onAccent,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 13),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: Text(
+                    names,
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.2,
+                    ),
+                  ),
+                ),
+                Text(
+                  country,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(11),
+              decoration: BoxDecoration(
+                color: accent.withValues(alpha: 0.065),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Text(
+                '观察重点：$focus',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  height: 1.48,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _IntroCard extends StatelessWidget {

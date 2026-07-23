@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -44,6 +45,8 @@ class _ReportPageState extends State<ReportPage> {
   Map<String, bool> _fileAvailability = const {};
   String? _error;
   bool _loading = true;
+  bool _usingOfflineFallback = false;
+  Timer? _networkRetryTimer;
 
   @override
   void initState() {
@@ -51,26 +54,39 @@ class _ReportPageState extends State<ReportPage> {
     _load();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool silent = false}) async {
     setState(() {
-      _loading = true;
+      if (!silent) _loading = true;
       _error = null;
     });
     try {
       final offlineRecord = widget.offlineRecord;
-      final report = offlineRecord != null
-          ? AnalysisReport.fromJson(
-              await _offlineStorage.readReport(offlineRecord),
-            )
-          : widget.loadDemo
-              ? await _api.getDemoReport()
-              : await _api.getReport(widget.taskId!);
+      Map<String, dynamic>? onlinePayload;
+      late final AnalysisReport report;
+      if (offlineRecord != null) {
+        report = AnalysisReport.fromJson(
+          await _offlineStorage.readReport(offlineRecord),
+        );
+      } else if (widget.loadDemo) {
+        report = await _api.getDemoReport();
+      } else {
+        onlinePayload = await _api.getReportPayload(widget.taskId!);
+        report = AnalysisReport.fromJson(onlinePayload);
+      }
       if (!mounted) return;
       setState(() {
         _report = report;
         _fileAvailability = const {};
         _loading = false;
+        _usingOfflineFallback = offlineRecord != null;
       });
+      if (offlineRecord == null) {
+        _networkRetryTimer?.cancel();
+        _networkRetryTimer = null;
+      }
+      if (onlinePayload != null) {
+        unawaited(_cacheLatestReport(onlinePayload));
+      }
       if (offlineRecord != null) {
         setState(() {
           _fileAvailability = {
@@ -88,6 +104,29 @@ class _ReportPageState extends State<ReportPage> {
       if (!mounted) return;
       setState(() => _error = '报告还未生成完成');
     } catch (error) {
+      final taskId = widget.taskId;
+      if (taskId != null && widget.offlineRecord == null) {
+        final cached = await _offlineStorage.findByTaskId(taskId);
+        if (cached != null) {
+          final report = AnalysisReport.fromJson(
+            await _offlineStorage.readReport(cached),
+          );
+          if (!mounted) return;
+          setState(() {
+            _report = report;
+            _fileAvailability = {
+              'heatmap': _localFileExists(cached.heatmapPath),
+              'trajectory': _localFileExists(cached.trajectoryPath),
+              'analysis_video': false,
+              'highlight': false,
+            };
+            _usingOfflineFallback = true;
+            _loading = false;
+          });
+          _startNetworkRetry();
+          return;
+        }
+      }
       if (!mounted) return;
       setState(
         () => _error = userFacingError(
@@ -100,6 +139,27 @@ class _ReportPageState extends State<ReportPage> {
         setState(() => _loading = false);
       }
     }
+  }
+
+  Future<void> _cacheLatestReport(Map<String, dynamic> payload) async {
+    final taskId = widget.taskId;
+    if (taskId == null) return;
+    try {
+      await _offlineStorage.savePayload(
+        api: _api,
+        taskId: taskId,
+        videoName: payload['video_name']?.toString() ?? taskId,
+        payload: payload,
+      );
+    } catch (_) {
+      // Caching is optional; an online report should remain usable on failure.
+    }
+  }
+
+  void _startNetworkRetry() {
+    _networkRetryTimer ??= Timer.periodic(const Duration(seconds: 15), (_) {
+      if (_usingOfflineFallback) _load(silent: true);
+    });
   }
 
   bool _localFileExists(String? path) =>
@@ -143,6 +203,7 @@ class _ReportPageState extends State<ReportPage> {
 
   @override
   void dispose() {
+    _networkRetryTimer?.cancel();
     _api.close();
     super.dispose();
   }
@@ -188,6 +249,31 @@ class _ReportPageState extends State<ReportPage> {
                   OutlinedButton(onPressed: _load, child: const Text('重新加载')),
                 ],
                 if (report != null) ...[
+                  if (_usingOfflineFallback) ...[
+                    Container(
+                      width: double.infinity,
+                      margin: const EdgeInsets.only(bottom: 16),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEAF3FF),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: const Color(0xFFB9D5F5)),
+                      ),
+                      child: const Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(Icons.cloud_off_outlined,
+                              color: Color(0xFF245A94)),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              '正在显示最近一次离线报告。网络恢复后会自动刷新最新数据。',
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                   if (report.reportSummary.isNotEmpty) ...[
                     _ReportConclusion(text: report.reportSummary),
                     const SizedBox(height: 20),

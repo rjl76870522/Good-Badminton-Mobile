@@ -20,6 +20,7 @@ class VenueVideo {
     this.downloadUrl,
     this.assetPath,
     this.isPreparedClip = false,
+    this.isFavorite = false,
   });
 
   final String id;
@@ -30,4 +31,7 @@ class VenueVideo {
   final String? downloadUrl;
   final String? assetPath;
   final bool isPreparedClip;
+
+  /// Server-provided preference hint. Local favorites remain available offline.
+  final bool isFavorite;
 }

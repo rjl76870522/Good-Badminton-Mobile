@@ -3,64 +3,67 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:good_badminton_mobile/models/venue.dart';
 import 'package:good_badminton_mobile/pages/venue_video_page.dart';
 import 'package:good_badminton_mobile/services/venue_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class _FakeVenueService extends VenueService {
   const _FakeVenueService();
 
   @override
-  Future<List<VenueVideo>> getVideos(VenueInfo venue) async => getMockVideos();
+  Future<List<VenueVideo>> getVideos(VenueInfo venue) async => const [
+        VenueVideo(
+          id: 'one',
+          court: '1号场',
+          time: '2026-07-20 00:55',
+          duration: '22 秒',
+        ),
+        VenueVideo(
+          id: 'two',
+          court: '2号场',
+          time: '2026-07-20 01:20',
+          duration: '35 秒',
+        ),
+      ];
 }
 
 void main() {
-  testWidgets('renders every venue video card', (tester) async {
-    await tester.pumpWidget(
-      const MaterialApp(
-        home: VenueVideoPage(
-          venue: VenueInfo(
-            id: 'SZ_BADMINTON_001',
-            name: '合作球馆',
-            serverUrl: 'https://venue.example.com',
-          ),
-          service: _FakeVenueService(),
-        ),
+  setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  const page = MaterialApp(
+    home: VenueVideoPage(
+      venue: VenueInfo(
+        id: 'SZ_BADMINTON_001',
+        name: '合作球馆',
+        serverUrl: 'https://venue.example.com',
       ),
-    );
+      service: _FakeVenueService(),
+    ),
+  );
+
+  testWidgets('defaults to a floorplan and groups videos by court',
+      (tester) async {
+    await tester.pumpWidget(page);
     await tester.pumpAndSettle();
 
-    expect(find.text('共 2 条'), findsOneWidget);
-    expect(find.text('全部 2'), findsOneWidget);
-    expect(find.text('1号场'), findsNWidgets(2));
-    expect(find.text('2号场'), findsNWidgets(2));
-    expect(find.text('选择'), findsNWidgets(2));
+    expect(find.text('场馆地图'), findsOneWidget);
+    expect(find.byKey(const Key('court-tile-1号场')), findsOneWidget);
+    expect(find.byKey(const Key('court-tile-10号场')), findsOneWidget);
+    expect(find.textContaining('2 段录像'), findsOneWidget);
 
-    await tester.tap(find.widgetWithText(ChoiceChip, '1号场'));
+    await tester.tap(find.byKey(const Key('court-tile-1号场')));
     await tester.pumpAndSettle();
-    expect(find.text('共 1 条'), findsOneWidget);
-    expect(find.text('选择'), findsOneWidget);
+    expect(find.text('1号场 录像列表（共 1 条）'), findsOneWidget);
+    expect(find.text('00:22'), findsOneWidget);
   });
 
-  testWidgets('example venue hides its internal id and shows clip notice',
-      (tester) async {
-    await tester.pumpWidget(
-      const MaterialApp(
-        home: VenueVideoPage(
-          venue: VenueInfo(
-            id: 'example',
-            name: '示例球场',
-            serverUrl: 'https://venue.example.com',
-          ),
-          showDemoOnOpen: true,
-        ),
-      ),
-    );
+  testWidgets('switches to the compact grouped list mode', (tester) async {
+    await tester.pumpWidget(page);
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('球馆编号'), findsNothing);
-    expect(
-      find.text('已从球馆存储的完整视频中截取出准备分析的视频片段'),
-      findsOneWidget,
-    );
-    expect(find.text('时间：球馆录像片段 01'), findsOneWidget);
-    expect(find.text('时间：球馆录像片段 02'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('venue-view-switch')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('全部录像 · 2 段'), findsOneWidget);
+    expect(find.text('1号场 · 1 段录像'), findsOneWidget);
+    expect(find.text('2号场 · 1 段录像'), findsOneWidget);
   });
 }

@@ -88,6 +88,13 @@ class OfflineReportStorage {
     }
   }
 
+  Future<OfflineReportRecord?> findByTaskId(String taskId) async {
+    for (final record in await list()) {
+      if (record.taskId == taskId) return record;
+    }
+    return null;
+  }
+
   Future<OfflineReportRecord> save({
     required ApiService api,
     required String taskId,
@@ -96,6 +103,22 @@ class OfflineReportStorage {
   }) async {
     onProgress?.call(0.05, '正在读取训练报告');
     final payload = await api.getReportPayload(taskId);
+    return savePayload(
+      api: api,
+      taskId: taskId,
+      videoName: videoName,
+      payload: payload,
+      onProgress: onProgress,
+    );
+  }
+
+  Future<OfflineReportRecord> savePayload({
+    required ApiService api,
+    required String taskId,
+    required String videoName,
+    required Map<String, dynamic> payload,
+    void Function(double progress, String stage)? onProgress,
+  }) async {
     onProgress?.call(0.2, '正在保存图表');
     final root = await _root();
     final directory = Directory('${root.path}/$taskId');
