@@ -193,15 +193,11 @@ class VenueService {
               (item['timestamp'] ?? item['time'])?.toString().trim() ?? '时间未知',
           duration: item['duration']?.toString().trim() ?? '时长未知',
           thumbnail: item['thumbnail']?.toString().trim(),
-          downloadUrl: (item['video_url'] ?? item['download_url'])
-                      ?.toString()
-                      .trim()
-                      .isNotEmpty ==
-                  true
-              ? (item['video_url'] ?? item['download_url']).toString().trim()
+          playUrl: item['play_url']?.toString().trim().isNotEmpty == true
+              ? item['play_url'].toString().trim()
               : _endpoint(
                   venue.serverUrl,
-                  'videos/$id/download',
+                  'videos/$id/play',
                 )
                   .replace(
                     queryParameters: revision.isEmpty
@@ -209,6 +205,19 @@ class VenueService {
                         : <String, String>{'v': revision},
                   )
                   .toString(),
+          downloadUrl:
+              item['download_url']?.toString().trim().isNotEmpty == true
+                  ? item['download_url'].toString().trim()
+                  : _endpoint(
+                      venue.serverUrl,
+                      'videos/$id/download',
+                    )
+                      .replace(
+                        queryParameters: revision.isEmpty
+                            ? null
+                            : <String, String>{'v': revision},
+                      )
+                      .toString(),
           isPreparedClip: item['is_prepared_clip'] == true,
           isFavorite: item['is_favorite'] == true,
         ));

@@ -71,6 +71,8 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
       widget.video.downloadUrl ??
       _venueVideoUrl('videos/${widget.video.id}/download');
   String get _playUrl =>
+      widget.video.playUrl ??
+      // Older/custom venue integrations may only expose one streaming URL.
       widget.video.downloadUrl ??
       _venueVideoUrl('videos/${widget.video.id}/play');
 
