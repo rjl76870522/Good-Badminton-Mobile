@@ -29,15 +29,20 @@ class TaskNotificationMonitor with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) checkNow();
   }
 
-  Future<void> checkNow() async {
-    if (_checking) return;
+  /// Returns true while at least one task still needs a later status check.
+  Future<bool> checkNow() async {
+    if (_checking) return true;
     _checking = true;
+    var hasPendingTasks = false;
     final api = ApiService();
     try {
       for (final taskId in await _storage.getActiveTaskIds()) {
         try {
           final task = await api.getTask(taskId);
-          if (task.isRunning) continue;
+          if (task.isRunning) {
+            hasPendingTasks = true;
+            continue;
+          }
           final notificationHandled =
               await NotificationService.instance.notifyTaskFinished(
             taskId: task.taskId,
@@ -52,11 +57,13 @@ class TaskNotificationMonitor with WidgetsBindingObserver {
           }
         } catch (_) {
           // 网络短暂中断时保留任务，下一轮继续检查。
+          hasPendingTasks = true;
         }
       }
     } finally {
       api.close();
       _checking = false;
     }
+    return hasPendingTasks;
   }
 }

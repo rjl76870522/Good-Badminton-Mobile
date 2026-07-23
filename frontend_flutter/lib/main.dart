@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'pages/main_shell_page.dart';
 import 'services/app_preferences.dart';
+import 'services/background_task_service.dart';
 import 'services/notification_service.dart';
 import 'services/task_notification_monitor.dart';
 
@@ -9,6 +10,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await AppPreferences.instance.load();
   await NotificationService.instance.initialize();
+  await BackgroundTaskService.instance.initialize();
   TaskNotificationMonitor.instance.start();
   runApp(const GoodBadmintonApp());
 }
