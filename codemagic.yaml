@@ -101,10 +101,11 @@ workflows:
       - name: Package simulator app for Appetize
         script: |
           cd build/ios/iphonesimulator
+          SHORT_REVISION="$(printf '%s' "$CM_COMMIT" | cut -c1-7)"
           ditto -c -k --sequesterRsrc --keepParent \
-            Runner.app Runner-simulator.zip
+            Runner.app "Runner-simulator-${SHORT_REVISION}.zip"
 
     artifacts:
       - $CM_BUILD_DIR/frontend_flutter/build/ios/iphonesimulator/Runner.app
-      - $CM_BUILD_DIR/frontend_flutter/build/ios/iphonesimulator/Runner-simulator.zip
+      - $CM_BUILD_DIR/frontend_flutter/build/ios/iphonesimulator/Runner-simulator-*.zip
       - /tmp/xcodebuild_logs/*.log
