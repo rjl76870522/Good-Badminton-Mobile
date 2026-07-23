@@ -46,15 +46,16 @@ void main() {
 
     expect(find.byKey(const Key('venue-clip-selector')), findsOneWidget);
     expect(find.byType(RangeSlider), findsNothing);
-    expect(find.byType(Slider), findsOneWidget);
-    expect(find.byKey(const Key('venue-custom-clip-track')), findsOneWidget);
+    expect(find.byType(Slider), findsNWidgets(3));
+    expect(find.byKey(const Key('venue-clip-start-slider')), findsOneWidget);
+    expect(find.byKey(const Key('venue-clip-end-slider')), findsOneWidget);
     expect(find.text('选择要分析的回合'), findsOneWidget);
     await tester.ensureVisible(
-      find.byKey(const Key('venue-custom-clip-track')),
+      find.byKey(const Key('venue-clip-start-slider')),
     );
     await tester.pumpAndSettle();
     await tester.drag(
-      find.byKey(const Key('venue-custom-clip-track')),
+      find.byKey(const Key('venue-clip-start-slider')),
       const Offset(80, 0),
     );
     await tester.pumpAndSettle();
@@ -89,9 +90,10 @@ void main() {
     await tester.pump();
 
     expect(find.byKey(const Key('venue-clip-selector')), findsOneWidget);
-    expect(find.byKey(const Key('venue-custom-clip-track')), findsOneWidget);
+    expect(find.byKey(const Key('venue-clip-start-slider')), findsOneWidget);
+    expect(find.byKey(const Key('venue-clip-end-slider')), findsOneWidget);
     expect(find.text('视频加载完成后即可拖动选择'), findsOneWidget);
-    expect(find.text('00:12'), findsOneWidget);
+    expect(find.text('00:12'), findsWidgets);
     expect(tester.takeException(), isNull);
 
     await tester.pump(const Duration(seconds: 30));

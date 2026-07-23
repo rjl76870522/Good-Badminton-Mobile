@@ -140,7 +140,6 @@ class _BadmintonKnowledgePageState extends State<BadmintonKnowledgePage> {
           body: '从不同风格的现役球员身上观察移动、节奏与回合处理',
         ),
         ..._activePlayers.map(_PlayerProfileCard.new),
-        const _PortraitCredits(),
       ];
 
   List<Widget> get _equipmentContent => const [
@@ -370,27 +369,6 @@ class _PlayerTag extends StatelessWidget {
           color: Color(0xFF162118),
           fontSize: 12,
           fontWeight: FontWeight.w800,
-        ),
-      ),
-    );
-  }
-}
-
-class _PortraitCredits extends StatelessWidget {
-  const _PortraitCredits();
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 4, 4, 2),
-      child: Text(
-        '球员状态与内容为阶段性资料，不代表实时排名\n'
-        '肖像来源 Wikimedia Commons，作者 Fauzi Ananta、'
-        'Jurnal Bulutangkis、Nardisoero，依据 CC BY 或 CC BY-SA 许可使用',
-        style: TextStyle(
-          color: Theme.of(context).colorScheme.onSurfaceVariant,
-          fontSize: 11,
-          height: 1.5,
         ),
       ),
     );

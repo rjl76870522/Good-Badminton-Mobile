@@ -716,13 +716,26 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
               const SizedBox(height: 4),
               const Text('拖动左右端点选择片段，避开捡球与休息时间'),
               const SizedBox(height: 8),
-              _ClipRangeTrack(
-                key: const Key('venue-custom-clip-track'),
-                values: _clipRange,
+              _clipBoundarySlider(
+                key: const Key('venue-clip-start-slider'),
+                icon: Icons.first_page_rounded,
+                title: '开始时刻',
+                value: _clipRange.start,
+                maximum: math.max(0, _clipRange.end - 1),
+                onChanged: (value) => _updateClipRange(
+                  RangeValues(value, _clipRange.end),
+                ),
+              ),
+              _clipBoundarySlider(
+                key: const Key('venue-clip-end-slider'),
+                icon: Icons.last_page_rounded,
+                title: '结束时刻',
+                value: _clipRange.end,
+                minimum: math.min(_maximumSeconds, _clipRange.start + 1),
                 maximum: _maximumSeconds,
-                enabled: _videoReady && !_downloading,
-                onInteractionStart: () => _controller?.pause(),
-                onChanged: _updateClipRange,
+                onChanged: (value) => _updateClipRange(
+                  RangeValues(_clipRange.start, value),
+                ),
               ),
               if (!_videoReady) ...[
                 const SizedBox(height: 2),
@@ -752,6 +765,70 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
           ),
         ),
       );
+
+  Widget _clipBoundarySlider({
+    required Key key,
+    required IconData icon,
+    required String title,
+    required double value,
+    required double maximum,
+    required ValueChanged<double> onChanged,
+    double minimum = 0,
+  }) {
+    final enabled = _videoReady && !_downloading && maximum > minimum;
+    final safeValue = value.clamp(minimum, maximum).toDouble();
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 76,
+            child: Row(
+              children: [
+                Icon(icon, size: 18),
+                const SizedBox(width: 4),
+                Text(title, style: const TextStyle(fontSize: 13)),
+              ],
+            ),
+          ),
+          Expanded(
+            child: SliderTheme(
+              data: SliderTheme.of(context).copyWith(
+                trackHeight: 6,
+                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 12),
+                overlayShape: const RoundSliderOverlayShape(overlayRadius: 24),
+              ),
+              child: Slider(
+                key: key,
+                min: minimum,
+                max: maximum,
+                value: safeValue,
+                label: _formatTime(
+                  (safeValue * Duration.millisecondsPerSecond).round(),
+                ),
+                onChangeStart: enabled ? (_) => _controller?.pause() : null,
+                onChanged: enabled ? onChanged : null,
+                onChangeEnd: enabled ? _queueClipSeek : null,
+              ),
+            ),
+          ),
+          SizedBox(
+            width: 42,
+            child: Text(
+              _formatTime(
+                (safeValue * Duration.millisecondsPerSecond).round(),
+              ),
+              textAlign: TextAlign.end,
+              style: const TextStyle(
+                fontSize: 12,
+                fontFeatures: [FontFeature.tabularFigures()],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _savedClipList() => Card(
         child: Padding(
@@ -1026,154 +1103,4 @@ enum _VideoAction { saveToGallery, analyze }
 String _shortBuildRevision(String revision) {
   if (revision.isEmpty) return 'unknown';
   return revision.length <= 7 ? revision : revision.substring(0, 7);
-}
-
-class _ClipRangeTrack extends StatefulWidget {
-  const _ClipRangeTrack({
-    super.key,
-    required this.values,
-    required this.maximum,
-    required this.enabled,
-    required this.onInteractionStart,
-    required this.onChanged,
-  });
-
-  final RangeValues values;
-  final double maximum;
-  final bool enabled;
-  final VoidCallback onInteractionStart;
-  final ValueChanged<RangeValues> onChanged;
-
-  @override
-  State<_ClipRangeTrack> createState() => _ClipRangeTrackState();
-}
-
-class _ClipRangeTrackState extends State<_ClipRangeTrack> {
-  bool _movingStart = true;
-
-  void _begin(double dx, double width) {
-    if (!widget.enabled || width <= 0) return;
-    widget.onInteractionStart();
-    final startX = widget.values.start / widget.maximum * width;
-    final endX = widget.values.end / widget.maximum * width;
-    _movingStart = (dx - startX).abs() <= (dx - endX).abs();
-    _update(dx, width);
-  }
-
-  void _update(double dx, double width) {
-    if (!widget.enabled || width <= 0) return;
-    const minimumSpan = 1.0;
-    final value =
-        (dx / width * widget.maximum).clamp(0.0, widget.maximum).toDouble();
-    if (_movingStart) {
-      widget.onChanged(
-        RangeValues(
-          math
-              .min(value, widget.values.end - minimumSpan)
-              .clamp(0.0, widget.maximum)
-              .toDouble(),
-          widget.values.end,
-        ),
-      );
-    } else {
-      widget.onChanged(
-        RangeValues(
-          widget.values.start,
-          math
-              .max(value, widget.values.start + minimumSpan)
-              .clamp(0.0, widget.maximum)
-              .toDouble(),
-        ),
-      );
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final maximum = math.max(1.0, widget.maximum);
-    final start = widget.values.start.clamp(0.0, maximum).toDouble();
-    final end = widget.values.end.clamp(start, maximum).toDouble();
-    final color = Theme.of(context).colorScheme.primary;
-    return Semantics(
-      label: '分析片段范围',
-      value: '${start.toStringAsFixed(1)} 到 ${end.toStringAsFixed(1)} 秒',
-      child: SizedBox(
-        height: 58,
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            const handleRadius = 12.0;
-            final trackWidth =
-                math.max(1.0, constraints.maxWidth - handleRadius * 2);
-            final startX = handleRadius + start / maximum * trackWidth;
-            final endX = handleRadius + end / maximum * trackWidth;
-            return GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTapDown: widget.enabled
-                  ? (details) => _begin(
-                      details.localPosition.dx - handleRadius, trackWidth)
-                  : null,
-              onHorizontalDragStart: widget.enabled
-                  ? (details) => _begin(
-                      details.localPosition.dx - handleRadius, trackWidth)
-                  : null,
-              onHorizontalDragUpdate: widget.enabled
-                  ? (details) => _update(
-                      details.localPosition.dx - handleRadius, trackWidth)
-                  : null,
-              child: Stack(
-                alignment: Alignment.centerLeft,
-                children: [
-                  Positioned(
-                    left: handleRadius,
-                    right: handleRadius,
-                    top: 26,
-                    child: Container(
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: Colors.black12,
-                        borderRadius: BorderRadius.circular(3),
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    left: startX,
-                    top: 26,
-                    width: math.max(0, endX - startX),
-                    child: Container(
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: color,
-                        borderRadius: BorderRadius.circular(3),
-                      ),
-                    ),
-                  ),
-                  for (final x in [startX, endX])
-                    Positioned(
-                      left: x - handleRadius,
-                      top: 17,
-                      child: Container(
-                        width: handleRadius * 2,
-                        height: handleRadius * 2,
-                        decoration: BoxDecoration(
-                          color: widget.enabled ? color : Colors.grey,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 3),
-                          boxShadow: const [
-                            BoxShadow(
-                              color: Colors.black26,
-                              blurRadius: 4,
-                              offset: Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            );
-          },
-        ),
-      ),
-    );
-  }
 }
