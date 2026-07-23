@@ -10,17 +10,19 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   late VideoPlayerPlatform originalPlatform;
+  late _FakeIosVideoPlayerPlatform fakePlatform;
 
   setUp(() {
     originalPlatform = VideoPlayerPlatform.instance;
-    VideoPlayerPlatform.instance = _FakeIosVideoPlayerPlatform();
+    fakePlatform = _FakeIosVideoPlayerPlatform();
+    VideoPlayerPlatform.instance = fakePlatform;
   });
 
   tearDown(() {
     VideoPlayerPlatform.instance = originalPlatform;
   });
 
-  testWidgets('initialized iOS video renders clip controls and actions',
+  testWidgets('initialized video renders clip controls and actions',
       (tester) async {
     await tester.pumpWidget(
       const MaterialApp(
@@ -43,16 +45,92 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('venue-clip-selector')), findsOneWidget);
-    expect(find.byType(RangeSlider), findsOneWidget);
+    expect(find.byType(RangeSlider), findsNothing);
+    expect(find.byType(Slider), findsNWidgets(3));
+    expect(find.byKey(const Key('venue-clip-start-slider')), findsOneWidget);
+    expect(find.byKey(const Key('venue-clip-end-slider')), findsOneWidget);
     expect(find.text('选择要分析的回合'), findsOneWidget);
+    await tester.ensureVisible(
+      find.byKey(const Key('venue-clip-start-slider')),
+    );
+    await tester.pumpAndSettle();
+    await tester.drag(
+      find.byKey(const Key('venue-clip-start-slider')),
+      const Offset(80, 0),
+    );
+    await tester.pumpAndSettle();
+    expect(fakePlatform.seekPositions, isNotEmpty);
+    expect(fakePlatform.seekPositions.last, greaterThan(Duration.zero));
+    final startAfterDrag = tester.widget<Slider>(
+      find.byKey(const Key('venue-clip-start-slider')),
+    );
+    final endBeforeDrag = tester.widget<Slider>(
+      find.byKey(const Key('venue-clip-end-slider')),
+    );
+    expect(startAfterDrag.max, endBeforeDrag.max);
+    expect(endBeforeDrag.value - startAfterDrag.value, greaterThanOrEqualTo(5));
+    final preservedStart = startAfterDrag.value;
+
+    await tester.drag(
+      find.byKey(const Key('venue-clip-end-slider')),
+      const Offset(-60, 0),
+    );
+    await tester.pumpAndSettle();
+    final startAfterEndMoved = tester.widget<Slider>(
+      find.byKey(const Key('venue-clip-start-slider')),
+    );
+    final endAfterDrag = tester.widget<Slider>(
+      find.byKey(const Key('venue-clip-end-slider')),
+    );
+    expect(startAfterEndMoved.value, preservedStart);
+    expect(startAfterEndMoved.max, endAfterDrag.max);
+    expect(
+        endAfterDrag.value - startAfterEndMoved.value, greaterThanOrEqualTo(5));
+    expect(find.textContaining('片段至少 5 秒'), findsOneWidget);
+    expect(find.textContaining('已选择'), findsOneWidget);
     await tester.scrollUntilVisible(find.text('获取视频'), 300);
     expect(find.text('获取视频'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('clip controls remain visible while Android video is loading',
+      (tester) async {
+    VideoPlayerPlatform.instance = _LoadingVideoPlayerPlatform();
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: VideoDetailPage(
+          venue: VenueInfo(
+            id: 'example',
+            name: '示例球场',
+            serverUrl: 'https://example.test/venue-demo',
+          ),
+          video: VenueVideo(
+            id: 'court1-full-recording',
+            court: '1号场',
+            time: '录像',
+            duration: '12秒',
+            downloadUrl: 'https://example.test/video.mp4',
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byKey(const Key('venue-clip-selector')), findsOneWidget);
+    expect(find.byKey(const Key('venue-clip-start-slider')), findsOneWidget);
+    expect(find.byKey(const Key('venue-clip-end-slider')), findsOneWidget);
+    expect(find.text('视频加载完成后即可拖动选择'), findsOneWidget);
+    expect(find.text('00:12'), findsWidgets);
+    expect(tester.takeException(), isNull);
+
+    await tester.pump(const Duration(seconds: 30));
+    await tester.pump();
   });
 }
 
 class _FakeIosVideoPlayerPlatform extends VideoPlayerPlatform {
   final _events = <int, StreamController<VideoEvent>>{};
+  final seekPositions = <Duration>[];
   int _nextId = 1;
 
   @override
@@ -100,7 +178,30 @@ class _FakeIosVideoPlayerPlatform extends VideoPlayerPlatform {
   Future<void> setPlaybackSpeed(int playerId, double speed) async {}
 
   @override
+  Future<void> seekTo(int playerId, Duration position) async {
+    seekPositions.add(position);
+  }
+
+  @override
   Future<void> dispose(int playerId) async {
     await _events.remove(playerId)?.close();
   }
+}
+
+class _LoadingVideoPlayerPlatform extends VideoPlayerPlatform {
+  @override
+  Future<void> init() async {}
+
+  @override
+  Future<int?> createWithOptions(VideoCreationOptions options) async => 1;
+
+  @override
+  Stream<VideoEvent> videoEventsFor(int playerId) =>
+      const Stream<VideoEvent>.empty();
+
+  @override
+  Widget buildView(int playerId) => const ColoredBox(color: Colors.black);
+
+  @override
+  Future<void> dispose(int playerId) async {}
 }

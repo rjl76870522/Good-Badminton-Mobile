@@ -17,6 +17,7 @@ class VenueVideo {
     required this.time,
     required this.duration,
     this.thumbnail,
+    this.playUrl,
     this.downloadUrl,
     this.assetPath,
     this.isPreparedClip = false,
@@ -28,6 +29,11 @@ class VenueVideo {
   final String time;
   final String duration;
   final String? thumbnail;
+
+  /// Inline stream intended for the platform video player.
+  final String? playUrl;
+
+  /// Attachment endpoint used when the user explicitly saves a video file.
   final String? downloadUrl;
   final String? assetPath;
   final bool isPreparedClip;

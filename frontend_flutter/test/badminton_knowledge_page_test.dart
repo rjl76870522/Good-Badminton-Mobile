@@ -17,8 +17,21 @@ void main() {
 
     await tester.tap(find.text('球星资料'));
     await tester.pump();
-    expect(find.text('从球星学习'), findsOneWidget);
+    expect(find.text('世界第一 · 现役标杆'), findsOneWidget);
+    expect(find.text('石宇奇'), findsOneWidget);
+    expect(find.text('昆拉武特·维提讪'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('王祉怡'),
+      260,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('王祉怡'), findsOneWidget);
 
+    await tester.scrollUntilVisible(
+      find.text('装备库'),
+      -260,
+      scrollable: find.byType(Scrollable).first,
+    );
     await tester.tap(find.text('装备库'));
     await tester.pump();
     expect(find.text('按需求选择装备'), findsOneWidget);

@@ -325,3 +325,21 @@ def download_video(video_id: str) -> FileResponse:
         filename=f"{video_id}.mp4",
         headers={"Cache-Control": "no-store"},
     )
+
+
+@app.get("/videos/{video_id}/play")
+def stream_video(video_id: str) -> FileResponse:
+    """Serve a venue recording as inline media for mobile players.
+
+    Keep this separate from /download: AVPlayer is more reliable when the
+    response is ordinary inline media instead of an attachment download.
+    """
+    file_path = _video_path(_find_video(video_id))
+    return FileResponse(
+        file_path,
+        media_type="video/mp4",
+        headers={
+            "Cache-Control": "public, max-age=86400",
+            "Content-Disposition": "inline",
+        },
+    )

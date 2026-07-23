@@ -1328,14 +1328,10 @@ class _FadeNetworkImage extends StatelessWidget {
     return Image.network(
       url,
       fit: BoxFit.contain,
-      frameBuilder: (context, child, frame, synchronous) {
-        if (synchronous) return child;
-        return AnimatedOpacity(
-          opacity: frame == null ? 0 : 1,
-          duration: const Duration(milliseconds: 380),
-          child: child,
-        );
-      },
+      // Keep the decoded frame visible immediately. The old fade wrapper could
+      // leave a completed Android image transparent on some decoder paths.
+      gaplessPlayback: true,
+      filterQuality: FilterQuality.high,
       loadingBuilder: (context, child, progress) {
         if (progress == null) return child;
         return const Center(child: CircularProgressIndicator());

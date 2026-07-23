@@ -175,12 +175,30 @@ class _BadmintonKnowledgePageState extends State<BadmintonKnowledgePage> {
           focus: '主动变速、网前控制，以及由防守快速转入进攻的衔接。',
         ),
         _WorldNumberOneCard(
+          event: '男单 MS',
+          rankLabel: '世界第 2',
+          names: '昆拉武特·维提讪',
+          country: '泰国',
+          icon: Icons.sports_tennis_rounded,
+          accent: Color(0xFF5C7B43),
+          focus: '耐心拉吊与多拍控制，观察稳定防守后突然提速的时机选择。',
+        ),
+        _WorldNumberOneCard(
           event: '女单 WS',
           names: '安洗莹',
           country: '韩国',
           icon: Icons.bolt_rounded,
           accent: Color(0xFF2F6F9F),
           focus: '多拍稳定性、全场防守覆盖，以及耐心组织下一次进攻机会。',
+        ),
+        _WorldNumberOneCard(
+          event: '女单 WS',
+          rankLabel: '世界第 2',
+          names: '王祉怡',
+          country: '中国',
+          icon: Icons.bolt_rounded,
+          accent: Color(0xFF83502F),
+          focus: '落点控制与攻守转换，观察主动抢攻和关键分处理的节奏。',
         ),
         _WorldNumberOneCard(
           event: '男双 MD',
@@ -321,6 +339,7 @@ class _WorldNumberOneCard extends StatelessWidget {
     required this.icon,
     required this.accent,
     required this.focus,
+    this.rankLabel = '世界第 1',
   });
 
   final String event;
@@ -329,6 +348,7 @@ class _WorldNumberOneCard extends StatelessWidget {
   final IconData icon;
   final Color accent;
   final String focus;
+  final String rankLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -383,7 +403,7 @@ class _WorldNumberOneCard extends StatelessWidget {
                     borderRadius: BorderRadius.circular(99),
                   ),
                   child: Text(
-                    '世界第 1',
+                    rankLabel,
                     style: TextStyle(
                       color: onAccent,
                       fontSize: 11,

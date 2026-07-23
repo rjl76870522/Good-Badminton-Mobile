@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:gal/gal.dart';
@@ -14,6 +15,12 @@ import '../services/user_storage.dart';
 import '../services/venue_library_storage.dart';
 import '../utils/user_facing_error.dart';
 import 'upload_page.dart';
+
+const _buildRevision = String.fromEnvironment(
+  'BUILD_REVISION',
+  defaultValue: 'local',
+);
+const _minimumClipSeconds = 5.0;
 
 class VideoDetailPage extends StatefulWidget {
   const VideoDetailPage({super.key, required this.venue, required this.video});
@@ -39,6 +46,8 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
   double _scrubSeconds = 0;
   double? _pendingScrubSeconds;
   Future<void>? _scrubSeekWorker;
+  double? _pendingClipSeekSeconds;
+  Future<void>? _clipSeekWorker;
   double _previewLoadingProgress = 0;
   double _downloadProgress = 0;
   double _videoDurationSeconds = 1;
@@ -61,6 +70,11 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
   String get _downloadUrl =>
       widget.video.downloadUrl ??
       _venueVideoUrl('videos/${widget.video.id}/download');
+  String get _playUrl =>
+      widget.video.playUrl ??
+      // Older/custom venue integrations may only expose one streaming URL.
+      widget.video.downloadUrl ??
+      _venueVideoUrl('videos/${widget.video.id}/play');
 
   String _venueVideoUrl(String path) {
     final base = Uri.parse(widget.venue.serverUrl);
@@ -75,6 +89,10 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
   int get _startMs =>
       (_clipRange.start * Duration.millisecondsPerSecond).round();
   int get _endMs => (_clipRange.end * Duration.millisecondsPerSecond).round();
+  int get _clipDurationMs => _endMs - _startMs;
+  bool get _hasValidClipDuration =>
+      _clipDurationMs >=
+      (_minimumClipSeconds * Duration.millisecondsPerSecond).round();
   bool get _isFullSelection =>
       _startMs <= 0 && _endMs >= _duration.inMilliseconds - 150;
   Uri get _clipUri {
@@ -91,8 +109,16 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
   @override
   void initState() {
     super.initState();
+    final initialDuration = _durationFromLabel(widget.video.duration);
+    _videoDurationSeconds = initialDuration;
+    _clipRange = RangeValues(0, initialDuration);
     _initializePreview();
     _loadSavedClips();
+  }
+
+  double _durationFromLabel(String label) {
+    final match = RegExp(r'(\d+(?:\.\d+)?)').firstMatch(label);
+    return math.max(1, double.tryParse(match?.group(1) ?? '') ?? 1).toDouble();
   }
 
   Future<void> _loadSavedClips() async {
@@ -102,11 +128,17 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
 
   Future<void> _initializePreview() async {
     VideoPlayerController? controller;
+    if (mounted) {
+      setState(() {
+        _previewError = null;
+        _previewLoadingProgress = 0;
+      });
+    }
     try {
       if (_isBundledDemo) {
         controller = VideoPlayerController.asset(widget.video.assetPath!);
       } else {
-        controller = VideoPlayerController.networkUrl(Uri.parse(_downloadUrl));
+        controller = VideoPlayerController.networkUrl(Uri.parse(_playUrl));
       }
       await controller.initialize().timeout(const Duration(seconds: 30));
       if (!mounted) {
@@ -133,6 +165,17 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
         setState(() => _previewError = '视频预览暂时不可用，请检查球馆网络。');
       }
     }
+  }
+
+  Future<void> _retryPreview() async {
+    final previous = _controller;
+    if (previous != null) {
+      previous.removeListener(_onVideoChanged);
+      await previous.dispose();
+    }
+    if (!mounted) return;
+    setState(() => _controller = null);
+    await _initializePreview();
   }
 
   void _onVideoChanged() {
@@ -222,30 +265,49 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
     await _controller?.seekTo(Duration.zero);
   }
 
-  Future<void> _updateClipRange(RangeValues values) async {
-    const minimumSpan = 1.0;
-    var start = values.start;
-    var end = values.end;
-    if (end - start < minimumSpan) {
-      if (start + minimumSpan <= _maximumSeconds) {
-        end = start + minimumSpan;
-      } else {
-        start = end - minimumSpan;
-      }
-    }
-    final previous = _clipRange;
-    final startMoved = (start - previous.start).abs();
-    final endMoved = (end - previous.end).abs();
-    final seekSeconds = startMoved >= endMoved ? start : end;
-    setState(() => _clipRange = RangeValues(start, end));
+  void _updateClipStart(double value) {
+    final minimumSpan = math.min(_minimumClipSeconds, _maximumSeconds);
+    final latestStart = math.max(0.0, _clipRange.end - minimumSpan);
+    final start = value.clamp(0.0, latestStart).toDouble();
+    _setClipRange(RangeValues(start, _clipRange.end), start);
+  }
+
+  void _updateClipEnd(double value) {
+    final minimumSpan = math.min(_minimumClipSeconds, _maximumSeconds);
+    final earliestEnd =
+        math.min(_maximumSeconds, _clipRange.start + minimumSpan);
+    final end = value.clamp(earliestEnd, _maximumSeconds).toDouble();
+    _setClipRange(RangeValues(_clipRange.start, end), end);
+  }
+
+  void _setClipRange(RangeValues values, double seekSeconds) {
+    setState(() {
+      _clipRange = values;
+      _scrubSeconds = seekSeconds;
+    });
+    _queueClipSeek(seekSeconds);
+  }
+
+  void _queueClipSeek(double seconds) {
+    _pendingClipSeekSeconds = seconds;
+    _clipSeekWorker ??= _drainClipSeeks().whenComplete(
+      () => _clipSeekWorker = null,
+    );
+  }
+
+  Future<void> _drainClipSeeks() async {
     final controller = _controller;
-    if (controller != null) {
-      await controller.pause();
+    if (controller == null) return;
+    await controller.pause();
+    while (_pendingClipSeekSeconds != null) {
+      final target = _pendingClipSeekSeconds!;
+      _pendingClipSeekSeconds = null;
       await controller.seekTo(
         Duration(
-          milliseconds: (seekSeconds * Duration.millisecondsPerSecond).round(),
+          milliseconds: (target * Duration.millisecondsPerSecond).round(),
         ),
       );
+      if (mounted) setState(() {});
     }
   }
 
@@ -354,6 +416,12 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
 
   Future<void> _selectDownloadAction() async {
     if (!_videoReady || _downloading) return;
+    if (!_hasValidClipDuration) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('所选片段不能少于 5 秒，请重新选择')),
+      );
+      return;
+    }
     final action = await showModalBottomSheet<_VideoAction>(
       context: context,
       showDragHandle: true,
@@ -368,8 +436,9 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
               const SizedBox(height: 6),
               Text(
                 _isFullSelection
-                    ? '当前选择完整视频'
-                    : '当前片段：${_formatTime(_startMs)} - ${_formatTime(_endMs)}',
+                    ? '当前选择完整视频，共 ${(_clipDurationMs / 1000).toStringAsFixed(1)} 秒'
+                    : '当前片段：${_formatTime(_startMs)} - ${_formatTime(_endMs)}'
+                        '，共 ${(_clipDurationMs / 1000).toStringAsFixed(1)} 秒',
               ),
               const SizedBox(height: 12),
               ListTile(
@@ -558,7 +627,11 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
   Widget build(BuildContext context) {
     final controller = _controller;
     return Scaffold(
-      appBar: AppBar(title: const Text('选择视频')),
+      appBar: AppBar(
+        title: Text(
+          kDebugMode ? '选择视频 · ${_shortBuildRevision(_buildRevision)}' : '选择视频',
+        ),
+      ),
       body: SafeArea(
         top: false,
         child: ListView(
@@ -566,13 +639,11 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
           children: [
             _previewCard(controller),
             const SizedBox(height: 16),
-            if (controller != null) ...[
-              _clipSelector(context),
+            _clipSelector(context),
+            const SizedBox(height: 16),
+            if (_savedClips.isNotEmpty) ...[
+              _savedClipList(),
               const SizedBox(height: 16),
-              if (_savedClips.isNotEmpty) ...[
-                _savedClipList(),
-                const SizedBox(height: 16),
-              ],
             ],
             Card(
               child: Padding(
@@ -661,40 +732,128 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
                 ],
               ),
               const SizedBox(height: 4),
-              const Text('拖动两端，尽量避开回合之间的捡球和休息时间'),
-              RangeSlider(
-                values: RangeValues(
-                  _clipRange.start.clamp(0, _maximumSeconds),
-                  _clipRange.end.clamp(0, _maximumSeconds),
-                ),
-                min: 0,
-                max: _maximumSeconds,
-                divisions:
-                    math.min(180, _maximumSeconds.ceil()).clamp(1, 180).toInt(),
-                labels: RangeLabels(
-                  _formatTime(_startMs),
-                  _formatTime(_endMs),
-                ),
-                onChangeStart:
-                    _downloading ? null : (_) => _controller?.pause(),
-                onChanged: _downloading ? null : _updateClipRange,
+              const Text('片段至少 5 秒，建议选择完整单个回合，避开捡球与休息时间'),
+              const SizedBox(height: 8),
+              _clipBoundarySlider(
+                key: const Key('venue-clip-start-slider'),
+                icon: Icons.first_page_rounded,
+                title: '开始时刻',
+                value: _clipRange.start,
+                maximum: _maximumSeconds,
+                onChanged: _updateClipStart,
               ),
+              _clipBoundarySlider(
+                key: const Key('venue-clip-end-slider'),
+                icon: Icons.last_page_rounded,
+                title: '结束时刻',
+                value: _clipRange.end,
+                maximum: _maximumSeconds,
+                onChanged: _updateClipEnd,
+              ),
+              if (!_videoReady) ...[
+                const SizedBox(height: 2),
+                Text(
+                  _previewError == null ? '视频加载完成后即可拖动选择' : '视频预览加载失败，请重新加载后选择',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(_formatTime(_startMs)),
                   OutlinedButton.icon(
-                    onPressed: _downloading ? null : _previewSelectedClip,
+                    onPressed: _videoReady && !_downloading
+                        ? _previewSelectedClip
+                        : null,
                     icon: const Icon(Icons.play_arrow_rounded),
                     label: const Text('预览所选片段'),
                   ),
                   Text(_formatTime(_endMs)),
                 ],
               ),
+              const SizedBox(height: 4),
+              Center(
+                child: Text(
+                  '已选择 ${(_clipDurationMs / 1000).toStringAsFixed(1)} 秒',
+                  style: TextStyle(
+                    color: _hasValidClipDuration
+                        ? Theme.of(context).colorScheme.onSurfaceVariant
+                        : Theme.of(context).colorScheme.error,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
             ],
           ),
         ),
       );
+
+  Widget _clipBoundarySlider({
+    required Key key,
+    required IconData icon,
+    required String title,
+    required double value,
+    required double maximum,
+    required ValueChanged<double> onChanged,
+    double minimum = 0,
+  }) {
+    final enabled = _videoReady && !_downloading && maximum > minimum;
+    final safeValue = value.clamp(minimum, maximum).toDouble();
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 76,
+            child: Row(
+              children: [
+                Icon(icon, size: 18),
+                const SizedBox(width: 4),
+                Text(title, style: const TextStyle(fontSize: 13)),
+              ],
+            ),
+          ),
+          Expanded(
+            child: SliderTheme(
+              data: SliderTheme.of(context).copyWith(
+                trackHeight: 6,
+                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 12),
+                overlayShape: const RoundSliderOverlayShape(overlayRadius: 24),
+              ),
+              child: Slider(
+                key: key,
+                min: minimum,
+                max: maximum,
+                value: safeValue,
+                label: _formatTime(
+                  (safeValue * Duration.millisecondsPerSecond).round(),
+                ),
+                onChangeStart: enabled ? (_) => _controller?.pause() : null,
+                onChanged: enabled ? onChanged : null,
+                onChangeEnd: enabled ? _queueClipSeek : null,
+              ),
+            ),
+          ),
+          SizedBox(
+            width: 42,
+            child: Text(
+              _formatTime(
+                (safeValue * Duration.millisecondsPerSecond).round(),
+              ),
+              textAlign: TextAlign.end,
+              style: const TextStyle(
+                fontSize: 12,
+                fontFeatures: [FontFeature.tabularFigures()],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _savedClipList() => Card(
         child: Padding(
@@ -745,7 +904,15 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
 
   Widget _previewCard(VideoPlayerController? controller) {
     if (_previewError != null) {
-      return _placeholder(const Icon(Icons.wifi_off_outlined), _previewError!);
+      return _placeholder(
+        const Icon(Icons.wifi_off_outlined),
+        _previewError!,
+        action: OutlinedButton.icon(
+          onPressed: _retryPreview,
+          icon: const Icon(Icons.refresh_rounded),
+          label: const Text('重新加载视频'),
+        ),
+      );
     }
     if (controller == null) {
       return _placeholder(
@@ -859,7 +1026,8 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
     );
   }
 
-  Widget _placeholder(Widget icon, String message) => Container(
+  Widget _placeholder(Widget icon, String message, {Widget? action}) =>
+      Container(
         height: 220,
         decoration: BoxDecoration(
           color: const Color(0xFF172419),
@@ -872,6 +1040,10 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
             icon,
             const SizedBox(height: 12),
             Text(message, style: const TextStyle(color: Colors.white)),
+            if (action != null) ...[
+              const SizedBox(height: 12),
+              action,
+            ],
           ],
         ),
       );
@@ -952,3 +1124,8 @@ class _FullscreenVideoPage extends StatelessWidget {
 }
 
 enum _VideoAction { saveToGallery, analyze }
+
+String _shortBuildRevision(String revision) {
+  if (revision.isEmpty) return 'unknown';
+  return revision.length <= 7 ? revision : revision.substring(0, 7);
+}
