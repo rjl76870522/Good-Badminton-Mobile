@@ -179,8 +179,9 @@ class VenueService {
           throw const VenueVideoException('球馆视频库包含无效视频');
         }
         final item = Map<String, dynamic>.from(rawItem);
-        final id = item['id']?.toString().trim() ?? '';
-        final court = item['court']?.toString().trim() ?? '';
+        final id = (item['id'] ?? item['video_id'])?.toString().trim() ?? '';
+        final court =
+            (item['court_name'] ?? item['court'])?.toString().trim() ?? '';
         final revision = item['revision']?.toString().trim() ?? '';
         if (id.isEmpty || court.isEmpty) {
           throw const VenueVideoException('球馆视频库包含无效视频');
@@ -188,23 +189,28 @@ class VenueService {
         videos.add(VenueVideo(
           id: id,
           court: court,
-          time: item['time']?.toString().trim() ?? '时间未知',
+          time:
+              (item['timestamp'] ?? item['time'])?.toString().trim() ?? '时间未知',
           duration: item['duration']?.toString().trim() ?? '时长未知',
           thumbnail: item['thumbnail']?.toString().trim(),
-          downloadUrl:
-              item['download_url']?.toString().trim().isNotEmpty == true
-                  ? item['download_url'].toString().trim()
-                  : _endpoint(
-                      venue.serverUrl,
-                      'videos/$id/download',
-                    )
-                      .replace(
-                        queryParameters: revision.isEmpty
-                            ? null
-                            : <String, String>{'v': revision},
-                      )
-                      .toString(),
+          downloadUrl: (item['video_url'] ?? item['download_url'])
+                      ?.toString()
+                      .trim()
+                      .isNotEmpty ==
+                  true
+              ? (item['video_url'] ?? item['download_url']).toString().trim()
+              : _endpoint(
+                  venue.serverUrl,
+                  'videos/$id/download',
+                )
+                  .replace(
+                    queryParameters: revision.isEmpty
+                        ? null
+                        : <String, String>{'v': revision},
+                  )
+                  .toString(),
           isPreparedClip: item['is_prepared_clip'] == true,
+          isFavorite: item['is_favorite'] == true,
         ));
       }
       if (videos.isEmpty) {

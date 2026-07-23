@@ -27,6 +27,7 @@ server/uploads/
 *.zip
 *.jks
 frontend_flutter/android/key.properties
+frontend_flutter/.build-*.pid
 frontend_flutter/nul
 server/debug_line_mask.png
 mock_venue_server/clips/

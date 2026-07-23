@@ -12,6 +12,7 @@ import 'package:video_player/video_player.dart';
 import '../models/venue.dart';
 import '../services/api_service.dart';
 import '../services/user_storage.dart';
+import '../services/venue_library_storage.dart';
 import '../utils/user_facing_error.dart';
 import 'upload_page.dart';
 
@@ -33,6 +34,7 @@ class VideoDetailPage extends StatefulWidget {
 class _VideoDetailPageState extends State<VideoDetailPage> {
   final ApiService _api = ApiService();
   final UserStorage _userStorage = UserStorage();
+  final VenueLibraryStorage _libraryStorage = VenueLibraryStorage();
   VideoPlayerController? _controller;
   String? _previewError;
   bool _downloading = false;
@@ -47,6 +49,8 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
   double _downloadProgress = 0;
   double _videoDurationSeconds = 1;
   RangeValues _clipRange = const RangeValues(0, 0);
+  double _playbackSpeed = 1;
+  List<SavedVenueClip> _savedClips = const [];
 
   bool get _isBundledDemo => widget.video.assetPath?.isNotEmpty == true;
   String? get _bundledServerVideoId => switch (widget.video.id) {
@@ -94,6 +98,12 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
   void initState() {
     super.initState();
     _initializePreview();
+    _loadSavedClips();
+  }
+
+  Future<void> _loadSavedClips() async {
+    final clips = await _libraryStorage.clipsFor(widget.venue, widget.video);
+    if (mounted) setState(() => _savedClips = clips);
   }
 
   Future<void> _initializePreview() async {
@@ -270,6 +280,29 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
     await controller.play();
   }
 
+  Future<void> _setPlaybackSpeed(double speed) async {
+    final controller = _controller;
+    if (controller == null) return;
+    await controller.setPlaybackSpeed(speed);
+    if (mounted) setState(() => _playbackSpeed = speed);
+  }
+
+  Future<void> _openFullscreen() async {
+    final controller = _controller;
+    if (controller == null) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        fullscreenDialog: true,
+        builder: (_) => _FullscreenVideoPage(
+          controller: controller,
+          speed: _playbackSpeed,
+          onSpeedChanged: _setPlaybackSpeed,
+        ),
+      ),
+    );
+    if (mounted) setState(() {});
+  }
+
   void _startScrubbing(double value) {
     final controller = _controller;
     if (controller == null) return;
@@ -389,6 +422,17 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
         throw StateError('未获得系统相册访问权限，请在系统设置中允许照片权限后重试。');
       }
       await Gal.putVideo(file.path, album: 'Good-Badminton');
+      final clipName = await _askClipName();
+      if (clipName != null) {
+        await _libraryStorage.saveClip(
+          venue: widget.venue,
+          video: widget.video,
+          name: clipName,
+          startMs: _startMs,
+          endMs: _endMs,
+        );
+        await _loadSavedClips();
+      }
       try {
         await file.delete();
       } on FileSystemException {
@@ -418,6 +462,37 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
         });
       }
     }
+  }
+
+  Future<String?> _askClipName() async {
+    final defaultName = _isFullSelection
+        ? '${widget.video.court} 完整录像'
+        : '${widget.video.court} ${_formatTime(_startMs)}片段';
+    final controller = TextEditingController(text: defaultName);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('为片段命名'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLength: 40,
+          decoration: const InputDecoration(hintText: '例如：第 2 局连续多拍'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('跳过'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(controller.text),
+            child: const Text('保存名称'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    return result;
   }
 
   Future<void> _downloadAndAnalyze() async {
@@ -504,6 +579,10 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
             if (controller != null) ...[
               _clipSelector(context),
               const SizedBox(height: 16),
+              if (_savedClips.isNotEmpty) ...[
+                _savedClipList(),
+                const SizedBox(height: 16),
+              ],
             ],
             Card(
               child: Padding(
@@ -619,6 +698,53 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
         ),
       );
 
+  Widget _savedClipList() => Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.bookmark_added_outlined),
+                  const SizedBox(width: 8),
+                  Text('本地已保存片段',
+                      style: Theme.of(context).textTheme.titleMedium),
+                ],
+              ),
+              const SizedBox(height: 8),
+              ..._savedClips.take(5).map(
+                    (clip) => ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.content_cut_rounded),
+                      title: Text(clip.name),
+                      subtitle: Text(
+                        '${_formatTime(clip.startMs)} - ${_formatTime(clip.endMs)}',
+                      ),
+                      onTap: () async {
+                        await _controller?.seekTo(
+                          Duration(milliseconds: clip.startMs),
+                        );
+                        if (mounted) {
+                          setState(
+                            () => _clipRange = RangeValues(
+                              clip.startMs / Duration.millisecondsPerSecond,
+                              clip.endMs / Duration.millisecondsPerSecond,
+                            ),
+                          );
+                        }
+                      },
+                    ),
+                  ),
+              if (_savedClips.length > 5)
+                Text('另有 ${_savedClips.length - 5} 个本地片段',
+                    style: const TextStyle(color: Colors.black54)),
+            ],
+          ),
+        ),
+      );
+
   Widget _previewCard(VideoPlayerController? controller) {
     if (_previewError != null) {
       return _placeholder(const Icon(Icons.wifi_off_outlined), _previewError!);
@@ -682,6 +808,25 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
                         onChangeEnd: _finishScrubbing,
                       ),
                     ),
+                    PopupMenuButton<double>(
+                      tooltip: '播放速度',
+                      icon: Text('$_playbackSpeed×',
+                          style: const TextStyle(color: Colors.white)),
+                      onSelected: _setPlaybackSpeed,
+                      itemBuilder: (context) => const [
+                        PopupMenuItem(value: 0.5, child: Text('0.5×')),
+                        PopupMenuItem(value: 1.0, child: Text('1.0×')),
+                        PopupMenuItem(value: 1.25, child: Text('1.25×')),
+                        PopupMenuItem(value: 1.5, child: Text('1.5×')),
+                        PopupMenuItem(value: 2.0, child: Text('2.0×')),
+                      ],
+                    ),
+                    IconButton(
+                      tooltip: '全屏播放',
+                      color: Colors.white,
+                      onPressed: _openFullscreen,
+                      icon: const Icon(Icons.fullscreen_rounded),
+                    ),
                   ],
                 ),
                 Padding(
@@ -730,6 +875,80 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
             const SizedBox(height: 12),
             Text(message, style: const TextStyle(color: Colors.white)),
           ],
+        ),
+      );
+}
+
+class _FullscreenVideoPage extends StatelessWidget {
+  const _FullscreenVideoPage({
+    required this.controller,
+    required this.speed,
+    required this.onSpeedChanged,
+  });
+
+  final VideoPlayerController controller;
+  final double speed;
+  final ValueChanged<double> onSpeedChanged;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        backgroundColor: Colors.black,
+        body: SafeArea(
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              Center(
+                child: AspectRatio(
+                  aspectRatio: controller.value.aspectRatio,
+                  child: VideoPlayer(controller),
+                ),
+              ),
+              Positioned(
+                top: 4,
+                left: 4,
+                child: IconButton(
+                  tooltip: '退出全屏',
+                  color: Colors.white,
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: const Icon(Icons.fullscreen_exit_rounded),
+                ),
+              ),
+              Positioned(
+                right: 12,
+                bottom: 18,
+                child: PopupMenuButton<double>(
+                  tooltip: '播放速度',
+                  icon: const Icon(Icons.speed_rounded, color: Colors.white),
+                  onSelected: onSpeedChanged,
+                  itemBuilder: (context) => const [
+                    PopupMenuItem(value: 0.5, child: Text('0.5×')),
+                    PopupMenuItem(value: 1.0, child: Text('1.0×')),
+                    PopupMenuItem(value: 1.25, child: Text('1.25×')),
+                    PopupMenuItem(value: 1.5, child: Text('1.5×')),
+                    PopupMenuItem(value: 2.0, child: Text('2.0×')),
+                  ],
+                ),
+              ),
+              Positioned(
+                left: 12,
+                bottom: 18,
+                child: IconButton(
+                  tooltip: controller.value.isPlaying ? '暂停' : '播放',
+                  color: Colors.white,
+                  onPressed: () {
+                    if (controller.value.isPlaying) {
+                      controller.pause();
+                    } else {
+                      controller.play();
+                    }
+                  },
+                  icon: Icon(controller.value.isPlaying
+                      ? Icons.pause_circle_filled_rounded
+                      : Icons.play_circle_fill_rounded),
+                ),
+              ),
+            ],
+          ),
         ),
       );
 }
