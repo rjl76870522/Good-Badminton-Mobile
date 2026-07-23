@@ -17,7 +17,9 @@ void main() {
 
     await tester.tap(find.text('球星资料'));
     await tester.pump();
-    expect(find.text('从球星学习'), findsOneWidget);
+    expect(find.text('现役球员观察'), findsOneWidget);
+    expect(find.text('石宇奇'), findsOneWidget);
+    expect(find.text('郑思维 / 黄雅琼'), findsNothing);
 
     await tester.tap(find.text('装备库'));
     await tester.pump();

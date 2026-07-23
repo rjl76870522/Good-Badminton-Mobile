@@ -35,5 +35,6 @@ flutter:
     - assets/images/badminton_dashboard_bg.png
     - assets/images/history_court_bg.png
     - assets/images/cai_xukun_waiting.gif
+    - assets/images/players/
     - assets/videos/demo01.mp4
     - assets/videos/demo02.mp4

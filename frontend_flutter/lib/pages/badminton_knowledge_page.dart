@@ -133,32 +133,14 @@ class _BadmintonKnowledgePageState extends State<BadmintonKnowledgePage> {
         _InfoCard(title: '混合双打', badge: 'XD', body: '前后场分工与轮转速度是主要观察重点'),
       ];
 
-  List<Widget> get _playerContent => const [
-        _IntroCard(
+  List<Widget> get _playerContent => [
+        const _IntroCard(
           icon: Icons.person_search_outlined,
-          title: '从球星学习',
-          body: '从比赛中观察优秀球员的技术特点和回合处理',
+          title: '现役球员观察',
+          body: '从不同风格的现役球员身上观察移动、节奏与回合处理',
         ),
-        _InfoCard(
-          title: '石宇奇',
-          badge: '中国',
-          body: '观察重点：主动变速、网前控制，以及由防守快速转入进攻的衔接',
-        ),
-        _InfoCard(
-          title: '安赛龙',
-          badge: '丹麦',
-          body: '观察重点：高点击球、后场进攻覆盖，以及利用身高和步幅控制回合',
-        ),
-        _InfoCard(
-          title: '安洗莹',
-          badge: '韩国',
-          body: '观察重点：多拍稳定性、防守覆盖和耐心组织下一次进攻机会',
-        ),
-        _InfoCard(
-          title: '郑思维 / 黄雅琼',
-          badge: '混双',
-          body: '观察重点：前三拍压迫、连续进攻与前后场快速轮转',
-        ),
+        ..._activePlayers.map(_PlayerProfileCard.new),
+        const _PortraitCredits(),
       ];
 
   List<Widget> get _equipmentContent => const [
@@ -188,6 +170,231 @@ class _BadmintonKnowledgePageState extends State<BadmintonKnowledgePage> {
           body: '球速受温度、海拔和球馆环境影响，训练时应选择适合当地条件的速度型号',
         ),
       ];
+}
+
+const _activePlayers = <_PlayerProfile>[
+  _PlayerProfile(
+    name: '石宇奇',
+    englishName: 'SHI Yu Qi',
+    country: '中国',
+    event: '男子单打',
+    imageAsset: 'assets/images/players/shi_yuqi.jpg',
+    focus: '主动变速与网前控制，观察他如何通过节奏变化创造后场进攻机会',
+  ),
+  _PlayerProfile(
+    name: '安赛龙',
+    englishName: 'Viktor AXELSEN',
+    country: '丹麦',
+    event: '男子单打',
+    imageAsset: 'assets/images/players/viktor_axelsen.jpg',
+    focus: '高点击球与大范围覆盖，观察身高、步幅和连续进攻如何形成压迫',
+  ),
+  _PlayerProfile(
+    name: '昆拉武特',
+    englishName: 'Kunlavut VITIDSARN',
+    country: '泰国',
+    event: '男子单打',
+    imageAsset: 'assets/images/players/kunlavut_vitidsarn.jpg',
+    focus: '耐心拉吊与多拍控制，观察稳定防守后突然提速的时机选择',
+  ),
+  _PlayerProfile(
+    name: '安洗莹',
+    englishName: 'AN Se Young',
+    country: '韩国',
+    event: '女子单打',
+    imageAsset: 'assets/images/players/an_seyoung.jpg',
+    focus: '全场防守覆盖与多拍稳定性，观察她如何消耗对手并重新组织进攻',
+  ),
+  _PlayerProfile(
+    name: '陈雨菲',
+    englishName: 'CHEN Yu Fei',
+    country: '中国',
+    event: '女子单打',
+    imageAsset: 'assets/images/players/chen_yufei.jpg',
+    focus: '均衡的攻守转换与落点控制，观察回中、连贯和关键分处理',
+  ),
+  _PlayerProfile(
+    name: '山口茜',
+    englishName: 'Akane YAMAGUCHI',
+    country: '日本',
+    event: '女子单打',
+    imageAsset: 'assets/images/players/akane_yamaguchi.jpg',
+    focus: '快速启动与低重心移动，观察连续突击和被动状态下的回球质量',
+  ),
+];
+
+class _PlayerProfile {
+  const _PlayerProfile({
+    required this.name,
+    required this.englishName,
+    required this.country,
+    required this.event,
+    required this.imageAsset,
+    required this.focus,
+  });
+
+  final String name;
+  final String englishName;
+  final String country;
+  final String event;
+  final String imageAsset;
+  final String focus;
+}
+
+class _PlayerProfileCard extends StatelessWidget {
+  const _PlayerProfileCard(this.player);
+
+  final _PlayerProfile player;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          AspectRatio(
+            aspectRatio: 16 / 9,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Image.asset(
+                  player.imageAsset,
+                  fit: BoxFit.cover,
+                  alignment: Alignment.topCenter,
+                  errorBuilder: (_, __, ___) => ColoredBox(
+                    color: colors.primaryContainer,
+                    child: Icon(
+                      Icons.person,
+                      size: 64,
+                      color: colors.onPrimaryContainer,
+                    ),
+                  ),
+                ),
+                const DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.center,
+                      end: Alignment.bottomCenter,
+                      colors: [Colors.transparent, Color(0xB0000000)],
+                    ),
+                  ),
+                ),
+                Positioned(
+                  left: 16,
+                  right: 16,
+                  bottom: 13,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              player.name,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 22,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            Text(
+                              player.englishName,
+                              style: const TextStyle(
+                                color: Color(0xE6FFFFFF),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      _PlayerTag(text: player.country),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 17),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.sports_tennis, size: 17, color: colors.primary),
+                    const SizedBox(width: 7),
+                    Text(
+                      '${player.event} · 现役',
+                      style: TextStyle(
+                        color: colors.primary,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 9),
+                Text(
+                  player.focus,
+                  style: const TextStyle(height: 1.55),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PlayerTag extends StatelessWidget {
+  const _PlayerTag({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: const Color(0xDFFFFFFF),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(
+          color: Color(0xFF162118),
+          fontSize: 12,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+  }
+}
+
+class _PortraitCredits extends StatelessWidget {
+  const _PortraitCredits();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 4, 4, 2),
+      child: Text(
+        '球员状态与内容为阶段性资料，不代表实时排名\n'
+        '肖像来源 Wikimedia Commons，作者 Fauzi Ananta、'
+        'Jurnal Bulutangkis、Nardisoero，依据 CC BY 或 CC BY-SA 许可使用',
+        style: TextStyle(
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+          fontSize: 11,
+          height: 1.5,
+        ),
+      ),
+    );
+  }
 }
 
 class _IntroCard extends StatelessWidget {
