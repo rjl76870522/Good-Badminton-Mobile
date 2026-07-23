@@ -20,6 +20,7 @@ const _buildRevision = String.fromEnvironment(
   'BUILD_REVISION',
   defaultValue: 'local',
 );
+const _minimumClipSeconds = 5.0;
 
 class VideoDetailPage extends StatefulWidget {
   const VideoDetailPage({super.key, required this.venue, required this.video});
@@ -83,6 +84,10 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
   int get _startMs =>
       (_clipRange.start * Duration.millisecondsPerSecond).round();
   int get _endMs => (_clipRange.end * Duration.millisecondsPerSecond).round();
+  int get _clipDurationMs => _endMs - _startMs;
+  bool get _hasValidClipDuration =>
+      _clipDurationMs >=
+      (_minimumClipSeconds * Duration.millisecondsPerSecond).round();
   bool get _isFullSelection =>
       _startMs <= 0 && _endMs >= _duration.inMilliseconds - 150;
   Uri get _clipUri {
@@ -256,12 +261,17 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
   }
 
   void _updateClipStart(double value) {
-    final start = value.clamp(0.0, _clipRange.end - 1).toDouble();
+    final minimumSpan = math.min(_minimumClipSeconds, _maximumSeconds);
+    final latestStart = math.max(0.0, _clipRange.end - minimumSpan);
+    final start = value.clamp(0.0, latestStart).toDouble();
     _setClipRange(RangeValues(start, _clipRange.end), start);
   }
 
   void _updateClipEnd(double value) {
-    final end = value.clamp(_clipRange.start + 1, _maximumSeconds).toDouble();
+    final minimumSpan = math.min(_minimumClipSeconds, _maximumSeconds);
+    final earliestEnd =
+        math.min(_maximumSeconds, _clipRange.start + minimumSpan);
+    final end = value.clamp(earliestEnd, _maximumSeconds).toDouble();
     _setClipRange(RangeValues(_clipRange.start, end), end);
   }
 
@@ -401,6 +411,12 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
 
   Future<void> _selectDownloadAction() async {
     if (!_videoReady || _downloading) return;
+    if (!_hasValidClipDuration) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('所选片段不能少于 5 秒，请重新选择')),
+      );
+      return;
+    }
     final action = await showModalBottomSheet<_VideoAction>(
       context: context,
       showDragHandle: true,
@@ -415,8 +431,9 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
               const SizedBox(height: 6),
               Text(
                 _isFullSelection
-                    ? '当前选择完整视频'
-                    : '当前片段：${_formatTime(_startMs)} - ${_formatTime(_endMs)}',
+                    ? '当前选择完整视频，共 ${(_clipDurationMs / 1000).toStringAsFixed(1)} 秒'
+                    : '当前片段：${_formatTime(_startMs)} - ${_formatTime(_endMs)}'
+                        '，共 ${(_clipDurationMs / 1000).toStringAsFixed(1)} 秒',
               ),
               const SizedBox(height: 12),
               ListTile(
@@ -710,7 +727,7 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
                 ],
               ),
               const SizedBox(height: 4),
-              const Text('拖动左右端点选择片段，避开捡球与休息时间'),
+              const Text('片段至少 5 秒，建议选择完整单个回合，避开捡球与休息时间'),
               const SizedBox(height: 8),
               _clipBoundarySlider(
                 key: const Key('venue-clip-start-slider'),
@@ -751,6 +768,18 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
                   ),
                   Text(_formatTime(_endMs)),
                 ],
+              ),
+              const SizedBox(height: 4),
+              Center(
+                child: Text(
+                  '已选择 ${(_clipDurationMs / 1000).toStringAsFixed(1)} 秒',
+                  style: TextStyle(
+                    color: _hasValidClipDuration
+                        ? Theme.of(context).colorScheme.onSurfaceVariant
+                        : Theme.of(context).colorScheme.error,
+                    fontSize: 12,
+                  ),
+                ),
               ),
             ],
           ),

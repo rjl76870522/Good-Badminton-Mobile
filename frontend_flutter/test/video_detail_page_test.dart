@@ -68,6 +68,7 @@ void main() {
       find.byKey(const Key('venue-clip-end-slider')),
     );
     expect(startAfterDrag.max, endBeforeDrag.max);
+    expect(endBeforeDrag.value - startAfterDrag.value, greaterThanOrEqualTo(5));
     final preservedStart = startAfterDrag.value;
 
     await tester.drag(
@@ -83,6 +84,10 @@ void main() {
     );
     expect(startAfterEndMoved.value, preservedStart);
     expect(startAfterEndMoved.max, endAfterDrag.max);
+    expect(
+        endAfterDrag.value - startAfterEndMoved.value, greaterThanOrEqualTo(5));
+    expect(find.textContaining('片段至少 5 秒'), findsOneWidget);
+    expect(find.textContaining('已选择'), findsOneWidget);
     await tester.scrollUntilVisible(find.text('获取视频'), 300);
     expect(find.text('获取视频'), findsOneWidget);
     expect(tester.takeException(), isNull);
