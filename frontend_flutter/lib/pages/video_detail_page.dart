@@ -70,6 +70,9 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
   String get _downloadUrl =>
       widget.video.downloadUrl ??
       _venueVideoUrl('videos/${widget.video.id}/download');
+  String get _playUrl =>
+      widget.video.downloadUrl ??
+      _venueVideoUrl('videos/${widget.video.id}/play');
 
   String _venueVideoUrl(String path) {
     final base = Uri.parse(widget.venue.serverUrl);
@@ -133,7 +136,7 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
       if (_isBundledDemo) {
         controller = VideoPlayerController.asset(widget.video.assetPath!);
       } else {
-        controller = VideoPlayerController.networkUrl(Uri.parse(_downloadUrl));
+        controller = VideoPlayerController.networkUrl(Uri.parse(_playUrl));
       }
       await controller.initialize().timeout(const Duration(seconds: 30));
       if (!mounted) {

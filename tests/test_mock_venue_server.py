@@ -34,6 +34,19 @@ def test_virtual_venue_can_filter_recordings_by_court():
     assert {item["court"] for item in items} == {"3号场"}
 
 
+def test_virtual_venue_exposes_inline_playback_stream():
+    with TestClient(app) as client:
+        response = client.get(
+            "/videos/court1-full-recording/play",
+            headers={"Range": "bytes=0-1023"},
+        )
+
+    assert response.status_code == 206
+    assert response.headers["content-type"].startswith("video/mp4")
+    assert response.headers["content-disposition"] == "inline"
+    assert response.headers["accept-ranges"] == "bytes"
+
+
 def test_default_courts_use_the_configured_recordings():
     recordings = venue_server._default_library()
     filenames = [item["filename"] for item in recordings]
