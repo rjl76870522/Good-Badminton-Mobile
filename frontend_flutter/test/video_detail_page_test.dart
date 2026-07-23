@@ -61,6 +61,28 @@ void main() {
     await tester.pumpAndSettle();
     expect(fakePlatform.seekPositions, isNotEmpty);
     expect(fakePlatform.seekPositions.last, greaterThan(Duration.zero));
+    final startAfterDrag = tester.widget<Slider>(
+      find.byKey(const Key('venue-clip-start-slider')),
+    );
+    final endBeforeDrag = tester.widget<Slider>(
+      find.byKey(const Key('venue-clip-end-slider')),
+    );
+    expect(startAfterDrag.max, endBeforeDrag.max);
+    final preservedStart = startAfterDrag.value;
+
+    await tester.drag(
+      find.byKey(const Key('venue-clip-end-slider')),
+      const Offset(-60, 0),
+    );
+    await tester.pumpAndSettle();
+    final startAfterEndMoved = tester.widget<Slider>(
+      find.byKey(const Key('venue-clip-start-slider')),
+    );
+    final endAfterDrag = tester.widget<Slider>(
+      find.byKey(const Key('venue-clip-end-slider')),
+    );
+    expect(startAfterEndMoved.value, preservedStart);
+    expect(startAfterEndMoved.max, endAfterDrag.max);
     await tester.scrollUntilVisible(find.text('获取视频'), 300);
     expect(find.text('获取视频'), findsOneWidget);
     expect(tester.takeException(), isNull);

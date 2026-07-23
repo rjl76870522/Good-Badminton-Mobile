@@ -255,23 +255,19 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
     await _controller?.seekTo(Duration.zero);
   }
 
-  void _updateClipRange(RangeValues values) {
-    const minimumSpan = 1.0;
-    var start = values.start;
-    var end = values.end;
-    if (end - start < minimumSpan) {
-      if (start + minimumSpan <= _maximumSeconds) {
-        end = start + minimumSpan;
-      } else {
-        start = end - minimumSpan;
-      }
-    }
-    final previous = _clipRange;
-    final startMoved = (start - previous.start).abs();
-    final endMoved = (end - previous.end).abs();
-    final seekSeconds = startMoved >= endMoved ? start : end;
+  void _updateClipStart(double value) {
+    final start = value.clamp(0.0, _clipRange.end - 1).toDouble();
+    _setClipRange(RangeValues(start, _clipRange.end), start);
+  }
+
+  void _updateClipEnd(double value) {
+    final end = value.clamp(_clipRange.start + 1, _maximumSeconds).toDouble();
+    _setClipRange(RangeValues(_clipRange.start, end), end);
+  }
+
+  void _setClipRange(RangeValues values, double seekSeconds) {
     setState(() {
-      _clipRange = RangeValues(start, end);
+      _clipRange = values;
       _scrubSeconds = seekSeconds;
     });
     _queueClipSeek(seekSeconds);
@@ -721,21 +717,16 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
                 icon: Icons.first_page_rounded,
                 title: '开始时刻',
                 value: _clipRange.start,
-                maximum: math.max(0, _clipRange.end - 1),
-                onChanged: (value) => _updateClipRange(
-                  RangeValues(value, _clipRange.end),
-                ),
+                maximum: _maximumSeconds,
+                onChanged: _updateClipStart,
               ),
               _clipBoundarySlider(
                 key: const Key('venue-clip-end-slider'),
                 icon: Icons.last_page_rounded,
                 title: '结束时刻',
                 value: _clipRange.end,
-                minimum: math.min(_maximumSeconds, _clipRange.start + 1),
                 maximum: _maximumSeconds,
-                onChanged: (value) => _updateClipRange(
-                  RangeValues(_clipRange.start, value),
-                ),
+                onChanged: _updateClipEnd,
               ),
               if (!_videoReady) ...[
                 const SizedBox(height: 2),
