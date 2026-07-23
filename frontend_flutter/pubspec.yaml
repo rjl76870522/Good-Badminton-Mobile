@@ -35,5 +35,11 @@ flutter:
     - assets/images/badminton_dashboard_bg.png
     - assets/images/history_court_bg.png
     - assets/images/cai_xukun_waiting.gif
+    - assets/images/silhouette_men_singles.png
+    - assets/images/silhouette_women_singles.png
+    - assets/images/silhouette_men_doubles.png
+    - assets/images/silhouette_women_doubles.png
+    - assets/images/silhouette_mixed_doubles.png
+    - assets/images/players/
     - assets/videos/demo01.mp4
     - assets/videos/demo02.mp4

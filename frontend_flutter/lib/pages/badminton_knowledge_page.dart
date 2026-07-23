@@ -171,6 +171,8 @@ class _BadmintonKnowledgePageState extends State<BadmintonKnowledgePage> {
           names: '石宇奇',
           country: '中国',
           icon: Icons.sports_tennis_rounded,
+          imageAssets: ['assets/images/players/Shi_Yuqi_(CHN)_2018.jpg'],
+          backgroundSilhouetteAsset: 'assets/images/silhouette_men_singles.png',
           accent: Color(0xFF1B5E20),
           focus: '主动变速、网前控制，以及由防守快速转入进攻的衔接。',
         ),
@@ -180,6 +182,10 @@ class _BadmintonKnowledgePageState extends State<BadmintonKnowledgePage> {
           names: '昆拉武特·维提讪',
           country: '泰国',
           icon: Icons.sports_tennis_rounded,
+          imageAssets: [
+            'assets/images/players/Kunlavut_Vitidsarn_Indonesia_Masters_2025.jpg',
+          ],
+          backgroundSilhouetteAsset: 'assets/images/silhouette_men_singles.png',
           accent: Color(0xFF5C7B43),
           focus: '耐心拉吊与多拍控制，观察稳定防守后突然提速的时机选择。',
         ),
@@ -188,6 +194,9 @@ class _BadmintonKnowledgePageState extends State<BadmintonKnowledgePage> {
           names: '安洗莹',
           country: '韩国',
           icon: Icons.bolt_rounded,
+          imageAssets: ['assets/images/players/An_Se-young.jpg'],
+          backgroundSilhouetteAsset:
+              'assets/images/silhouette_women_singles.png',
           accent: Color(0xFF2F6F9F),
           focus: '多拍稳定性、全场防守覆盖，以及耐心组织下一次进攻机会。',
         ),
@@ -197,6 +206,9 @@ class _BadmintonKnowledgePageState extends State<BadmintonKnowledgePage> {
           names: '王祉怡',
           country: '中国',
           icon: Icons.bolt_rounded,
+          imageAssets: ['assets/images/players/Wang_Zhiyi_(cropped).jpeg'],
+          backgroundSilhouetteAsset:
+              'assets/images/silhouette_women_singles.png',
           accent: Color(0xFF83502F),
           focus: '落点控制与攻守转换，观察主动抢攻和关键分处理的节奏。',
         ),
@@ -205,6 +217,11 @@ class _BadmintonKnowledgePageState extends State<BadmintonKnowledgePage> {
           names: '金元昊 / 徐承宰',
           country: '韩国',
           icon: Icons.groups_2_rounded,
+          imageAssets: [
+            'assets/images/players/Kim_Won-ho.jpg',
+            'assets/images/players/Seo_Seung-jae_(KOR)_2024.jpg',
+          ],
+          backgroundSilhouetteAsset: 'assets/images/silhouette_men_doubles.png',
           accent: Color(0xFF6D4C41),
           focus: '前三区压迫、平抽挡速度与攻守转换中的轮转默契。',
         ),
@@ -213,6 +230,12 @@ class _BadmintonKnowledgePageState extends State<BadmintonKnowledgePage> {
           names: '刘圣书 / 谭宁',
           country: '中国',
           icon: Icons.handshake_rounded,
+          imageAssets: [
+            'assets/images/players/Liu_Shengshu_-_Indonesia_Open_2026_(cropped).jpg',
+            'assets/images/players/Tan_Ning_-_Indonesia_Open_2026_(cropped).jpg',
+          ],
+          backgroundSilhouetteAsset:
+              'assets/images/silhouette_women_doubles.png',
           accent: Color(0xFF8E3A64),
           focus: '连续压制、搭档补位，以及防守反击中的落点质量。',
         ),
@@ -221,9 +244,16 @@ class _BadmintonKnowledgePageState extends State<BadmintonKnowledgePage> {
           names: '冯彦哲 / 黄东萍',
           country: '中国',
           icon: Icons.hub_rounded,
+          imageAssets: [
+            'assets/images/players/20260303_104834_Feng_Yanzhe_Yonex_All_England_Open_Badminton_Championships_2026.jpg',
+            'assets/images/players/20260303_105533_Huang_Dongping_Yonex_All_England_Open_Badminton_Championships_2026.jpg',
+          ],
+          backgroundSilhouetteAsset:
+              'assets/images/silhouette_mixed_doubles.png',
           accent: Color(0xFF7B6517),
           focus: '前三拍抢攻、前后场分工与连续进攻中的节奏控制。',
         ),
+        _PhotoAttributionCard(),
       ];
 
   List<Widget> get _equipmentContent => const [
@@ -337,6 +367,8 @@ class _WorldNumberOneCard extends StatelessWidget {
     required this.names,
     required this.country,
     required this.icon,
+    required this.imageAssets,
+    required this.backgroundSilhouetteAsset,
     required this.accent,
     required this.focus,
     this.rankLabel = '世界第 1',
@@ -346,6 +378,8 @@ class _WorldNumberOneCard extends StatelessWidget {
   final String names;
   final String country;
   final IconData icon;
+  final List<String> imageAssets;
+  final String backgroundSilhouetteAsset;
   final Color accent;
   final String focus;
   final String rankLabel;
@@ -358,105 +392,332 @@ class _WorldNumberOneCard extends StatelessWidget {
             : const Color(0xFF162118);
     return Card(
       margin: const EdgeInsets.only(bottom: 11),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 54,
-                  height: 54,
-                  decoration: BoxDecoration(
-                    color: accent.withValues(alpha: 0.12),
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: accent.withValues(alpha: 0.30),
-                    ),
-                  ),
-                  child: Icon(icon, color: accent, size: 27),
+      clipBehavior: Clip.antiAlias,
+      child: Stack(
+        children: [
+          Positioned(
+            right: -10,
+            bottom: -18,
+            width: 180,
+            height: 180,
+            child: IgnorePointer(
+              child: Opacity(
+                opacity: 0.055,
+                child: Image.asset(
+                  backgroundSilhouetteAsset,
+                  fit: BoxFit.contain,
+                  alignment: Alignment.bottomRight,
                 ),
-                const SizedBox(width: 11),
-                Expanded(
-                  child: Row(
-                    children: [
-                      Icon(icon, color: accent, size: 16),
-                      const SizedBox(width: 5),
-                      Text(
-                        event,
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    _PlayerPhotos(imageAssets: imageAssets, accent: accent),
+                    const SizedBox(width: 11),
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Icon(icon, color: accent, size: 16),
+                          const SizedBox(width: 5),
+                          Text(
+                            event,
+                            style: TextStyle(
+                              color: accent,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.2,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 9, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: accent,
+                        borderRadius: BorderRadius.circular(99),
+                      ),
+                      child: Text(
+                        rankLabel,
                         style: TextStyle(
-                          color: accent,
-                          fontSize: 13,
+                          color: onAccent,
+                          fontSize: 11,
                           fontWeight: FontWeight.w800,
-                          letterSpacing: 0.2,
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
+                const SizedBox(height: 13),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        names,
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.2,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      country,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(11),
                   decoration: BoxDecoration(
-                    color: accent,
-                    borderRadius: BorderRadius.circular(99),
+                    color: accent.withValues(alpha: 0.065),
+                    borderRadius: BorderRadius.circular(14),
                   ),
                   child: Text(
-                    rankLabel,
+                    '观察重点：$focus',
                     style: TextStyle(
-                      color: onAccent,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      height: 1.48,
                     ),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 13),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Expanded(
-                  child: Text(
-                    names,
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: -0.2,
-                    ),
-                  ),
-                ),
-                Text(
-                  country,
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(11),
-              decoration: BoxDecoration(
-                color: accent.withValues(alpha: 0.065),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Text(
-                '观察重点：$focus',
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  height: 1.48,
-                ),
-              ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PlayerPhotos extends StatelessWidget {
+  const _PlayerPhotos({required this.imageAssets, required this.accent});
+
+  final List<String> imageAssets;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: imageAssets.length == 1 ? 64 : 116,
+      height: 64,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (var index = 0; index < imageAssets.length; index++) ...[
+            if (index > 0) const SizedBox(width: 6),
+            SizedBox(
+              width: imageAssets.length == 1 ? 64 : 55,
+              height: 64,
+              child: _PlayerPhoto(asset: imageAssets[index], accent: accent),
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+class _PlayerPhoto extends StatelessWidget {
+  const _PlayerPhoto({required this.asset, required this.accent});
+
+  final String asset;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(2),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: accent.withValues(alpha: 0.3)),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(13),
+        child: Image.asset(
+          asset,
+          fit: BoxFit.cover,
+          alignment: const Alignment(0, -0.55),
+          errorBuilder: (_, __, ___) => ColoredBox(
+            color: accent.withValues(alpha: 0.08),
+            child: Icon(Icons.person, color: accent),
+          ),
         ),
       ),
     );
   }
+}
+
+class _PhotoAttributionCard extends StatelessWidget {
+  const _PhotoAttributionCard();
+
+  static const _licenseBy = 'CC BY 4.0';
+  static const _licenseBySa = 'CC BY-SA 4.0';
+  static final _credits = <_PhotoCredit>[
+    const _PhotoCredit(
+      name: '石宇奇',
+      author: 'Fauzi Ananta',
+      license: _licenseBy,
+      source: 'https://commons.wikimedia.org/wiki/File:Shi_Yuqi_(CHN)_2018.jpg',
+      modified: true,
+    ),
+    const _PhotoCredit(
+      name: '昆拉武特·维提讪',
+      author: '请以下载图片的 Commons 文件页署名为准',
+      license: _licenseBySa,
+      source: 'https://commons.wikimedia.org/wiki/Category:Kunlavut_Vitidsarn',
+      modified: true,
+    ),
+    const _PhotoCredit(
+      name: '安洗莹',
+      author: 'Nardisoero',
+      license: _licenseBySa,
+      source: 'https://commons.wikimedia.org/wiki/File:An_Se-young.jpg',
+      modified: true,
+    ),
+    const _PhotoCredit(
+      name: '王祉怡',
+      author: 'BugWarp',
+      license: _licenseBySa,
+      source:
+          'https://commons.wikimedia.org/wiki/File:Wang_Zhiyi_(cropped).jpeg',
+      modified: true,
+    ),
+    const _PhotoCredit(
+      name: '金元昊',
+      author: 'Tooteroo',
+      license: _licenseBySa,
+      source: 'https://commons.wikimedia.org/wiki/File:Kim_Won-ho.jpg',
+      modified: true,
+    ),
+    const _PhotoCredit(
+      name: '徐承宰',
+      author: 'SPOTV Media Pte Ltd',
+      license: _licenseBySa,
+      source:
+          'https://commons.wikimedia.org/wiki/File:Seo_Seung-jae_(KOR)_2024.jpg',
+      modified: true,
+    ),
+    const _PhotoCredit(
+      name: '刘圣书',
+      author: 'Griff88',
+      license: _licenseBySa,
+      source:
+          'https://commons.wikimedia.org/wiki/File:Liu_Shengshu_-_Indonesia_Open_2026_(cropped).jpg',
+      modified: true,
+    ),
+    const _PhotoCredit(
+      name: '谭宁',
+      author: 'Griff88',
+      license: _licenseBySa,
+      source:
+          'https://commons.wikimedia.org/wiki/File:Tan_Ning_-_Indonesia_Open_2026_(cropped).jpg',
+      modified: true,
+    ),
+    const _PhotoCredit(
+      name: '冯彦哲',
+      author: 'Bearas',
+      license: _licenseBySa,
+      source:
+          'https://commons.wikimedia.org/wiki/File:20260303_104834_Feng_Yanzhe_Yonex_All_England_Open_Badminton_Championships_2026.jpg',
+      modified: true,
+    ),
+    const _PhotoCredit(
+      name: '黄东萍',
+      author: 'Bearas',
+      license: _licenseBySa,
+      source:
+          'https://commons.wikimedia.org/wiki/File:20260303_105533_Huang_Dongping_Yonex_All_England_Open_Badminton_Championships_2026.jpg',
+      modified: true,
+    ),
+  ];
+
+  Uri _licenseUri(String license) => Uri.parse(
+        license == _licenseBy
+            ? 'https://creativecommons.org/licenses/by/4.0/'
+            : 'https://creativecommons.org/licenses/by-sa/4.0/',
+      );
+
+  Future<void> _open(Uri uri) =>
+      launchUrl(uri, mode: LaunchMode.externalApplication);
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.only(top: 4, bottom: 16),
+      clipBehavior: Clip.antiAlias,
+      child: ExpansionTile(
+        leading: const Icon(Icons.copyright_outlined),
+        title: const Text('球星图片署名与许可',
+            style: TextStyle(fontWeight: FontWeight.w800)),
+        subtitle: const Text('查看原图、作者、许可证与修改说明'),
+        children: [
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 0, 16, 10),
+            child: Text(
+              '图片仅用于客观球星资料介绍，不表示运动员认可或代言本应用。'
+              '应用内以圆角封面方式展示图片，已作展示裁剪；使用 CC BY-SA 图片的改编展示遵守相同方式共享要求。',
+              style: TextStyle(height: 1.45),
+            ),
+          ),
+          for (final credit in _credits)
+            ListTile(
+              dense: true,
+              title: Text('${credit.name} · 摄影师：${credit.author}'),
+              subtitle: Text(
+                '${credit.license} · '
+                '${credit.modified ? '已裁剪/已修改（应用内圆角展示）' : '未修改'}',
+              ),
+              trailing: Wrap(
+                spacing: 0,
+                children: [
+                  IconButton(
+                    tooltip: '打开 Wikimedia Commons 原图页',
+                    onPressed: () => _open(Uri.parse(credit.source)),
+                    icon: const Icon(Icons.open_in_new_rounded),
+                  ),
+                  IconButton(
+                    tooltip: '打开许可证',
+                    onPressed: () => _open(_licenseUri(credit.license)),
+                    icon: const Icon(Icons.description_outlined),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PhotoCredit {
+  const _PhotoCredit({
+    required this.name,
+    required this.author,
+    required this.license,
+    required this.source,
+    required this.modified,
+  });
+
+  final String name;
+  final String author;
+  final String license;
+  final String source;
+  final bool modified;
 }
 
 class _IntroCard extends StatelessWidget {

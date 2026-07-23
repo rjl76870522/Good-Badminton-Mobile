@@ -282,33 +282,14 @@ class _HomePageState extends State<HomePage> {
                 ),
                 const SizedBox(height: 18),
                 Text(
-                  '专业运动数字化复盘',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  '每次训练结束后，先看跑动距离、速度变化和前后场活动比例，'
-                  '了解这一场的体能投入是否均衡。再通过热力图观察常驻区域，'
-                  '通过移动轨迹检查启动、回位、左右衔接以及防守空当。'
-                  '\n\n将本场结果和自己的上一场对照，比单独追求某个数值更有意义。'
-                  '你可以从站位过深、回中偏慢、某一侧覆盖不足等具体问题开始，'
-                  '为下一次训练确定一个清晰目标。精彩片段则帮助你重看关键回合，'
-                  '把有效的移动和击球选择保留下来。',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                        height: 1.55,
-                      ),
-                ),
-                const SizedBox(height: 22),
-                Text(
-                  '主要功能使用指导',
+                  '训练小贴士',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w800,
                       ),
                 ),
                 const SizedBox(height: 10),
+                const _ReportTipsCard(),
+                const SizedBox(height: 16),
                 const _UsageGuide(),
               ],
             ),
@@ -319,8 +300,74 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
-class _UsageGuide extends StatelessWidget {
+class _ReportTipsCard extends StatelessWidget {
+  const _ReportTipsCard();
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    const tips = [
+      (Icons.speed_rounded, '先看强度', '距离、速度与运动量'),
+      (Icons.grid_view_rounded, '再看覆盖', '热力图与移动轨迹'),
+      (Icons.flag_outlined, '定一个目标', '下一次只改进一件事'),
+    ];
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Row(
+          children: [
+            for (var index = 0; index < tips.length; index++) ...[
+              Expanded(
+                child: Column(
+                  children: [
+                    Icon(tips[index].$1, color: colorScheme.primary, size: 21),
+                    const SizedBox(height: 6),
+                    Text(
+                      tips[index].$2,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      tips[index].$3,
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11,
+                        height: 1.25,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (index != tips.length - 1)
+                Container(
+                  width: 1,
+                  height: 46,
+                  color: colorScheme.outlineVariant,
+                ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _UsageGuide extends StatefulWidget {
   const _UsageGuide();
+
+  @override
+  State<_UsageGuide> createState() => _UsageGuideState();
+}
+
+class _UsageGuideState extends State<_UsageGuide> {
+  bool _expanded = false;
 
   @override
   Widget build(BuildContext context) {
@@ -338,27 +385,97 @@ class _UsageGuide extends StatelessWidget {
       (Icons.hourglass_top_rounded, '等待分析完成', '可以离开任务页面继续使用 App，完成后到历史记录查看结果'),
       (Icons.insights_outlined, '复盘并保存', '查看数据、热力图、轨迹和精彩片段，需要长期保留的内容可下载到手机'),
     ];
+    final theme = Theme.of(context);
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
-        child: Column(
-          children: [
-            for (var index = 0; index < steps.length; index++) ...[
-              ListTile(
-                leading: CircleAvatar(
-                  child: Text('${index + 1}'),
-                ),
-                title: Text(
-                  steps[index].$2,
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
-                subtitle: Text(steps[index].$3),
-                trailing: Icon(steps[index].$1),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          InkWell(
+            onTap: () => setState(() => _expanded = !_expanded),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              child: Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primary.withValues(alpha: 0.10),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Icon(
+                      Icons.route_outlined,
+                      color: theme.colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('训练说明', style: TextStyle(fontWeight: FontWeight.w800)),
+                        SizedBox(height: 2),
+                        Text('4 个步骤，按需展开查看', style: TextStyle(fontSize: 13)),
+                      ],
+                    ),
+                  ),
+                  AnimatedRotation(
+                    turns: _expanded ? 0.5 : 0,
+                    duration: const Duration(milliseconds: 180),
+                    child: const Icon(Icons.keyboard_arrow_down_rounded),
+                  ),
+                ],
               ),
-              if (index != steps.length - 1) const Divider(height: 1),
-            ],
-          ],
-        ),
+            ),
+          ),
+          AnimatedCrossFade(
+            duration: const Duration(milliseconds: 180),
+            crossFadeState: _expanded
+                ? CrossFadeState.showSecond
+                : CrossFadeState.showFirst,
+            firstChild: const SizedBox.shrink(),
+            secondChild: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+              child: Column(
+                children: [
+                  const Divider(),
+                  const SizedBox(height: 6),
+                  for (var index = 0; index < steps.length; index++)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 7),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(steps[index].$1,
+                              size: 19, color: theme.colorScheme.primary),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '${index + 1}. ${steps[index].$2}',
+                                  style: const TextStyle(fontWeight: FontWeight.w700),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  steps[index].$3,
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                    height: 1.35,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

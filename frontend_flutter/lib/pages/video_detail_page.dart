@@ -422,52 +422,7 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
       );
       return;
     }
-    final action = await showModalBottomSheet<_VideoAction>(
-      context: context,
-      showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('获取比赛视频', style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: 6),
-              Text(
-                _isFullSelection
-                    ? '当前选择完整视频，共 ${(_clipDurationMs / 1000).toStringAsFixed(1)} 秒'
-                    : '当前片段：${_formatTime(_startMs)} - ${_formatTime(_endMs)}'
-                        '，共 ${(_clipDurationMs / 1000).toStringAsFixed(1)} 秒',
-              ),
-              const SizedBox(height: 12),
-              ListTile(
-                leading: const Icon(Icons.photo_library_outlined),
-                title: const Text('保存到系统相册'),
-                subtitle: const Text('可在手机相册的 Good-Badminton 相簿中查看'),
-                onTap: () => Navigator.pop(context, _VideoAction.saveToGallery),
-              ),
-              ListTile(
-                leading: const Icon(Icons.analytics_outlined),
-                title: const Text('直接进行分析'),
-                subtitle: const Text('带入现有的视频上传与分析流程'),
-                onTap: () => Navigator.pop(context, _VideoAction.analyze),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-    switch (action) {
-      case _VideoAction.saveToGallery:
-        await _saveToGallery();
-        return;
-      case _VideoAction.analyze:
-        await _downloadAndAnalyze();
-        return;
-      case null:
-        return;
-    }
+    await _downloadAndAnalyze();
   }
 
   Future<void> _saveToGallery() async {
@@ -690,18 +645,25 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
               onPressed:
                   _downloading || !_videoReady ? null : _selectDownloadAction,
               icon: _videoReady
-                  ? const Icon(Icons.download_rounded)
+                  ? const Icon(Icons.analytics_outlined)
                   : const SizedBox.square(
                       dimension: 18,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     ),
               label: Text(
                 _videoReady
-                    ? '获取视频'
+                    ? '直接进行分析'
                     : _previewError != null
                         ? '视频暂不可用'
                         : '正在加载视频',
               ),
+            ),
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed:
+                  _downloading || !_videoReady ? null : _saveToGallery,
+              icon: const Icon(Icons.photo_library_outlined),
+              label: const Text('保存片段到系统相册'),
             ),
           ],
         ),
@@ -1123,7 +1085,6 @@ class _FullscreenVideoPage extends StatelessWidget {
       );
 }
 
-enum _VideoAction { saveToGallery, analyze }
 
 String _shortBuildRevision(String revision) {
   if (revision.isEmpty) return 'unknown';

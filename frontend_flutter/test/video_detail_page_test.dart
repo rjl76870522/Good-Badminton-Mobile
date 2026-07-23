@@ -88,8 +88,8 @@ void main() {
         endAfterDrag.value - startAfterEndMoved.value, greaterThanOrEqualTo(5));
     expect(find.textContaining('片段至少 5 秒'), findsOneWidget);
     expect(find.textContaining('已选择'), findsOneWidget);
-    await tester.scrollUntilVisible(find.text('获取视频'), 300);
-    expect(find.text('获取视频'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('直接进行分析'), 300);
+    expect(find.text('直接进行分析'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
