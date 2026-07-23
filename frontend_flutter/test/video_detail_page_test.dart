@@ -20,7 +20,7 @@ void main() {
     VideoPlayerPlatform.instance = originalPlatform;
   });
 
-  testWidgets('initialized iOS video renders clip controls and actions',
+  testWidgets('initialized video renders clip controls and actions',
       (tester) async {
     await tester.pumpWidget(
       const MaterialApp(
@@ -50,6 +50,39 @@ void main() {
     await tester.scrollUntilVisible(find.text('获取视频'), 300);
     expect(find.text('获取视频'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('clip controls remain visible while Android video is loading',
+      (tester) async {
+    VideoPlayerPlatform.instance = _LoadingVideoPlayerPlatform();
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: VideoDetailPage(
+          venue: VenueInfo(
+            id: 'example',
+            name: '示例球场',
+            serverUrl: 'https://example.test/venue-demo',
+          ),
+          video: VenueVideo(
+            id: 'court1-full-recording',
+            court: '1号场',
+            time: '录像',
+            duration: '12秒',
+            downloadUrl: 'https://example.test/video.mp4',
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byKey(const Key('venue-clip-selector')), findsOneWidget);
+    expect(find.byKey(const Key('venue-custom-clip-track')), findsOneWidget);
+    expect(find.text('视频加载完成后即可拖动选择'), findsOneWidget);
+    expect(find.text('00:12'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.pump(const Duration(seconds: 30));
+    await tester.pump();
   });
 }
 
@@ -105,4 +138,22 @@ class _FakeIosVideoPlayerPlatform extends VideoPlayerPlatform {
   Future<void> dispose(int playerId) async {
     await _events.remove(playerId)?.close();
   }
+}
+
+class _LoadingVideoPlayerPlatform extends VideoPlayerPlatform {
+  @override
+  Future<void> init() async {}
+
+  @override
+  Future<int?> createWithOptions(VideoCreationOptions options) async => 1;
+
+  @override
+  Stream<VideoEvent> videoEventsFor(int playerId) =>
+      const Stream<VideoEvent>.empty();
+
+  @override
+  Widget buildView(int playerId) => const ColoredBox(color: Colors.black);
+
+  @override
+  Future<void> dispose(int playerId) async {}
 }

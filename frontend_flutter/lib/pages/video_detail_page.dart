@@ -97,8 +97,16 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
   @override
   void initState() {
     super.initState();
+    final initialDuration = _durationFromLabel(widget.video.duration);
+    _videoDurationSeconds = initialDuration;
+    _clipRange = RangeValues(0, initialDuration);
     _initializePreview();
     _loadSavedClips();
+  }
+
+  double _durationFromLabel(String label) {
+    final match = RegExp(r'(\d+(?:\.\d+)?)').firstMatch(label);
+    return math.max(1, double.tryParse(match?.group(1) ?? '') ?? 1).toDouble();
   }
 
   Future<void> _loadSavedClips() async {
@@ -108,6 +116,12 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
 
   Future<void> _initializePreview() async {
     VideoPlayerController? controller;
+    if (mounted) {
+      setState(() {
+        _previewError = null;
+        _previewLoadingProgress = 0;
+      });
+    }
     try {
       if (_isBundledDemo) {
         controller = VideoPlayerController.asset(widget.video.assetPath!);
@@ -139,6 +153,17 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
         setState(() => _previewError = '视频预览暂时不可用，请检查球馆网络。');
       }
     }
+  }
+
+  Future<void> _retryPreview() async {
+    final previous = _controller;
+    if (previous != null) {
+      previous.removeListener(_onVideoChanged);
+      await previous.dispose();
+    }
+    if (!mounted) return;
+    setState(() => _controller = null);
+    await _initializePreview();
   }
 
   void _onVideoChanged() {
@@ -576,13 +601,11 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
           children: [
             _previewCard(controller),
             const SizedBox(height: 16),
-            if (controller != null) ...[
-              _clipSelector(context),
+            _clipSelector(context),
+            const SizedBox(height: 16),
+            if (_savedClips.isNotEmpty) ...[
+              _savedClipList(),
               const SizedBox(height: 16),
-              if (_savedClips.isNotEmpty) ...[
-                _savedClipList(),
-                const SizedBox(height: 16),
-              ],
             ],
             Card(
               child: Padding(
@@ -677,16 +700,28 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
                 key: const Key('venue-custom-clip-track'),
                 values: _clipRange,
                 maximum: _maximumSeconds,
-                enabled: !_downloading,
+                enabled: _videoReady && !_downloading,
                 onInteractionStart: () => _controller?.pause(),
                 onChanged: _updateClipRange,
               ),
+              if (!_videoReady) ...[
+                const SizedBox(height: 2),
+                Text(
+                  _previewError == null ? '视频加载完成后即可拖动选择' : '视频预览加载失败，请重新加载后选择',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(_formatTime(_startMs)),
                   OutlinedButton.icon(
-                    onPressed: _downloading ? null : _previewSelectedClip,
+                    onPressed: _videoReady && !_downloading
+                        ? _previewSelectedClip
+                        : null,
                     icon: const Icon(Icons.play_arrow_rounded),
                     label: const Text('预览所选片段'),
                   ),
@@ -747,7 +782,15 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
 
   Widget _previewCard(VideoPlayerController? controller) {
     if (_previewError != null) {
-      return _placeholder(const Icon(Icons.wifi_off_outlined), _previewError!);
+      return _placeholder(
+        const Icon(Icons.wifi_off_outlined),
+        _previewError!,
+        action: OutlinedButton.icon(
+          onPressed: _retryPreview,
+          icon: const Icon(Icons.refresh_rounded),
+          label: const Text('重新加载视频'),
+        ),
+      );
     }
     if (controller == null) {
       return _placeholder(
@@ -861,7 +904,8 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
     );
   }
 
-  Widget _placeholder(Widget icon, String message) => Container(
+  Widget _placeholder(Widget icon, String message, {Widget? action}) =>
+      Container(
         height: 220,
         decoration: BoxDecoration(
           color: const Color(0xFF172419),
@@ -874,6 +918,10 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
             icon,
             const SizedBox(height: 12),
             Text(message, style: const TextStyle(color: Colors.white)),
+            if (action != null) ...[
+              const SizedBox(height: 12),
+              action,
+            ],
           ],
         ),
       );
