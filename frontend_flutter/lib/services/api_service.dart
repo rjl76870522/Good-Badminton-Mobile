@@ -353,9 +353,12 @@ class ApiService {
     final url = ApiConfig.absoluteFileUrl(relativePath);
     if (url == null) return false;
     try {
-      final response = await _client
-          .head(Uri.parse(url))
-          .timeout(const Duration(seconds: 10));
+      // Some CDNs and media endpoints do not handle HEAD consistently. A one-byte
+      // range request verifies availability without downloading an entire video.
+      final response = await _client.get(
+        Uri.parse(url),
+        headers: const {'Range': 'bytes=0-0'},
+      ).timeout(const Duration(seconds: 10));
       return response.statusCode >= 200 && response.statusCode < 300;
     } catch (_) {
       return false;

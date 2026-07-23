@@ -70,11 +70,15 @@ void main() {
 
   test('report file availability accepts 2xx and rejects missing files',
       () async {
-    final service = ApiService(client: _FileStatusClient());
+    final client = _FileStatusClient();
+    final service = ApiService(client: client);
     try {
       expect(await service.fileExists('/outputs/available.png'), isTrue);
       expect(await service.fileExists('/outputs/missing.png'), isFalse);
       expect(await service.fileExists(null), isFalse);
+      expect(client.requests, hasLength(2));
+      expect(client.requests.first.method, 'GET');
+      expect(client.requests.first.headers['range'], 'bytes=0-0');
     } finally {
       service.close();
     }
@@ -243,8 +247,11 @@ class _NeverRespondingClient extends http.BaseClient {
 }
 
 class _FileStatusClient extends http.BaseClient {
+  final requests = <http.BaseRequest>[];
+
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    requests.add(request);
     final status = request.url.path.endsWith('available.png') ? 200 : 404;
     return http.StreamedResponse(const Stream.empty(), status);
   }
