@@ -9,6 +9,7 @@ import '../config/api_config.dart';
 import '../models/report.dart';
 import '../services/api_service.dart';
 import '../services/offline_report_storage.dart';
+import '../services/wallpaper_storage.dart';
 import '../utils/user_facing_error.dart';
 import '../widgets/app_background.dart';
 import '../widgets/inline_network_video.dart';
@@ -229,6 +230,7 @@ class _ReportPageState extends State<ReportPage> {
         ],
       ),
       body: AppBackground(
+        wallpaperTarget: WallpaperTarget.report,
         imageOpacity: 0.11,
         child: SafeArea(
           top: false,

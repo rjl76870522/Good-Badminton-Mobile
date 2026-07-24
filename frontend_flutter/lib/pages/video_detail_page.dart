@@ -660,8 +660,7 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
             ),
             const SizedBox(height: 10),
             OutlinedButton.icon(
-              onPressed:
-                  _downloading || !_videoReady ? null : _saveToGallery,
+              onPressed: _downloading || !_videoReady ? null : _saveToGallery,
               icon: const Icon(Icons.photo_library_outlined),
               label: const Text('保存片段到系统相册'),
             ),
@@ -1084,7 +1083,6 @@ class _FullscreenVideoPage extends StatelessWidget {
         ),
       );
 }
-
 
 String _shortBuildRevision(String revision) {
   if (revision.isEmpty) return 'unknown';

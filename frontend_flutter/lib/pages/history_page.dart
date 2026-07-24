@@ -6,7 +6,9 @@ import '../services/api_service.dart';
 import '../services/offline_report_storage.dart';
 import '../services/offline_save_coordinator.dart';
 import '../services/user_storage.dart';
+import '../services/wallpaper_storage.dart';
 import '../utils/user_facing_error.dart';
+import '../widgets/app_background.dart';
 import 'report_page.dart';
 import 'task_status_page.dart';
 import 'upload_page.dart';
@@ -233,10 +235,11 @@ class _HistoryPageState extends State<HistoryPage> {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          Image.asset(
-            'assets/images/history_court_bg.png',
-            fit: BoxFit.cover,
-            alignment: const Alignment(0.18, -0.15),
+          const WallpaperImageLayer(
+            wallpaperTarget: WallpaperTarget.history,
+            imageAsset: 'assets/images/history_court_bg.png',
+            imageOpacity: 1,
+            alignment: Alignment(0.18, -0.15),
           ),
           const DecoratedBox(
             decoration: BoxDecoration(

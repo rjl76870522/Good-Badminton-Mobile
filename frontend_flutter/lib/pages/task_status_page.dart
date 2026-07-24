@@ -6,6 +6,7 @@ import '../models/task_status.dart';
 import '../services/api_service.dart';
 import '../services/notification_service.dart';
 import '../services/task_storage.dart';
+import '../services/wallpaper_storage.dart';
 import '../utils/user_facing_error.dart';
 import '../widgets/app_background.dart';
 import 'report_page.dart';
@@ -113,6 +114,7 @@ class _TaskStatusPageState extends State<TaskStatusPage>
         ],
       ),
       body: AppBackground(
+        wallpaperTarget: WallpaperTarget.taskStatus,
         child: SafeArea(
           top: false,
           child: RefreshIndicator(

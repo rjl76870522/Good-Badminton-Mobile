@@ -11,6 +11,7 @@ import '../services/app_preferences.dart';
 import '../services/notification_service.dart';
 import '../services/task_storage.dart';
 import '../services/user_storage.dart';
+import '../services/wallpaper_storage.dart';
 import '../widgets/app_background.dart';
 import 'corner_picker_page.dart';
 import 'task_status_page.dart';
@@ -344,6 +345,7 @@ class _UploadPageState extends State<UploadPage> {
         title: const Text('上传视频'),
       ),
       body: AppBackground(
+        wallpaperTarget: WallpaperTarget.upload,
         child: SafeArea(
           top: false,
           child: ListView(

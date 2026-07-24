@@ -7,7 +7,9 @@ import '../models/task_status.dart';
 import '../services/api_service.dart';
 import '../services/task_storage.dart';
 import '../services/notification_service.dart';
+import '../services/wallpaper_storage.dart';
 import '../utils/user_facing_error.dart';
+import '../widgets/app_background.dart';
 import 'history_page.dart';
 import 'qr_scan_page.dart';
 import 'task_status_page.dart';
@@ -156,6 +158,10 @@ class _HomePageState extends State<HomePage> {
           style: TextStyle(fontWeight: FontWeight.w700),
         ),
         backgroundColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        flexibleSpace: const GlassAppBarBackdrop(),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
       floatingActionButton: Padding(
@@ -165,136 +171,134 @@ class _HomePageState extends State<HomePage> {
           onPressed: _openUpload,
         ),
       ),
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          Image.asset(
-            'assets/images/badminton_dashboard_bg.png',
-            fit: BoxFit.cover,
-            alignment: Alignment.topCenter,
-            opacity: const AlwaysStoppedAnimation(0.52),
-          ),
-          DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  const Color(0xFFF7F9F4).withValues(alpha: 0.18),
-                  const Color(0xFFF7F9F4).withValues(alpha: 0.68),
-                  const Color(0xFFF7F9F4).withValues(alpha: 0.92),
-                ],
+      body: AppBackground(
+        wallpaperTarget: WallpaperTarget.home,
+        imageOpacity: 0.52,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    const Color(0xFFF7F9F4).withValues(alpha: 0.18),
+                    const Color(0xFFF7F9F4).withValues(alpha: 0.68),
+                    const Color(0xFFF7F9F4).withValues(alpha: 0.92),
+                  ],
+                ),
               ),
             ),
-          ),
-          SafeArea(
-            top: false,
-            bottom: false,
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 112),
-              children: [
-                _HeroCard(onTap: _openUpload),
-                const SizedBox(height: 14),
-                _VenueScanEntry(
-                  icon: Icons.stadium_outlined,
-                  title: '进入示例球场',
-                  subtitle: '选择场地、完整录像和需要分析的回合片段',
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const VenueVideoPage(
-                        venue: VenueInfo(
-                          id: 'example',
-                          name: '示例球场',
-                          serverUrl:
-                              'https://api.audacity6441.kdns.fr/venue-demo',
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                _VenueScanEntry(
-                  icon: Icons.qr_code_scanner_rounded,
-                  title: '扫描合作球馆',
-                  subtitle: '扫描球馆二维码，选择场地录像并截取回合',
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const QrScanPage()),
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Offstage(
-                  offstage: true,
-                  child: _ConnectionCard(
-                    connected: _connected,
-                    checking: _checking,
-                    health: _health,
-                    error: _error,
-                    onCheck: _checkHealth,
-                  ),
-                ),
-                if (_restoringTask) ...[
-                  const SizedBox(height: 12),
-                  const LinearProgressIndicator(),
-                ],
-                if (_restoredTasks.isNotEmpty) ...[
+            SafeArea(
+              top: false,
+              bottom: false,
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 112),
+                children: [
+                  _HeroCard(onTap: _openUpload),
                   const SizedBox(height: 14),
-                  for (final task in _restoredTasks)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: _ActiveTaskCard(
-                        task: task,
-                        onTap: () => _openRestoredTask(task),
-                      ),
-                    ),
-                ],
-                const SizedBox(height: 14),
-                Text(
-                  '快捷入口',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _QuickAccessCard(
-                        icon: Icons.language_outlined,
-                        label: '宣传页面',
-                        color: const Color(0xFFFFF4D9),
-                        onTap: _openWebsite,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _QuickAccessCard(
-                        icon: Icons.insights_outlined,
-                        label: '历史记录',
-                        color: const Color(0xFFE2F3E3),
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const HistoryPage(),
+                  _VenueScanEntry(
+                    icon: Icons.stadium_outlined,
+                    title: '进入示例球场',
+                    subtitle: '选择场地、完整录像和需要分析的回合片段',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const VenueVideoPage(
+                          venue: VenueInfo(
+                            id: 'example',
+                            name: '示例球场',
+                            serverUrl:
+                                'https://api.audacity6441.kdns.fr/venue-demo',
                           ),
                         ),
                       ),
                     ),
+                  ),
+                  const SizedBox(height: 10),
+                  _VenueScanEntry(
+                    icon: Icons.qr_code_scanner_rounded,
+                    title: '扫描合作球馆',
+                    subtitle: '扫描球馆二维码，选择场地录像并截取回合',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const QrScanPage()),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Offstage(
+                    offstage: true,
+                    child: _ConnectionCard(
+                      connected: _connected,
+                      checking: _checking,
+                      health: _health,
+                      error: _error,
+                      onCheck: _checkHealth,
+                    ),
+                  ),
+                  if (_restoringTask) ...[
+                    const SizedBox(height: 12),
+                    const LinearProgressIndicator(),
                   ],
-                ),
-                const SizedBox(height: 18),
-                Text(
-                  '训练小贴士',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
+                  if (_restoredTasks.isNotEmpty) ...[
+                    const SizedBox(height: 14),
+                    for (final task in _restoredTasks)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: _ActiveTaskCard(
+                          task: task,
+                          onTap: () => _openRestoredTask(task),
+                        ),
                       ),
-                ),
-                const SizedBox(height: 10),
-                const _ReportTipsCard(),
-                const SizedBox(height: 16),
-                const _UsageGuide(),
-              ],
+                  ],
+                  const SizedBox(height: 14),
+                  Text(
+                    '快捷入口',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _QuickAccessCard(
+                          icon: Icons.language_outlined,
+                          label: '宣传页面',
+                          color: const Color(0xFFFFF4D9),
+                          onTap: _openWebsite,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _QuickAccessCard(
+                          icon: Icons.insights_outlined,
+                          label: '历史记录',
+                          color: const Color(0xFFE2F3E3),
+                          onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => const HistoryPage(),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  Text(
+                    '训练小贴士',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                  ),
+                  const SizedBox(height: 10),
+                  const _ReportTipsCard(),
+                  const SizedBox(height: 16),
+                  const _UsageGuide(),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -413,7 +417,8 @@ class _UsageGuideState extends State<_UsageGuide> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('训练说明', style: TextStyle(fontWeight: FontWeight.w800)),
+                        Text('训练说明',
+                            style: TextStyle(fontWeight: FontWeight.w800)),
                         SizedBox(height: 2),
                         Text('4 个步骤，按需展开查看', style: TextStyle(fontSize: 13)),
                       ],
@@ -455,7 +460,8 @@ class _UsageGuideState extends State<_UsageGuide> {
                               children: [
                                 Text(
                                   '${index + 1}. ${steps[index].$2}',
-                                  style: const TextStyle(fontWeight: FontWeight.w700),
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.w700),
                                 ),
                                 const SizedBox(height: 2),
                                 Text(

@@ -6,6 +6,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../services/map_launcher_service.dart';
+import '../services/wallpaper_storage.dart';
 import '../widgets/app_background.dart';
 import 'badminton_knowledge_page.dart';
 
@@ -113,8 +114,13 @@ class _NavigationPageState extends State<NavigationPage> {
       appBar: AppBar(
         title: const Text('发现'),
         backgroundColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        flexibleSpace: const GlassAppBarBackdrop(),
       ),
       body: AppBackground(
+        wallpaperTarget: WallpaperTarget.discover,
         imageAsset: 'assets/images/history_court_bg.png',
         imageOpacity: 0.06,
         alignment: const Alignment(0.15, -0.2),

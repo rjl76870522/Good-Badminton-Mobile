@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -7,11 +8,12 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../services/user_storage.dart';
+import '../services/wallpaper_storage.dart';
 import '../widgets/app_background.dart';
 import 'history_page.dart';
 import 'daily_check_in_page.dart';
-import 'qr_scan_page.dart';
 import 'settings_page.dart';
+import 'wallpaper_settings_page.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -22,6 +24,8 @@ class ProfilePage extends StatefulWidget {
 
 class _ProfilePageState extends State<ProfilePage> {
   static const _developerEmail = 'jialeR01@126.com';
+  static const _brandGreen = Color(0xFF2E7D32);
+  static const _secondaryText = Color(0xFF6B7280);
   final UserStorage _storage = UserStorage();
   final ImagePicker _imagePicker = ImagePicker();
   String _nickname = '';
@@ -132,8 +136,13 @@ class _ProfilePageState extends State<ProfilePage> {
       appBar: AppBar(
         title: const Text('我的'),
         backgroundColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        flexibleSpace: const GlassAppBarBackdrop(),
       ),
       body: AppBackground(
+        wallpaperTarget: WallpaperTarget.profile,
         imageAsset: 'assets/images/history_court_bg.png',
         imageOpacity: 0.12,
         alignment: const Alignment(0.1, -0.35),
@@ -143,7 +152,7 @@ class _ProfilePageState extends State<ProfilePage> {
           child: ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              Card(
+              _GlassCard(
                 child: Padding(
                   padding: const EdgeInsets.all(18),
                   child: Row(
@@ -168,13 +177,20 @@ class _ProfilePageState extends State<ProfilePage> {
                             Positioned(
                               right: -2,
                               bottom: -2,
-                              child: CircleAvatar(
-                                radius: 14,
-                                backgroundColor:
-                                    Theme.of(context).colorScheme.primary,
-                                foregroundColor: Colors.white,
+                              child: Container(
+                                width: 28,
+                                height: 28,
+                                decoration: BoxDecoration(
+                                  color: Theme.of(context).colorScheme.primary,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: Colors.white,
+                                    width: 2,
+                                  ),
+                                ),
                                 child: const Icon(
                                   Icons.camera_alt_outlined,
+                                  color: Colors.white,
                                   size: 15,
                                 ),
                               ),
@@ -189,10 +205,23 @@ class _ProfilePageState extends State<ProfilePage> {
                           children: [
                             Text(
                               _nickname.isEmpty ? '羽球用户' : _nickname,
-                              style: Theme.of(context).textTheme.titleLarge,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleLarge
+                                  ?.copyWith(
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.w800,
+                                  ),
                             ),
                             const SizedBox(height: 5),
-                            const Text('点击头像可以从相册更换'),
+                            const Text(
+                              '查看或编辑个人主页 >',
+                              style: TextStyle(
+                                color: _secondaryText,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w400,
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -213,13 +242,16 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
               ),
               const SizedBox(height: 8),
-              Card(
+              _GlassCard(
                 child: Column(
                   children: [
                     ListTile(
-                      leading: const Icon(Icons.calendar_month_outlined),
+                      leading: const Icon(
+                        Icons.calendar_month_outlined,
+                        color: _brandGreen,
+                      ),
                       title: const Text('每日签到'),
-                      subtitle: const Text('记录坚持，领取今日羽球故事'),
+                      subtitle: const _ProfileSubtitle('记录坚持，领取今日羽球故事'),
                       trailing: const Icon(Icons.chevron_right),
                       onTap: () => Navigator.of(context).push(
                         MaterialPageRoute(
@@ -229,9 +261,9 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                     const Divider(height: 1),
                     ListTile(
-                      leading: const Icon(Icons.history),
+                      leading: const Icon(Icons.history, color: _brandGreen),
                       title: const Text('训练历史'),
-                      subtitle: const Text('查看任务、报告和手机离线记录'),
+                      subtitle: const _ProfileSubtitle('查看任务、报告和手机离线记录'),
                       trailing: const Icon(Icons.chevron_right),
                       onTap: () => Navigator.of(context).push(
                         MaterialPageRoute(builder: (_) => const HistoryPage()),
@@ -239,12 +271,19 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                     const Divider(height: 1),
                     ListTile(
-                      leading: const Icon(Icons.qr_code_scanner_rounded),
-                      title: const Text('连接合作球馆'),
-                      subtitle: const Text('扫描球馆二维码，选择已经截取好的训练片段'),
+                      leading: const Icon(
+                        Icons.wallpaper_outlined,
+                        color: _brandGreen,
+                      ),
+                      title: const Text('自定义背景'),
+                      subtitle: const _ProfileSubtitle(
+                        '为首页、发现、报告等页面设置本地壁纸',
+                      ),
                       trailing: const Icon(Icons.chevron_right),
                       onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const QrScanPage()),
+                        MaterialPageRoute(
+                          builder: (_) => const WallpaperSettingsPage(),
+                        ),
                       ),
                     ),
                   ],
@@ -258,13 +297,16 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
               ),
               const SizedBox(height: 8),
-              Card(
+              _GlassCard(
                 child: Column(
                   children: [
                     ListTile(
-                      leading: const Icon(Icons.settings_outlined),
+                      leading: const Icon(
+                        Icons.settings_outlined,
+                        color: _brandGreen,
+                      ),
                       title: const Text('设置'),
-                      subtitle: const Text('播放、存储、权限与帮助'),
+                      subtitle: const _ProfileSubtitle('播放、存储、权限与帮助'),
                       trailing: const Icon(Icons.chevron_right),
                       onTap: () => Navigator.of(context).push(
                         MaterialPageRoute(builder: (_) => const SettingsPage()),
@@ -272,33 +314,105 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                     const Divider(height: 1),
                     ListTile(
-                      leading: const Icon(Icons.support_agent_outlined),
+                      leading: const Icon(
+                        Icons.support_agent_outlined,
+                        color: _brandGreen,
+                      ),
                       title: const Text('遇到问题，联系开发者'),
-                      subtitle: const Text(_developerEmail),
+                      subtitle: const _ProfileSubtitle(_developerEmail),
                       trailing: const Icon(Icons.mail_outline),
                       onTap: _contactDeveloper,
-                    ),
-                    const Divider(height: 1),
-                    const ListTile(
-                      leading: Icon(Icons.shield_outlined),
-                      title: Text('个人内容保存在本机'),
-                      subtitle: Text('昵称、头像和离线报告由你管理，可在设置中清理'),
                     ),
                   ],
                 ),
               ),
               const SizedBox(height: 16),
-              const Card(
-                child: ListTile(
-                  leading: Icon(Icons.info_outline),
-                  title: Text('智羽'),
-                  subtitle: Text('版本 0.1.2'),
+              const Center(
+                child: Column(
+                  children: [
+                    Text(
+                      '个人内容保存在本机 · 昵称、头像和离线报告由你管理',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: _secondaryText,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w400,
+                      ),
+                    ),
+                    SizedBox(height: 5),
+                    Text(
+                      '智羽 · 版本 0.1.2',
+                      style: TextStyle(
+                        color: _secondaryText,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w400,
+                      ),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: 24),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _GlassCard extends StatelessWidget {
+  const _GlassCard({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    const radius = BorderRadius.all(Radius.circular(20));
+    return Container(
+      decoration: const BoxDecoration(
+        borderRadius: radius,
+        boxShadow: [
+          BoxShadow(
+            color: Color(0x142E7D32),
+            blurRadius: 24,
+            spreadRadius: 1,
+            offset: Offset(0, 10),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: radius,
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.85),
+              border: Border.all(color: const Color(0xDDE0E8DD)),
+              borderRadius: radius,
+            ),
+            child: child,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ProfileSubtitle extends StatelessWidget {
+  const _ProfileSubtitle(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: const TextStyle(
+        color: Color(0xFF6B7280),
+        fontSize: 12,
+        fontWeight: FontWeight.w400,
       ),
     );
   }
