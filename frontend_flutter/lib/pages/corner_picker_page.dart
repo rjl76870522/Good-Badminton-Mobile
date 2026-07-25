@@ -29,7 +29,15 @@ class _CornerPickerPageState extends State<CornerPickerPage>
     with SingleTickerProviderStateMixin {
   static const _labels = ['左上角', '右上角', '右下角', '左下角'];
   late List<CourtPoint> _points;
-  final TransformationController _transformCtrl = TransformationController();
+  final TransformationController _pageTransformCtrl =
+      TransformationController();
+  final Map<int, Offset> _activePointers = <int, Offset>{};
+  Size _pageViewportSize = Size.zero;
+  double _gestureStartDistance = 0;
+  double _gestureStartScale = 1;
+  Offset _gestureStartCenter = Offset.zero;
+  Offset _gestureStartTranslation = Offset.zero;
+  bool _twoFingerZooming = false;
   late final AnimationController _pulseController = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 1200),
@@ -109,6 +117,56 @@ class _CornerPickerPageState extends State<CornerPickerPage>
     });
   }
 
+  void _onPointerDown(PointerDownEvent event) {
+    _activePointers[event.pointer] = event.position;
+    if (_activePointers.length == 2) _beginTwoFingerZoom();
+  }
+
+  void _beginTwoFingerZoom() {
+    final pointers = _activePointers.values.take(2).toList();
+    _gestureStartDistance = (pointers[1] - pointers[0]).distance;
+    if (_gestureStartDistance <= 0) return;
+    _gestureStartCenter = Offset(
+      (pointers[0].dx + pointers[1].dx) / 2,
+      (pointers[0].dy + pointers[1].dy) / 2,
+    );
+    final matrix = _pageTransformCtrl.value;
+    _gestureStartScale = matrix.getMaxScaleOnAxis();
+    _gestureStartTranslation = Offset(matrix.storage[12], matrix.storage[13]);
+    if (!_twoFingerZooming) setState(() => _twoFingerZooming = true);
+  }
+
+  void _onPointerMove(PointerMoveEvent event) {
+    if (!_activePointers.containsKey(event.pointer)) return;
+    _activePointers[event.pointer] = event.position;
+    if (_activePointers.length < 2 || _gestureStartDistance <= 0) return;
+    final pointers = _activePointers.values.take(2).toList();
+    final distance = (pointers[1] - pointers[0]).distance;
+    final scale =
+        (_gestureStartScale * distance / _gestureStartDistance).clamp(1.0, 8.0);
+    final center = Offset(
+      (pointers[0].dx + pointers[1].dx) / 2,
+      (pointers[0].dy + pointers[1].dy) / 2,
+    );
+    final delta = center - _gestureStartCenter;
+    final maxX = _pageViewportSize.width * (scale - 1) / 2;
+    final maxY = _pageViewportSize.height * (scale - 1) / 2;
+    final translation = Offset(
+      (_gestureStartTranslation.dx + delta.dx).clamp(-maxX, maxX),
+      (_gestureStartTranslation.dy + delta.dy).clamp(-maxY, maxY),
+    );
+    _pageTransformCtrl.value = Matrix4.diagonal3Values(scale, scale, 1)
+      ..setTranslationRaw(translation.dx, translation.dy, 0);
+  }
+
+  void _onPointerEnd(PointerEvent event) {
+    _activePointers.remove(event.pointer);
+    if (_activePointers.length < 2) {
+      _gestureStartDistance = 0;
+      if (_twoFingerZooming) setState(() => _twoFingerZooming = false);
+    }
+  }
+
   Widget _buildPreviewImage(String imageUrl) {
     final localController = _localVideoController;
     if (_localVideoReady && localController != null) {
@@ -165,7 +223,7 @@ class _CornerPickerPageState extends State<CornerPickerPage>
   @override
   void dispose() {
     _pulseController.dispose();
-    _transformCtrl.dispose();
+    _pageTransformCtrl.dispose();
     _localVideoController?.dispose();
     super.dispose();
   }
@@ -184,290 +242,306 @@ class _CornerPickerPageState extends State<CornerPickerPage>
       ),
       body: SafeArea(
         top: false,
-        child: Stack(
-          children: [
-            LayoutBuilder(
-              builder: (context, viewport) {
-                return InteractiveViewer(
-                  transformationController: _transformCtrl,
-                  minScale: 1,
-                  maxScale: 8,
-                  boundaryMargin: const EdgeInsets.all(360),
-                  child: SizedBox(
-                    width: viewport.maxWidth,
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Card(
-                            color: const Color(0xFF193624),
-                            child: Padding(
-                              padding: const EdgeInsets.all(14),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    nextLabel,
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .titleMedium
-                                        ?.copyWith(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.w800,
-                                        ),
-                                  ),
-                                  const SizedBox(height: 10),
-                                  Container(
-                                    padding: const EdgeInsets.all(12),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFF4A3A16),
-                                      borderRadius: BorderRadius.circular(12),
-                                      border: Border.all(
-                                        color: const Color(0xFFFFCC80),
-                                      ),
-                                    ),
-                                    child: const Row(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Icon(
-                                          Icons.warning_amber_rounded,
-                                          color: Color(0xFFFFCC80),
-                                        ),
-                                        SizedBox(width: 10),
-                                        Expanded(
-                                          child: Text(
-                                            '球场画面环境复杂，自动角点仅供参考，难以保证每次都落在最外侧白线的准确交点。多数情况下请放大画面并手动重新点选。\n\n'
-                                            '角点位置会直接影响移动距离、速度、轨迹和热力图等分析结果，请认真确认四个点后再开始分析。',
-                                            style: TextStyle(
-                                              color: Color(0xFFFFF3E0),
-                                              height: 1.45,
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  const SizedBox(height: 10),
-                                  const Text(
-                                    '顺序：左上角 → 右上角 → 右下角 → 左下角',
-                                    style: TextStyle(color: Colors.white70),
-                                  ),
-                                  const Text(
-                                    '请标记完整双打场地最外侧白线的四个角，不是画面四角。',
-                                    style: TextStyle(
-                                      color: Color(0xFFFFE0B2),
-                                      height: 1.4,
-                                    ),
-                                  ),
-                                  const Text(
-                                    '可双指缩放整个页面；单击图片添加角点。',
-                                    style: TextStyle(color: Colors.white60),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  const Text(
-                                    '产品核心功能为视频分析，页面缩放功能有些不太流畅，敬请谅解。',
-                                    style: TextStyle(
-                                      color: Color(0xFFFFE0B2),
-                                      height: 1.4,
-                                    ),
-                                  ),
-                                  if (widget.preview.autoCorners.length != 4)
-                                    const Text(
-                                      '当前没有可用的自动角点，请直接在预览图上手动点击。',
-                                      style: TextStyle(
-                                        color: Color(0xFFFFE0B2),
-                                        height: 1.4,
-                                      ),
-                                    ),
-                                  if (widget.preview.sceneWarning != null) ...[
-                                    const SizedBox(height: 8),
+        child: Listener(
+          behavior: HitTestBehavior.translucent,
+          onPointerDown: _onPointerDown,
+          onPointerMove: _onPointerMove,
+          onPointerUp: _onPointerEnd,
+          onPointerCancel: _onPointerEnd,
+          child: Stack(
+            children: [
+              LayoutBuilder(
+                builder: (context, viewport) {
+                  _pageViewportSize =
+                      Size(viewport.maxWidth, viewport.maxHeight);
+                  return AnimatedBuilder(
+                    animation: _pageTransformCtrl,
+                    builder: (context, child) => ClipRect(
+                      child: Transform(
+                        alignment: Alignment.center,
+                        transform: _pageTransformCtrl.value,
+                        child: child,
+                      ),
+                    ),
+                    child: SizedBox(
+                      width: viewport.maxWidth,
+                      height: viewport.maxHeight,
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Card(
+                              color: const Color(0xFF193624),
+                              child: Padding(
+                                padding: const EdgeInsets.all(14),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
                                     Text(
-                                      widget.preview.sceneWarning!,
-                                      style: const TextStyle(
-                                        color: Color(0xFFFFCC80),
-                                        height: 1.4,
-                                      ),
+                                      nextLabel,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .titleMedium
+                                          ?.copyWith(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.w800,
+                                          ),
                                     ),
-                                  ],
-                                ],
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          AspectRatio(
-                            aspectRatio: widget.preview.video.width > 0 &&
-                                    widget.preview.video.height > 0
-                                ? widget.preview.video.width /
-                                    widget.preview.video.height
-                                : 16 / 9,
-                            child: LayoutBuilder(
-                              builder: (context, constraints) {
-                                final size = Size(
-                                  constraints.maxWidth,
-                                  constraints.maxHeight,
-                                );
-                                return ClipRRect(
-                                  borderRadius: BorderRadius.circular(22),
-                                  child: DecoratedBox(
-                                    decoration: BoxDecoration(
-                                      border: Border.all(
-                                        color: const Color(0xFF66BB6A),
-                                        width: 1.5,
+                                    const SizedBox(height: 10),
+                                    Container(
+                                      padding: const EdgeInsets.all(12),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF4A3A16),
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(
+                                          color: const Color(0xFFFFCC80),
+                                        ),
                                       ),
-                                      borderRadius: BorderRadius.circular(22),
-                                    ),
-                                    child: GestureDetector(
-                                      behavior: HitTestBehavior.opaque,
-                                      onTapUp: (details) => _addPoint(
-                                          details.localPosition, size),
-                                      child: Stack(
-                                        fit: StackFit.expand,
+                                      child: const Row(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
                                         children: [
-                                          _buildPreviewImage(imageUrl),
-                                          AnimatedBuilder(
-                                            animation: _pulseController,
-                                            builder: (context, _) =>
-                                                CustomPaint(
-                                              painter: _CornerPainter(
-                                                points: _points,
-                                                videoSize: _videoSize,
-                                                pulse: _pulseController.value,
+                                          Icon(
+                                            Icons.warning_amber_rounded,
+                                            color: Color(0xFFFFCC80),
+                                          ),
+                                          SizedBox(width: 10),
+                                          Expanded(
+                                            child: Text(
+                                              '球场画面环境复杂，自动角点仅供参考，难以保证每次都落在最外侧白线的准确交点。多数情况下请放大画面并手动重新点选。\n\n'
+                                              '角点位置会直接影响移动距离、速度、轨迹和热力图等分析结果，请认真确认四个点后再开始分析。',
+                                              style: TextStyle(
+                                                color: Color(0xFFFFF3E0),
+                                                height: 1.45,
+                                                fontWeight: FontWeight.w600,
                                               ),
                                             ),
                                           ),
                                         ],
                                       ),
                                     ),
-                                  ),
-                                );
-                              },
+                                    const SizedBox(height: 10),
+                                    const Text(
+                                      '顺序：左上角 → 右上角 → 右下角 → 左下角',
+                                      style: TextStyle(color: Colors.white70),
+                                    ),
+                                    const Text(
+                                      '请标记完整双打场地最外侧白线的四个角，不是画面四角。',
+                                      style: TextStyle(
+                                        color: Color(0xFFFFE0B2),
+                                        height: 1.4,
+                                      ),
+                                    ),
+                                    const Text(
+                                      '可双指缩放整个页面；单击图片添加角点。',
+                                      style: TextStyle(color: Colors.white60),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    const Text(
+                                      '产品核心功能为视频分析，页面缩放功能有些不太流畅，敬请谅解。',
+                                      style: TextStyle(
+                                        color: Color(0xFFFFE0B2),
+                                        height: 1.4,
+                                      ),
+                                    ),
+                                    if (widget.preview.autoCorners.length != 4)
+                                      const Text(
+                                        '当前没有可用的自动角点，请直接在预览图上手动点击。',
+                                        style: TextStyle(
+                                          color: Color(0xFFFFE0B2),
+                                          height: 1.4,
+                                        ),
+                                      ),
+                                    if (widget.preview.sceneWarning !=
+                                        null) ...[
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        widget.preview.sceneWarning!,
+                                        style: const TextStyle(
+                                          color: Color(0xFFFFCC80),
+                                          height: 1.4,
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 12),
-                          Card(
-                            color: const Color(0xCC1A261F),
-                            child: Padding(
-                              padding: const EdgeInsets.all(12),
-                              child: Wrap(
-                                spacing: 8,
-                                runSpacing: 8,
-                                children: [
-                                  OutlinedButton.icon(
-                                    style: OutlinedButton.styleFrom(
-                                      foregroundColor: Colors.white,
+                            const SizedBox(height: 12),
+                            AspectRatio(
+                              aspectRatio: widget.preview.video.width > 0 &&
+                                      widget.preview.video.height > 0
+                                  ? widget.preview.video.width /
+                                      widget.preview.video.height
+                                  : 16 / 9,
+                              child: LayoutBuilder(
+                                builder: (context, constraints) {
+                                  final size = Size(
+                                    constraints.maxWidth,
+                                    constraints.maxHeight,
+                                  );
+                                  return ClipRRect(
+                                    borderRadius: BorderRadius.circular(22),
+                                    child: DecoratedBox(
+                                      decoration: BoxDecoration(
+                                        border: Border.all(
+                                          color: const Color(0xFF66BB6A),
+                                          width: 1.5,
+                                        ),
+                                        borderRadius: BorderRadius.circular(22),
+                                      ),
+                                      child: GestureDetector(
+                                        behavior: HitTestBehavior.opaque,
+                                        onTapUp: (details) => _addPoint(
+                                            details.localPosition, size),
+                                        child: Stack(
+                                          fit: StackFit.expand,
+                                          children: [
+                                            _buildPreviewImage(imageUrl),
+                                            AnimatedBuilder(
+                                              animation: _pulseController,
+                                              builder: (context, _) =>
+                                                  CustomPaint(
+                                                painter: _CornerPainter(
+                                                  points: _points,
+                                                  videoSize: _videoSize,
+                                                  pulse: _pulseController.value,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
                                     ),
-                                    onPressed: _points.isEmpty
-                                        ? null
-                                        : () => setState(() => _points = []),
-                                    icon: const Icon(Icons.refresh),
-                                    label: const Text('重新选择'),
-                                  ),
-                                  OutlinedButton.icon(
-                                    style: OutlinedButton.styleFrom(
-                                      foregroundColor: const Color(0xFFA5D6A7),
+                                  );
+                                },
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            Card(
+                              color: const Color(0xCC1A261F),
+                              child: Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: Wrap(
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  children: [
+                                    OutlinedButton.icon(
+                                      style: OutlinedButton.styleFrom(
+                                        foregroundColor: Colors.white,
+                                      ),
+                                      onPressed: _points.isEmpty
+                                          ? null
+                                          : () => setState(() => _points = []),
+                                      icon: const Icon(Icons.refresh),
+                                      label: const Text('重新选择'),
                                     ),
-                                    onPressed:
+                                    OutlinedButton.icon(
+                                      style: OutlinedButton.styleFrom(
+                                        foregroundColor:
+                                            const Color(0xFFA5D6A7),
+                                      ),
+                                      onPressed:
+                                          widget.preview.autoCorners.length == 4
+                                              ? _useAutoCorners
+                                              : null,
+                                      icon: const Icon(Icons.auto_fix_high),
+                                      label: Text(
                                         widget.preview.autoCorners.length == 4
-                                            ? _useAutoCorners
-                                            : null,
-                                    icon: const Icon(Icons.auto_fix_high),
-                                    label: Text(
-                                      widget.preview.autoCorners.length == 4
-                                          ? '使用自动角点'
-                                          : '未识别到自动角点',
+                                            ? '使用自动角点'
+                                            : '未识别到自动角点',
+                                      ),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
                             ),
-                          ),
-                          const SizedBox(height: 12),
-                          if (_points.isNotEmpty)
-                            ...List.generate(
-                              _points.length,
-                              (index) => Text(
-                                '${_labels[index]}：'
-                                '(${_points[index].x.round()}, ${_points[index].y.round()})',
-                                style: const TextStyle(color: Colors.white70),
+                            const SizedBox(height: 12),
+                            if (_points.isNotEmpty)
+                              ...List.generate(
+                                _points.length,
+                                (index) => Text(
+                                  '${_labels[index]}：'
+                                  '(${_points[index].x.round()}, ${_points[index].y.round()})',
+                                  style: const TextStyle(color: Colors.white70),
+                                ),
                               ),
+                            const SizedBox(height: 20),
+                            FilledButton.icon(
+                              onPressed: _points.length == 4
+                                  ? () => Navigator.of(context)
+                                      .pop(List<CourtPoint>.of(_points))
+                                  : null,
+                              icon: const Icon(Icons.check),
+                              label: const Text('确认角点并继续'),
                             ),
-                          const SizedBox(height: 20),
-                          FilledButton.icon(
-                            onPressed: _points.length == 4
-                                ? () => Navigator.of(context)
-                                    .pop(List<CourtPoint>.of(_points))
-                                : null,
-                            icon: const Icon(Icons.check),
-                            label: const Text('确认角点并继续'),
-                          ),
-                          const SizedBox(height: 8),
-                          TextButton(
-                            style: TextButton.styleFrom(
-                                foregroundColor: Colors.white70),
-                            onPressed: () =>
-                                Navigator.of(context).pop(<CourtPoint>[]),
-                            child: const Text('跳过手动角点'),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-            Positioned(
-              top: 12,
-              right: 12,
-              child: AnimatedBuilder(
-                animation: _transformCtrl,
-                builder: (context, _) {
-                  final scale = _transformCtrl.value.getMaxScaleOnAxis();
-                  if (scale <= 1.05) return const SizedBox.shrink();
-                  return DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: Colors.black54,
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 6),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(
-                            Icons.zoom_in,
-                            size: 15,
-                            color: Colors.white70,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            '${scale.toStringAsFixed(1)}x',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 12,
+                            const SizedBox(height: 8),
+                            TextButton(
+                              style: TextButton.styleFrom(
+                                  foregroundColor: Colors.white70),
+                              onPressed: () =>
+                                  Navigator.of(context).pop(<CourtPoint>[]),
+                              child: const Text('跳过手动角点'),
                             ),
-                          ),
-                          const SizedBox(width: 8),
-                          GestureDetector(
-                            onTap: () =>
-                                _transformCtrl.value = Matrix4.identity(),
-                            child: const Icon(
-                              Icons.refresh,
-                              size: 15,
-                              color: Colors.white70,
-                            ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   );
                 },
               ),
-            ),
-          ],
+              Positioned(
+                top: 12,
+                right: 12,
+                child: AnimatedBuilder(
+                  animation: _pageTransformCtrl,
+                  builder: (context, _) {
+                    final scale = _pageTransformCtrl.value.getMaxScaleOnAxis();
+                    if (scale <= 1.05) return const SizedBox.shrink();
+                    return DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: Colors.black54,
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 6),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.zoom_in,
+                              size: 15,
+                              color: Colors.white70,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              '${scale.toStringAsFixed(1)}x',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            GestureDetector(
+                              onTap: () =>
+                                  _pageTransformCtrl.value = Matrix4.identity(),
+                              child: const Icon(
+                                Icons.refresh,
+                                size: 15,
+                                color: Colors.white70,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
