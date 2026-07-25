@@ -29,9 +29,7 @@ class CommunityPage extends StatelessWidget {
           bottom: false,
           child: ListView(
             key: const ValueKey('community-list'),
-            physics: const BouncingScrollPhysics(
-              parent: AlwaysScrollableScrollPhysics(),
-            ),
+            physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(16, 10, 16, 28),
             children: const [KnowledgeModules()],
           ),

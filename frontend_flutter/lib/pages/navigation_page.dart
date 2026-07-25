@@ -261,6 +261,7 @@ class KnowledgeModules extends StatelessWidget {
           itemBuilder: (context, index) {
             final module = modules[index];
             return _PressScaleCard(
+              key: ValueKey('community-card-${module.section.name}'),
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute<void>(
                   builder: (_) => BadmintonKnowledgePage(
@@ -319,6 +320,7 @@ class KnowledgeModules extends StatelessWidget {
         ),
         const SizedBox(height: 10),
         _PressScaleCard(
+          key: const ValueKey('community-card-news'),
           onTap: () => _openNews(context),
           child: Card(
             margin: EdgeInsets.zero,
@@ -357,6 +359,7 @@ class KnowledgeModules extends StatelessWidget {
 
 class _PressScaleCard extends StatefulWidget {
   const _PressScaleCard({
+    super.key,
     required this.onTap,
     required this.child,
   });
@@ -375,14 +378,15 @@ class _PressScaleCardState extends State<_PressScaleCard> {
   Widget build(BuildContext context) {
     return AnimatedScale(
       scale: _pressed ? 0.965 : 1,
-      duration: const Duration(milliseconds: 130),
-      curve: Curves.easeOutCubic,
+      duration: const Duration(milliseconds: 120),
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTapDown: (_) => setState(() => _pressed = true),
         onTapCancel: () => setState(() => _pressed = false),
-        onTapUp: (_) => setState(() => _pressed = false),
-        onTap: widget.onTap,
+        onTapUp: (_) {
+          setState(() => _pressed = false);
+          widget.onTap();
+        },
         child: widget.child,
       ),
     );
