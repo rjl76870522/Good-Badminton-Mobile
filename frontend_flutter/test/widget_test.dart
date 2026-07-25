@@ -37,12 +37,17 @@ void main() {
     await tester.pump();
     expect(find.text('高德地图'), findsWidgets);
     expect(find.textContaining('中心服务器'), findsNothing);
-    await tester.scrollUntilVisible(find.text('东北大学南湖校区羽乒馆'), 260);
-    expect(find.text('东北大学南湖校区羽乒馆'), findsOneWidget);
-    await tester.scrollUntilVisible(
-      find.text('浙江大学紫金港校区风雨操场'),
-      220,
+    await tester.drag(
+      find.byKey(const ValueKey('discover-list')),
+      const Offset(0, -500),
     );
+    await tester.pump();
+    expect(find.text('东北大学南湖校区羽乒馆'), findsWidgets);
+    await tester.drag(
+      find.byKey(const ValueKey('discover-list')),
+      const Offset(0, -400),
+    );
+    await tester.pump();
     expect(find.text('浙江大学紫金港校区风雨操场'), findsOneWidget);
 
     await tester.tap(find.text('我的').last);
@@ -52,15 +57,15 @@ void main() {
     expect(find.text('设置'), findsOneWidget);
     expect(find.text('遇到问题，联系开发者'), findsOneWidget);
     expect(find.text('jialeR01@126.com'), findsOneWidget);
-    expect(find.text('点击头像可以从相册更换'), findsOneWidget);
+    expect(find.text('查看或编辑个人主页 >'), findsOneWidget);
     expect(find.text('训练与球馆'), findsOneWidget);
     expect(find.text('每日签到'), findsOneWidget);
     expect(find.text('数据身份'), findsNothing);
     expect(find.text('检查数据身份'), findsNothing);
     expect(find.textContaining('guest_'), findsNothing);
     expect(find.textContaining('无需登录'), findsNothing);
-    await tester.scrollUntilVisible(find.text('版本 0.1.2'), 180);
-    expect(find.text('版本 0.1.2'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('智羽 · 版本 0.1.2'), 180);
+    expect(find.text('智羽 · 版本 0.1.2'), findsOneWidget);
     expect(find.textContaining('Build'), findsNothing);
   });
 

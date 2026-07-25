@@ -384,11 +384,11 @@ class _GlassCard extends StatelessWidget {
         borderRadius: radius,
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: Container(
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.85),
-              border: Border.all(color: const Color(0xDDE0E8DD)),
+          child: Material(
+            color: Colors.white.withValues(alpha: 0.85),
+            shape: const RoundedRectangleBorder(
               borderRadius: radius,
+              side: BorderSide(color: Color(0xDDE0E8DD)),
             ),
             child: child,
           ),
