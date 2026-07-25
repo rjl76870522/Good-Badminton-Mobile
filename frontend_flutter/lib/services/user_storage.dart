@@ -2,19 +2,31 @@ import 'dart:math';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'device_identity_service.dart';
+
 class UserStorage {
-  UserStorage({Random? random}) : _random = random ?? Random.secure();
+  UserStorage({
+    Random? random,
+    DeviceIdentityService deviceIdentityService = const DeviceIdentityService(),
+  })  : _random = random ?? Random.secure(),
+        _deviceIdentityService = deviceIdentityService;
 
   static const _userIdKey = 'guest_user_id';
   static const _nicknameKey = 'guest_nickname';
   static const _avatarPathKey = 'profile_avatar_path';
   static const _autoPlayVideosKey = 'auto_play_report_videos';
   final Random _random;
+  final DeviceIdentityService _deviceIdentityService;
 
   Future<String> getOrCreateUserId() async {
     final preferences = await SharedPreferences.getInstance();
     final existing = preferences.getString(_userIdKey);
     if (existing != null && existing.isNotEmpty) return existing;
+    final stableDeviceId = await _deviceIdentityService.getStableGuestUserId();
+    if (stableDeviceId != null && stableDeviceId.isNotEmpty) {
+      await preferences.setString(_userIdKey, stableDeviceId);
+      return stableDeviceId;
+    }
     final bytes = List<int>.generate(8, (_) => _random.nextInt(256));
     final id =
         'guest_${bytes.map((value) => value.toRadixString(16).padLeft(2, '0')).join()}';

@@ -1,10 +1,22 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:good_badminton_mobile/services/device_identity_service.dart';
 import 'package:good_badminton_mobile/services/task_storage.dart';
 import 'package:good_badminton_mobile/services/user_storage.dart';
 
+class _FakeDeviceIdentityService extends DeviceIdentityService {
+  const _FakeDeviceIdentityService(this.value);
+
+  final String? value;
+
+  @override
+  Future<String?> getStableGuestUserId() async => value;
+}
+
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   test('active task and retry upload survive storage reads', () async {
     SharedPreferences.setMockInitialValues({});
     final storage = TaskStorage();
@@ -65,5 +77,22 @@ void main() {
 
     await storage.setNickname('  小羽  ');
     expect(await storage.getNickname(), '小羽');
+  });
+
+  test('guest user id prefers stable device identity when available', () async {
+    SharedPreferences.setMockInitialValues({});
+    final storage = UserStorage(
+      deviceIdentityService:
+          const _FakeDeviceIdentityService('guest_device_android_1234'),
+    );
+
+    final first = await storage.getOrCreateUserId();
+    final second = await UserStorage(
+      deviceIdentityService:
+          const _FakeDeviceIdentityService('guest_device_android_changed'),
+    ).getOrCreateUserId();
+
+    expect(first, 'guest_device_android_1234');
+    expect(second, first);
   });
 }
