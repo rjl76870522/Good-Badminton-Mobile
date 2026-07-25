@@ -260,17 +260,16 @@ class KnowledgeModules extends StatelessWidget {
           ),
           itemBuilder: (context, index) {
             final module = modules[index];
-            return Card(
-              margin: EdgeInsets.zero,
-              child: InkWell(
-                borderRadius: BorderRadius.circular(20),
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => BadmintonKnowledgePage(
-                      initialSection: module.section,
-                    ),
+            return _PressScaleCard(
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => BadmintonKnowledgePage(
+                    initialSection: module.section,
                   ),
                 ),
+              ),
+              child: Card(
+                margin: EdgeInsets.zero,
                 child: Padding(
                   padding: const EdgeInsets.all(14),
                   child: Column(
@@ -319,37 +318,73 @@ class KnowledgeModules extends StatelessWidget {
           },
         ),
         const SizedBox(height: 10),
-        Card(
-          margin: EdgeInsets.zero,
-          child: ListTile(
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            leading: Container(
-              width: 46,
-              height: 46,
-              decoration: BoxDecoration(
-                color: const Color(0xFFE8F5E9),
-                borderRadius: BorderRadius.circular(14),
+        _PressScaleCard(
+          onTap: () => _openNews(context),
+          child: Card(
+            margin: EdgeInsets.zero,
+            child: ListTile(
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              leading: Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE8F5E9),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Icon(Icons.newspaper_outlined),
               ),
-              child: const Icon(Icons.newspaper_outlined),
-            ),
-            title: const Text(
-              '近期赛事与球星新闻',
-              style: TextStyle(fontWeight: FontWeight.w800),
-            ),
-            subtitle: const Text(
-              '前往中羽在线查看最新羽球资讯',
-              style: TextStyle(
-                color: Color(0xFF6B7280),
-                fontSize: 12,
-                fontWeight: FontWeight.w400,
+              title: const Text(
+                '近期赛事与球星新闻',
+                style: TextStyle(fontWeight: FontWeight.w800),
               ),
+              subtitle: const Text(
+                '前往中羽在线查看最新羽球资讯',
+                style: TextStyle(
+                  color: Color(0xFF6B7280),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w400,
+                ),
+              ),
+              trailing: const Icon(Icons.open_in_new),
             ),
-            trailing: const Icon(Icons.open_in_new),
-            onTap: () => _openNews(context),
           ),
         ),
       ],
+    );
+  }
+}
+
+class _PressScaleCard extends StatefulWidget {
+  const _PressScaleCard({
+    required this.onTap,
+    required this.child,
+  });
+
+  final VoidCallback onTap;
+  final Widget child;
+
+  @override
+  State<_PressScaleCard> createState() => _PressScaleCardState();
+}
+
+class _PressScaleCardState extends State<_PressScaleCard> {
+  var _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedScale(
+      scale: _pressed ? 0.965 : 1,
+      duration: const Duration(milliseconds: 130),
+      curve: Curves.easeOutCubic,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: (_) => setState(() => _pressed = true),
+        onTapCancel: () => setState(() => _pressed = false),
+        onTapUp: (_) => setState(() => _pressed = false),
+        onTap: widget.onTap,
+        child: widget.child,
+      ),
     );
   }
 }

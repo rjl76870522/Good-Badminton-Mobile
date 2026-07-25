@@ -266,6 +266,14 @@ class _CornerPickerPageState extends State<CornerPickerPage>
                                     '可双指缩放整个页面；单击图片添加角点。',
                                     style: TextStyle(color: Colors.white60),
                                   ),
+                                  const SizedBox(height: 6),
+                                  const Text(
+                                    '产品核心功能为视频分析，页面缩放功能有些不太流畅，敬请谅解。',
+                                    style: TextStyle(
+                                      color: Color(0xFFFFE0B2),
+                                      height: 1.4,
+                                    ),
+                                  ),
                                   if (widget.preview.autoCorners.length != 4)
                                     const Text(
                                       '当前没有可用的自动角点，请直接在预览图上手动点击。',

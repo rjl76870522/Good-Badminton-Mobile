@@ -24,13 +24,16 @@ class CommunityPage extends StatelessWidget {
         imageAsset: 'assets/images/history_court_bg.png',
         imageOpacity: 0.06,
         alignment: const Alignment(0.15, -0.2),
-        child: const SafeArea(
+        child: SafeArea(
           top: false,
           bottom: false,
-          child: SingleChildScrollView(
-            key: ValueKey('community-list'),
-            padding: EdgeInsets.fromLTRB(16, 10, 16, 28),
-            child: KnowledgeModules(),
+          child: ListView(
+            key: const ValueKey('community-list'),
+            physics: const BouncingScrollPhysics(
+              parent: AlwaysScrollableScrollPhysics(),
+            ),
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 28),
+            children: const [KnowledgeModules()],
           ),
         ),
       ),
