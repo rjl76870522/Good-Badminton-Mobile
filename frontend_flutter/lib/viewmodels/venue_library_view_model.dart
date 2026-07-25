@@ -46,6 +46,30 @@ class VenueLibraryViewModel extends ChangeNotifier {
     return namedCourts;
   }
 
+  String? get suggestedCourt {
+    final match = RegExp(r'^(?:([1-9]|10)(?:号场)?)$').firstMatch(_query);
+    if (match == null) return null;
+    return '${match.group(1)}号场';
+  }
+
+  List<String> get visibleFloorplanCourts {
+    final suggestion = suggestedCourt;
+    return floorplanCourts.where((court) {
+      if (suggestion != null && court != suggestion) return false;
+      if (suggestion == null && _query.isNotEmpty) {
+        final courtMatches = court.toLowerCase().contains(_query.toLowerCase());
+        final videoMatches = _videos.any((video) =>
+            video.court == court &&
+            '${video.court} ${video.time} ${video.duration}'
+                .toLowerCase()
+                .contains(_query.toLowerCase()));
+        if (!courtMatches && !videoMatches) return false;
+      }
+      return !_favoritesOnly ||
+          _videos.any((video) => video.court == court && isFavorite(video));
+    }).toList(growable: false);
+  }
+
   List<VenueVideo> get filteredVideos => _videos.where((video) {
         final text =
             '${video.court} ${video.time} ${video.duration}'.toLowerCase();
@@ -80,12 +104,14 @@ class VenueLibraryViewModel extends ChangeNotifier {
     try {
       final values = await Future.wait([
         service.getVideos(venue),
-        storage.favoriteKeys(),
         storage.recentKeys(),
       ]);
       _videos = values[0] as List<VenueVideo>;
-      _favoriteKeys = values[1] as Set<String>;
-      _recentKeys = values[2] as List<String>;
+      _favoriteKeys = await storage.initializeDefaultFavorites(
+        venue,
+        _videos,
+      );
+      _recentKeys = values[1] as List<String>;
     } on VenueVideoException catch (error) {
       _error = error.message;
     } catch (_) {

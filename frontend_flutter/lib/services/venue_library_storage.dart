@@ -8,6 +8,8 @@ import '../models/venue.dart';
 /// Videos themselves remain on the venue server or in the system gallery.
 class VenueLibraryStorage {
   static const _favoritesKey = 'venue_video_favorites_v1';
+  static const _favoritesInitializedKey =
+      'venue_video_favorites_initialized_v1';
   static const _recentKey = 'venue_video_recent_v1';
   static const _clipsKey = 'venue_video_saved_clips_v1';
 
@@ -17,6 +19,25 @@ class VenueLibraryStorage {
   Future<Set<String>> favoriteKeys() async {
     final prefs = await SharedPreferences.getInstance();
     return (prefs.getStringList(_favoritesKey) ?? const []).toSet();
+  }
+
+  Future<Set<String>> initializeDefaultFavorites(
+    VenueInfo venue,
+    List<VenueVideo> videos,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    final keys = await favoriteKeys();
+    final initializedKey = '$_favoritesInitializedKey:${venue.serverUrl}';
+    if (prefs.getBool(initializedKey) == true) return keys;
+
+    keys.addAll(
+      videos
+          .where((video) => video.court == '1号场')
+          .map((video) => keyFor(venue, video)),
+    );
+    await prefs.setStringList(_favoritesKey, keys.toList()..sort());
+    await prefs.setBool(initializedKey, true);
+    return keys;
   }
 
   Future<bool> toggleFavorite(VenueInfo venue, VenueVideo video) async {

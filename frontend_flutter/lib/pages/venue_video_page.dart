@@ -211,14 +211,42 @@ class _VenueVideoPageState extends State<VenueVideoPage> {
             ),
           ],
         ),
+        if (_viewModel.suggestedCourt case final court?) ...[
+          const SizedBox(height: 8),
+          Material(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            child: ListTile(
+              key: Key('venue-search-result-$court'),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: const BorderSide(color: Color(0xFFDCE8DB)),
+              ),
+              leading: const Icon(
+                Icons.stadium_outlined,
+                color: Color(0xFF2E7D32),
+              ),
+              title: Text(
+                court,
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
+              subtitle: Text(
+                '${_viewModel.allVideoCountFor(court)} 段可用录像',
+              ),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              enabled: _viewModel.allVideoCountFor(court) > 0,
+              onTap: () => _openCourtSheet(court),
+            ),
+          ),
+        ],
         const SizedBox(height: 16),
         AnimatedSwitcher(
           duration: const Duration(milliseconds: 260),
           child: _mapMode
               ? _FloorplanView(
                   key: const ValueKey('map-mode'),
-                  courts: _viewModel.floorplanCourts,
-                  countFor: _viewModel.allVideoCountFor,
+                  courts: _viewModel.visibleFloorplanCourts,
+                  countFor: _viewModel.videoCountFor,
                   selectedCourt: _selectedCourt,
                   onTap: _openCourtSheet,
                 )
@@ -391,7 +419,7 @@ class _FavoritePill extends StatelessWidget {
                 const SizedBox(width: 5),
                 Flexible(
                   child: Text(
-                    '收藏',
+                    '只看收藏',
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontWeight: FontWeight.w700,

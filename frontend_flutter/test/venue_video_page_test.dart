@@ -67,6 +67,23 @@ void main() {
     expect(find.text('2号场 · 1 段录像'), findsOneWidget);
   });
 
+  testWidgets('search result opens the matching court', (tester) async {
+    await tester.pumpWidget(page);
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const Key('venue-search-field')),
+      '1',
+    );
+    await tester.pump();
+    await tester.tap(
+      find.byKey(const Key('venue-search-result-1号场')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('1号场 录像列表（共 1 条）'), findsOneWidget);
+  });
+
   testWidgets('favorite filter never disables floorplan courts',
       (tester) async {
     await tester.pumpWidget(page);
@@ -74,9 +91,35 @@ void main() {
 
     await tester.tap(find.byKey(const Key('venue-favorites-filter')));
     await tester.pumpAndSettle();
+    expect(find.byKey(const Key('court-tile-1号场')), findsOneWidget);
+    expect(find.byKey(const Key('court-tile-2号场')), findsNothing);
     await tester.tap(find.byKey(const Key('court-tile-1号场')));
     await tester.pumpAndSettle();
 
     expect(find.text('1号场 录像列表（共 1 条）'), findsOneWidget);
   });
+
+  for (var number = 1; number <= 10; number++) {
+    testWidgets('search $number suggests only court $number', (tester) async {
+      await tester.pumpWidget(page);
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byKey(const Key('venue-search-field')),
+        '$number',
+      );
+      await tester.pump();
+
+      final court = '$number号场';
+      expect(
+        find.byKey(Key('venue-search-result-$court')),
+        findsOneWidget,
+      );
+      expect(find.byKey(Key('court-tile-$court')), findsOneWidget);
+      expect(
+        find.byKey(const Key('court-tile-10号场')),
+        number == 10 ? findsOneWidget : findsNothing,
+      );
+    });
+  }
 }

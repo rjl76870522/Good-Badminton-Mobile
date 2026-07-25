@@ -379,7 +379,7 @@ class _UsageGuideState extends State<_UsageGuide> {
       (
         Icons.video_library_outlined,
         '选择合适片段',
-        '优先选择一个完整回合，通常为 8 至 20 秒；去掉回合之间的休息、捡球和发球准备时间，需要观察趋势时可分别分析多个回合'
+        'App 最适合示例球场一样的高位正后方拍摄视角；优先选择一个完整回合，通常为 8 至 20 秒；去掉回合之间的休息、捡球和发球准备时间，需要观察趋势时可分别分析多个回合'
       ),
       (
         Icons.crop_free_rounded,
