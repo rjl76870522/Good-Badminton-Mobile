@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../config/api_config.dart';
 import '../models/history_item.dart';
+import '../models/report.dart';
 import '../services/api_service.dart';
 import '../services/offline_report_storage.dart';
 import '../services/offline_save_coordinator.dart';
@@ -30,6 +31,7 @@ class _HistoryPageState extends State<HistoryPage> {
   String? _error;
   String _statusFilter = 'all';
   bool _loading = true;
+  bool _cloudHistoryAvailable = false;
   int _handledOfflineSaveRevision = 0;
 
   @override
@@ -53,15 +55,21 @@ class _HistoryPageState extends State<HistoryPage> {
         limit: 30,
         status: _statusFilter == 'all' ? null : _statusFilter,
       );
-      if (mounted) setState(() => _tasks = tasks);
+      if (mounted) {
+        setState(() {
+          _tasks = tasks;
+          _cloudHistoryAvailable = true;
+        });
+      }
     } catch (error) {
       if (mounted) {
-        setState(
-          () => _error = userFacingError(
+        setState(() {
+          _cloudHistoryAvailable = false;
+          _error = userFacingError(
             error,
             fallback: '暂时无法读取训练历史，请确认分析服务已启动后重试。',
-          ),
-        );
+          );
+        });
       }
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -106,6 +114,36 @@ class _HistoryPageState extends State<HistoryPage> {
       if (record.taskId == taskId) return record;
     }
     return null;
+  }
+
+  List<_MergedHistoryRecord> get _mergedRecords {
+    final cloudById = {for (final task in _tasks) task.taskId: task};
+    final localById = {
+      for (final record in _offlineRecords) record.taskId: record,
+    };
+    final records = <_MergedHistoryRecord>[
+      for (final taskId in {...cloudById.keys, ...localById.keys})
+        _MergedHistoryRecord(
+          task: cloudById[taskId],
+          offline: localById[taskId],
+        ),
+    ].where((record) {
+      if (_statusFilter == 'all') return true;
+      if (record.task != null) return record.task!.status == _statusFilter;
+      return _statusFilter == 'completed';
+    }).toList();
+    records.sort((a, b) => b.sortTime.compareTo(a.sortTime));
+    return records;
+  }
+
+  void _openRecord(_MergedHistoryRecord record) {
+    if (record.offline case final offline?) {
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => ReportPage.offline(record: offline)),
+      );
+      return;
+    }
+    if (record.task case final task?) _openTask(task);
   }
 
   Future<void> _saveOffline(HistoryItem task) async {
@@ -158,6 +196,24 @@ class _HistoryPageState extends State<HistoryPage> {
   }
 
   Future<void> _deleteOffline(OfflineReportRecord record) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('删除本地副本'),
+        content: const Text('仅删除保存在本机的离线报告和图片，云端训练记录不会受影响。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('删除本地'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
     await _offlineStorage.delete(record);
     if (!mounted) return;
     setState(() {
@@ -165,6 +221,9 @@ class _HistoryPageState extends State<HistoryPage> {
           .where((item) => item.taskId != record.taskId)
           .toList();
     });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('本地副本已删除，云端记录未受影响')),
+    );
   }
 
   Future<void> _retryTask(HistoryItem task) async {
@@ -225,6 +284,7 @@ class _HistoryPageState extends State<HistoryPage> {
   @override
   Widget build(BuildContext context) {
     final offlineSaveState = _offlineSave.state;
+    final mergedRecords = _mergedRecords;
     return Scaffold(
       backgroundColor: const Color(0xFF05080B),
       appBar: AppBar(
@@ -346,19 +406,7 @@ class _HistoryPageState extends State<HistoryPage> {
                       ),
                     ),
                   ],
-                  if (_offlineRecords.isNotEmpty) ...[
-                    _OfflineSection(
-                      records: _offlineRecords,
-                      onOpen: (record) => Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => ReportPage.offline(record: record),
-                        ),
-                      ),
-                      onDelete: _deleteOffline,
-                    ),
-                    const SizedBox(height: 12),
-                  ],
-                  if (!_loading && _tasks.isEmpty && _error == null)
+                  if (!_loading && mergedRecords.isEmpty && _error == null)
                     Container(
                       margin: const EdgeInsets.only(top: 18),
                       padding: const EdgeInsets.all(28),
@@ -375,19 +423,27 @@ class _HistoryPageState extends State<HistoryPage> {
                         style: TextStyle(color: Colors.white),
                       ),
                     ),
-                  ..._tasks.map(
-                    (task) => Padding(
+                  ...mergedRecords.map(
+                    (record) => Padding(
                       padding: const EdgeInsets.only(bottom: 12),
                       child: _HistoryCard(
-                        task: task,
-                        onTap: () => _openTask(task),
-                        onRetry: task.isFailed ? () => _retryTask(task) : null,
-                        onDelete: () => _deleteTask(task),
-                        offlineSaved: _offlineRecordFor(task.taskId) != null,
-                        onSaveOffline:
-                            task.isCompleted && !offlineSaveState.running
-                                ? () => _saveOffline(task)
-                                : null,
+                        record: record,
+                        cloudStatusKnown: _cloudHistoryAvailable,
+                        onTap: () => _openRecord(record),
+                        onRetry: record.task?.isFailed == true
+                            ? () => _retryTask(record.task!)
+                            : null,
+                        onDeleteCloud: record.task == null
+                            ? null
+                            : () => _deleteTask(record.task!),
+                        onDeleteLocal: record.offline == null
+                            ? null
+                            : () => _deleteOffline(record.offline!),
+                        onSaveOffline: record.task?.isCompleted == true &&
+                                record.offline == null &&
+                                !offlineSaveState.running
+                            ? () => _saveOffline(record.task!)
+                            : null,
                       ),
                     ),
                   ),
@@ -448,23 +504,37 @@ class _HistoryErrorCard extends StatelessWidget {
 
 class _HistoryCard extends StatelessWidget {
   const _HistoryCard({
-    required this.task,
+    required this.record,
+    required this.cloudStatusKnown,
     required this.onTap,
-    required this.onDelete,
-    required this.offlineSaved,
     this.onRetry,
     this.onSaveOffline,
+    this.onDeleteCloud,
+    this.onDeleteLocal,
   });
 
-  final HistoryItem task;
+  final _MergedHistoryRecord record;
+  final bool cloudStatusKnown;
   final VoidCallback onTap;
-  final VoidCallback onDelete;
-  final bool offlineSaved;
   final VoidCallback? onRetry;
   final VoidCallback? onSaveOffline;
+  final VoidCallback? onDeleteCloud;
+  final VoidCallback? onDeleteLocal;
 
   @override
   Widget build(BuildContext context) {
+    final cloudTask = record.task;
+    final task = cloudTask ??
+        HistoryItem(
+          taskId: record.taskId,
+          userId: '',
+          status: 'local',
+          videoName: record.videoName,
+          summary: const ReportSummary(),
+          files: const ReportFiles(),
+        );
+    final offline = record.offline;
+    final offlineSaved = offline != null;
     final thumbnail = ApiConfig.absoluteFileUrl(task.thumbnail);
     return Card(
       color: Colors.white.withValues(alpha: 0.93),
@@ -504,7 +574,22 @@ class _HistoryCard extends StatelessWidget {
                           style: Theme.of(context).textTheme.titleMedium,
                         ),
                       ),
-                      Chip(label: Text(_statusLabel(task.status))),
+                      Chip(
+                        label: Text(
+                          cloudTask == null
+                              ? cloudStatusKnown
+                                  ? '仅本机可用'
+                                  : '云端状态未知'
+                              : _statusLabel(task.status),
+                        ),
+                      ),
+                      if (offline != null) ...[
+                        const SizedBox(width: 6),
+                        const Chip(
+                          avatar: Icon(Icons.offline_pin_outlined, size: 16),
+                          label: Text('已保存本机'),
+                        ),
+                      ],
                     ],
                   ),
                   const SizedBox(height: 8),
@@ -523,14 +608,16 @@ class _HistoryCard extends StatelessWidget {
                       ),
                       _MiniMetric(
                         label: '训练强度',
-                        value: '${task.summary.intensityScore}',
+                        value: cloudTask == null
+                            ? '本机'
+                            : '${task.summary.intensityScore}',
                       ),
                     ],
                   ),
-                  if (task.reportSummary.isNotEmpty) ...[
+                  if (cloudTask?.reportSummary.isNotEmpty == true) ...[
                     const SizedBox(height: 8),
                     Text(
-                      task.reportSummary,
+                      cloudTask!.reportSummary,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.bodySmall,
@@ -547,7 +634,7 @@ class _HistoryCard extends StatelessWidget {
                           icon: const Icon(Icons.refresh),
                           label: const Text('重新上传'),
                         ),
-                      if (onSaveOffline != null)
+                      if (onSaveOffline != null || offlineSaved)
                         OutlinedButton.icon(
                           onPressed: offlineSaved ? null : onSaveOffline,
                           icon: Icon(
@@ -557,11 +644,18 @@ class _HistoryCard extends StatelessWidget {
                           ),
                           label: Text(offlineSaved ? '已离线保存' : '离线保存'),
                         ),
-                      TextButton.icon(
-                        onPressed: onDelete,
-                        icon: const Icon(Icons.delete_outline),
-                        label: const Text('删除记录'),
-                      ),
+                      if (onDeleteLocal != null)
+                        TextButton.icon(
+                          onPressed: onDeleteLocal,
+                          icon: const Icon(Icons.delete_outline),
+                          label: const Text('删除本地'),
+                        ),
+                      if (onDeleteCloud != null)
+                        TextButton.icon(
+                          onPressed: onDeleteCloud,
+                          icon: const Icon(Icons.cloud_off_outlined),
+                          label: const Text('删除云端'),
+                        ),
                     ],
                   ),
                 ],
@@ -582,6 +676,32 @@ class _HistoryCard extends StatelessWidget {
       };
 }
 
+class _MergedHistoryRecord {
+  const _MergedHistoryRecord({this.task, this.offline});
+
+  final HistoryItem? task;
+  final OfflineReportRecord? offline;
+
+  String get taskId => task?.taskId ?? offline?.taskId ?? '';
+
+  String get videoName {
+    final cloudName = task?.videoName ?? '';
+    if (cloudName.isNotEmpty) return cloudName;
+    final localName = offline?.videoName ?? '';
+    return localName.isNotEmpty ? localName : '训练报告';
+  }
+
+  DateTime get sortTime {
+    final seconds = task?.updatedAt ?? task?.createdAt;
+    if (seconds != null) {
+      return DateTime.fromMillisecondsSinceEpoch((seconds * 1000).round());
+    }
+    return offline?.savedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+  }
+}
+
+// Kept temporarily for source compatibility with older UI snapshots.
+// ignore: unused_element
 class _OfflineSection extends StatelessWidget {
   const _OfflineSection({
     required this.records,
