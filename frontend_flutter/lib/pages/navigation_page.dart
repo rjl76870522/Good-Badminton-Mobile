@@ -131,8 +131,6 @@ class _NavigationPageState extends State<NavigationPage> {
             key: const ValueKey('discover-list'),
             padding: const EdgeInsets.fromLTRB(16, 10, 16, 28),
             children: [
-              const _KnowledgeModules(),
-              const SizedBox(height: 24),
               _NearbyVenuePanel(
                 positionAvailable: _position != null,
                 locating: _locating,
@@ -181,8 +179,8 @@ class _NavigationPageState extends State<NavigationPage> {
   }
 }
 
-class _KnowledgeModules extends StatelessWidget {
-  const _KnowledgeModules();
+class KnowledgeModules extends StatelessWidget {
+  const KnowledgeModules({super.key});
 
   static final _newsUri = Uri.parse('https://www.badmintoncn.com/');
 

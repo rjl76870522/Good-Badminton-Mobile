@@ -20,16 +20,24 @@ void main() {
     expect(find.text('附近羽毛球馆'), findsNothing);
     expect(find.text('首页'), findsOneWidget);
     expect(find.text('发现'), findsOneWidget);
+    expect(find.text('社区'), findsOneWidget);
     expect(find.text('我的'), findsWidgets);
 
     await tester.tap(find.text('发现'));
     await tester.pump();
     expect(find.text('附近羽毛球馆'), findsOneWidget);
+    expect(find.text('大赛日历'), findsNothing);
+
+    await tester.tap(find.text('社区'));
+    await tester.pump();
     expect(find.text('大赛日历'), findsOneWidget);
     expect(find.text('世界排名'), findsOneWidget);
     expect(find.text('球星资料'), findsOneWidget);
     expect(find.text('装备库'), findsOneWidget);
     expect(find.text('近期赛事与球星新闻'), findsOneWidget);
+
+    await tester.tap(find.text('发现'));
+    await tester.pump();
     await tester.drag(
       find.byKey(const ValueKey('discover-list')),
       const Offset(0, -650),

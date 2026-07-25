@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'home_page.dart';
+import 'community_page.dart';
 import 'navigation_page.dart';
 import 'profile_page.dart';
 
@@ -22,6 +23,7 @@ class _MainShellPageState extends State<MainShellPage> {
         children: [
           const HomePage(),
           const NavigationPage(),
+          const CommunityPage(),
           const ProfilePage(),
         ],
       ),
@@ -46,6 +48,11 @@ class _MainShellPageState extends State<MainShellPage> {
                   icon: Icon(Icons.navigation_outlined),
                   selectedIcon: Icon(Icons.navigation),
                   label: '发现',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.groups_outlined),
+                  selectedIcon: Icon(Icons.groups),
+                  label: '社区',
                 ),
                 NavigationDestination(
                   icon: Icon(Icons.person_outline),
