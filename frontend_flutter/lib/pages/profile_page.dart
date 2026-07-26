@@ -264,7 +264,21 @@ class _ProfilePageState extends State<ProfilePage> {
                     ListTile(
                       leading: const Icon(Icons.history, color: _brandGreen),
                       title: const Text('训练历史'),
-                      subtitle: const _ProfileSubtitle('查看任务、报告和手机离线记录'),
+                      subtitle: const Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _ProfileSubtitle('查看任务、报告和手机离线记录'),
+                          SizedBox(height: 3),
+                          Text(
+                            '中心服务器训练记录与本机设备绑定，正常卸载重装后仍可查看',
+                            style: TextStyle(
+                              color: _secondaryText,
+                              fontSize: 11,
+                              height: 1.35,
+                            ),
+                          ),
+                        ],
+                      ),
                       trailing: const Icon(Icons.chevron_right),
                       onTap: () => Navigator.of(context).push(
                         MaterialPageRoute(builder: (_) => const HistoryPage()),

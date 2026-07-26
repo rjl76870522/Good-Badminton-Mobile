@@ -29,7 +29,7 @@
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>用于选择羽毛球比赛视频进行分析，以及从相册设置个人头像。</string>
+	<string>用于选择羽毛球比赛视频进行分析、识别球馆二维码图片，以及从相册设置个人头像。</string>
 	<key>NSCameraUsageDescription</key>
 	<string>用于扫描合作球馆二维码并获取比赛视频。</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>

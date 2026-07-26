@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:qr_code_dart_scan/qr_code_dart_scan.dart';
 
@@ -16,7 +17,11 @@ class QrScanPage extends StatefulWidget {
 }
 
 class _QrScanPageState extends State<QrScanPage> {
+  final ImagePicker _imagePicker = ImagePicker();
+  late final QRCodeDartScanDecoder _imageDecoder;
+
   bool _handled = false;
+  bool _pickingImage = false;
   bool _checkingPermission = true;
   bool _cameraReady = false;
   int _scannerGeneration = 0;
@@ -25,7 +30,16 @@ class _QrScanPageState extends State<QrScanPage> {
   @override
   void initState() {
     super.initState();
+    _imageDecoder = QRCodeDartScanDecoder(
+      formats: const [BarcodeFormat.qrCode],
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) => _prepareScanner());
+  }
+
+  @override
+  void dispose() {
+    _imageDecoder.dispose();
+    super.dispose();
   }
 
   Future<void> _openVenue(VenueInfo venue) async {
@@ -40,8 +54,12 @@ class _QrScanPageState extends State<QrScanPage> {
   }
 
   Future<void> _handleBarcode(Result result) async {
-    if (_handled) return;
-    final rawValue = result.text.trim();
+    await _handleQrText(result.text);
+  }
+
+  Future<void> _handleQrText(String value) async {
+    if (_handled || !mounted) return;
+    final rawValue = value.trim();
     if (rawValue.isEmpty) return;
 
     setState(() => _handled = true);
@@ -54,6 +72,34 @@ class _QrScanPageState extends State<QrScanPage> {
         _handled = false;
         _error = error.message;
       });
+    }
+  }
+
+  Future<void> _scanImageFromGallery() async {
+    if (_pickingImage || _handled) return;
+    setState(() {
+      _pickingImage = true;
+      _error = null;
+    });
+
+    try {
+      final image = await _imagePicker.pickImage(source: ImageSource.gallery);
+      if (image == null || !mounted) return;
+
+      final result = await _imageDecoder.decodeFile(image);
+      if (!mounted) return;
+      if (result == null || result.text.trim().isEmpty) {
+        setState(() => _error = '没有在这张图片中识别到二维码，请选择更清晰的原图');
+        return;
+      }
+      await _handleQrText(result.text);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _error = '图片读取或二维码识别失败，请换一张图片重试');
+    } finally {
+      if (mounted) {
+        setState(() => _pickingImage = false);
+      }
     }
   }
 
@@ -208,19 +254,39 @@ class _QrScanPageState extends State<QrScanPage> {
                         ),
                       ),
                     const Text(
-                      '将球馆提供的二维码放入取景框内',
+                      '将球馆提供的二维码放入取景框内，也可以从相册选择二维码图片',
                       textAlign: TextAlign.center,
                       style: TextStyle(color: Colors.white, fontSize: 16),
                     ),
                     const SizedBox(height: 12),
-                    OutlinedButton.icon(
-                      onPressed: _openDemoVenue,
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.white,
-                        side: const BorderSide(color: Colors.white70),
-                      ),
-                      icon: const Icon(Icons.sports_tennis_outlined),
-                      label: const Text('查看示例球场'),
+                    Wrap(
+                      alignment: WrapAlignment.center,
+                      spacing: 10,
+                      runSpacing: 10,
+                      children: [
+                        FilledButton.icon(
+                          onPressed:
+                              _pickingImage ? null : _scanImageFromGallery,
+                          icon: _pickingImage
+                              ? const SizedBox.square(
+                                  dimension: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.photo_library_outlined),
+                          label: Text(_pickingImage ? '正在识别' : '从相册扫码'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: _openDemoVenue,
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.white,
+                            side: const BorderSide(color: Colors.white70),
+                          ),
+                          icon: const Icon(Icons.sports_tennis_outlined),
+                          label: const Text('查看示例球场'),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -236,6 +302,8 @@ class _QrScanPageState extends State<QrScanPage> {
                 message: _error ?? '需要相机权限才能扫描球馆二维码',
                 onRetry: _retryScanner,
                 onOpenSettings: _openCameraSettings,
+                onPickImage: _scanImageFromGallery,
+                pickingImage: _pickingImage,
                 onDemo: _openDemoVenue,
               ),
           ],
@@ -252,6 +320,8 @@ class _CameraPermissionPanel extends StatelessWidget {
     required this.message,
     required this.onRetry,
     required this.onOpenSettings,
+    required this.onPickImage,
+    required this.pickingImage,
     required this.onDemo,
   });
 
@@ -260,6 +330,8 @@ class _CameraPermissionPanel extends StatelessWidget {
   final String message;
   final VoidCallback onRetry;
   final VoidCallback onOpenSettings;
+  final VoidCallback onPickImage;
+  final bool pickingImage;
   final VoidCallback onDemo;
 
   @override
@@ -315,6 +387,17 @@ class _CameraPermissionPanel extends StatelessWidget {
                         onPressed: onOpenSettings,
                         icon: const Icon(Icons.settings_outlined),
                         label: const Text('打开系统设置'),
+                      ),
+                      FilledButton.icon(
+                        onPressed: pickingImage ? null : onPickImage,
+                        icon: pickingImage
+                            ? const SizedBox.square(
+                                dimension: 18,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.photo_library_outlined),
+                        label: Text(pickingImage ? '正在识别' : '从相册扫码'),
                       ),
                       TextButton(
                         onPressed: onDemo,
