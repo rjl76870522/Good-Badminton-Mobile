@@ -77,15 +77,16 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Future<void> _editNickname() async {
-    final controller = TextEditingController(text: _nickname);
+    var draft = _nickname;
     final value = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('修改昵称'),
-        content: TextField(
-          controller: controller,
+        content: TextFormField(
+          initialValue: _nickname,
           maxLength: 20,
           autofocus: true,
+          onChanged: (value) => draft = value,
           decoration: const InputDecoration(hintText: '昵称保存在本机'),
         ),
         actions: [
@@ -94,16 +95,16 @@ class _ProfilePageState extends State<ProfilePage> {
             child: const Text('取消'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(context, controller.text),
+            onPressed: () => Navigator.pop(context, draft),
             child: const Text('保存'),
           ),
         ],
       ),
     );
-    controller.dispose();
-    if (value == null) return;
+    if (!mounted || value == null) return;
     await _storage.setNickname(value);
-    await _load();
+    if (!mounted) return;
+    setState(() => _nickname = value.trim());
   }
 
   Future<void> _contactDeveloper() async {

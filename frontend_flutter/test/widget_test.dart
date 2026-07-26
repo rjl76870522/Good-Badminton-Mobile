@@ -113,6 +113,26 @@ void main() {
     expect(tester.widget<AnimatedScale>(scale).scale, 1);
   });
 
+  testWidgets('editing a Chinese nickname closes cleanly', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+
+    await tester.pumpWidget(const GoodBadmintonApp());
+    await tester.tap(find.text('我的').last);
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.tap(find.byTooltip('修改昵称'));
+    await tester.pump(const Duration(milliseconds: 400));
+
+    await tester.enterText(find.byType(TextFormField), '羽球爱好者');
+    await tester.tap(find.text('保存'));
+    await tester.pump(const Duration(milliseconds: 500));
+    debugDefaultTargetPlatformOverride = null;
+
+    expect(find.text('羽球爱好者'), findsOneWidget);
+    expect(find.text('修改昵称'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   for (final device in <String, ({Size size, TargetPlatform platform})>{
     'Android compact': (
       size: const Size(360, 640),
