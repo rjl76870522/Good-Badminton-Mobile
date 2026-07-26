@@ -14,10 +14,11 @@ void main() {
       'NSPhotoLibraryUsageDescription',
       'NSPhotoLibraryAddUsageDescription',
       'NSLocationWhenInUseUsageDescription',
-      'NSLocalNetworkUsageDescription',
     ]) {
       expect(plist, contains('<key>$key</key>'));
     }
+    expect(plist, isNot(contains('<key>NSLocalNetworkUsageDescription</key>')));
+    expect(plist, isNot(contains('<key>NSAllowsArbitraryLoads</key>')));
     for (final scheme in const ['iosamap', 'baidumap', 'imeituan']) {
       expect(plist, contains('<string>$scheme</string>'));
     }

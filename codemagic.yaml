@@ -38,7 +38,11 @@ workflows:
           plutil -lint ios/Runner/Info.plist
           grep -q "com.rundon2026.goodbadminton" \
             ios/Runner.xcodeproj/project.pbxproj
-          grep -q "NSLocalNetworkUsageDescription" ios/Runner/Info.plist
+          grep -q "NSCameraUsageDescription" ios/Runner/Info.plist
+          if grep -q "NSAllowsArbitraryLoads" ios/Runner/Info.plist; then
+            echo "NSAllowsArbitraryLoads must remain disabled for TestFlight"
+            exit 1
+          fi
           xcodebuild -project ios/Runner.xcodeproj -scheme Runner -showBuildSettings >/dev/null
 
       - name: Analyze Flutter code
@@ -84,7 +88,11 @@ workflows:
           plutil -lint ios/Runner/Info.plist
           grep -q "com.rundon2026.goodbadminton" \
             ios/Runner.xcodeproj/project.pbxproj
-          grep -q "NSLocalNetworkUsageDescription" ios/Runner/Info.plist
+          grep -q "NSCameraUsageDescription" ios/Runner/Info.plist
+          if grep -q "NSAllowsArbitraryLoads" ios/Runner/Info.plist; then
+            echo "NSAllowsArbitraryLoads must remain disabled for TestFlight"
+            exit 1
+          fi
 
       - name: Analyze Flutter code
         script: flutter analyze
