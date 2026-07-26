@@ -80,9 +80,9 @@ class PlayerPositionVisualizer:
         # 运动统计参数
         self.fps = fps  # 视频帧率，用于计算速度
         self.movement_stats = defaultdict(dict)
-        self.MAX_SPEED = 8.0  # 人类最大速度限制(m/s)
+        self.MAX_SPEED = 8.5  # 仅用于剔除不可信跳点，不作为展示结果
         self.MIN_MOVEMENT = 0.05  # 最小移动距离(m)，低于此值视为噪声
-        self.MAX_FRAME_DISTANCE = 8.0 / self.fps  # 单帧最大移动距离(m)，基于最大速度和帧率计算
+        self.MAX_FRAME_DISTANCE = self.MAX_SPEED / self.fps
         
         # Load data
         self.df = self._load_data()
@@ -160,9 +160,9 @@ class PlayerPositionVisualizer:
         if len(positions) < 2:
             return stats
         
-        # 计算总距离和最大速度
+        # 计算总距离和稳定峰值速度，不把异常值截断成固定的 8.00。
         total_valid_distance = 0.0
-        max_speed = 0.0
+        valid_speeds = []
         
         # 采样间隔，每5帧采样一次
         sample_interval = 5
@@ -196,19 +196,19 @@ class PlayerPositionVisualizer:
             max_possible_distance = self.MAX_FRAME_DISTANCE * (idx2 - idx1)
             
             # 过滤微小移动和异常值
-            if dist > self.MIN_MOVEMENT and dist < max_possible_distance:
+            if dist > self.MIN_MOVEMENT and dist <= max_possible_distance:
                 # 累加有效距离
                 total_valid_distance += dist
                 
                 # 计算速度并更新最大速度
                 if time_diff > 0:
                     speed = dist / time_diff
-                    speed = min(speed, self.MAX_SPEED)  # 限制最大速度
-                    max_speed = max(max_speed, speed)
+                    if speed <= self.MAX_SPEED:
+                        valid_speeds.append(speed)
         
         # 更新统计数据
         stats['total_distance'] = round(total_valid_distance, 2)
-        stats['max_speed'] = round(max_speed, 2)
+        stats['max_speed'] = round(float(np.percentile(valid_speeds, 95)), 2) if valid_speeds else 0.0
         
         # 计算平均速度 - 使用总距离除以总时间，考虑球员静止的时间
         total_time = times[-1] - times[0] if len(times) > 1 else stats['total_frames'] / self.fps
@@ -637,7 +637,7 @@ class PlayerPositionVisualizer:
                 upper_stats = stats['upper']
                 info_text += f"上场球员:\n"
                 info_text += f"  平均速度: {upper_stats['avg_speed']:.2f} 米/秒\n"
-                info_text += f"  最大速度: {upper_stats['max_speed']:.2f} 米/秒\n"
+                info_text += f"  峰值移动速度: {upper_stats['max_speed']:.2f} 米/秒\n"
                 info_text += f"  移动距离: {upper_stats['total_distance']:.2f} 米\n"
             
             # 下场球员统计
@@ -645,7 +645,7 @@ class PlayerPositionVisualizer:
                 lower_stats = stats['lower']
                 info_text += f"\n下场球员:\n"
                 info_text += f"  平均速度: {lower_stats['avg_speed']:.2f} 米/秒\n"
-                info_text += f"  最大速度: {lower_stats['max_speed']:.2f} 米/秒\n"
+                info_text += f"  峰值移动速度: {lower_stats['max_speed']:.2f} 米/秒\n"
                 info_text += f"  移动距离: {lower_stats['total_distance']:.2f} 米\n"
         else:
             # 整场比赛的统计信息
@@ -685,7 +685,7 @@ class PlayerPositionVisualizer:
                 avg_speed = sum(upper_avg_speeds) / len(upper_avg_speeds)
                 info_text += f"  平均速度: {avg_speed:.2f} 米/秒\n"
             if upper_speeds:
-                info_text += f"  最大速度: {max(upper_speeds):.2f} 米/秒\n"
+                info_text += f"  峰值移动速度: {max(upper_speeds):.2f} 米/秒\n"
             
             # 添加下场球员信息
             info_text += f"\n下场球员:\n"
@@ -697,7 +697,7 @@ class PlayerPositionVisualizer:
                 avg_speed = sum(lower_avg_speeds) / len(lower_avg_speeds)
                 info_text += f"  平均速度: {avg_speed:.2f} 米/秒\n"
             if lower_speeds:
-                info_text += f"  最大速度: {max(lower_speeds):.2f} 米/秒\n"
+                info_text += f"  峰值移动速度: {max(lower_speeds):.2f} 米/秒\n"
         
         # 在图表中心右侧添加文本框，适合深色背景
         plt.text(0.98, 0.5, info_text,

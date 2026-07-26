@@ -516,7 +516,7 @@ class _SummaryCard extends StatelessWidget {
               Expanded(
                 flex: 6,
                 child: _BentoMetric(
-                  label: '最高瞬时速度',
+                  label: '峰值移动速度',
                   value: summary.maxSpeedMps,
                   decimals: 2,
                   suffix: ' m/s',

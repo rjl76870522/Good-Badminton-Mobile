@@ -43,6 +43,10 @@ class PlayerTracker:
             "upper": 0,
             "lower": 0,
         }
+        # Keep valid samples so overlays show a robust peak, rather than a
+        # single-frame tracking spike clipped to a fixed number.
+        self.match_speed_samples = {"upper": [], "lower": []}
+        self.rally_speed_samples = {"upper": [], "lower": []}
         self.last_valid_court_position = {
             "upper": None,
             "lower": None,
@@ -217,21 +221,43 @@ class PlayerTracker:
         return self.current_speed[region]
 
     def _update_rally_and_match_stats(self, region, distance, speed):
-        capped_speed = round(min(speed, 8.0), 2)
+        stable_speed = round(speed, 2)
+        self.rally_speed_samples[region].append(stable_speed)
+        self.match_speed_samples[region].append(stable_speed)
 
         self.rally_stats[region]["total_distance"] += distance
-        self.rally_stats[region]["max_speed"] = max(self.rally_stats[region]["max_speed"], capped_speed)
-        self.current_speed[region] = capped_speed
+        self.rally_stats[region]["max_speed"] = self._peak_speed(
+            self.rally_speed_samples[region]
+        )
+        self.current_speed[region] = stable_speed
 
         self.match_stats[region]["total_distance"] += distance
-        self.match_stats[region]["max_speed"] = max(self.match_stats[region]["max_speed"], capped_speed)
-        self.current_speed[region] = capped_speed
+        self.match_stats[region]["max_speed"] = self._peak_speed(
+            self.match_speed_samples[region]
+        )
+
+    @staticmethod
+    def _peak_speed(speeds):
+        """Return the 95th percentile of valid speeds, not a capped raw max."""
+        if not speeds:
+            return 0.0
+        ordered = sorted(speeds)
+        if len(ordered) == 1:
+            return ordered[0]
+        rank = (len(ordered) - 1) * 0.95
+        lower = int(rank)
+        upper = min(lower + 1, len(ordered) - 1)
+        return round(
+            ordered[lower] + (ordered[upper] - ordered[lower]) * (rank - lower),
+            2,
+        )
 
     def start_new_rally(self):
         for region in ["upper", "lower"]:
             self.rally_stats[region]["total_distance"] = 0
             self.rally_stats[region]["max_speed"] = 0
             self.rally_stats[region]["total_frames"] = 0
+            self.rally_speed_samples[region].clear()
 
     def get_player_movement_stats(self):
         stats = {}

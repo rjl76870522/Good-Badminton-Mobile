@@ -58,9 +58,9 @@ class PlayerPositionVisualizer:
         # Movement statistics parameters
         self.fps = fps  # Video frame rate, used for speed calculation
         self.movement_stats = defaultdict(dict)
-        self.MAX_SPEED = 8.0  # Human maximum speed limit (m/s)
+        self.MAX_SPEED = 8.5  # Used only to reject implausible tracking jumps
         self.MIN_MOVEMENT = 0.05  # Minimum movement distance (m), below this value is considered noise
-        self.MAX_FRAME_DISTANCE = 8.0 / self.fps  # Maximum frame-to-frame distance (m), based on max speed and fps
+        self.MAX_FRAME_DISTANCE = self.MAX_SPEED / self.fps
         
         # Load data
         self.df = self._load_data()
@@ -138,9 +138,9 @@ class PlayerPositionVisualizer:
         if len(positions) < 2:
             return stats
         
-        # Calculate total distance and maximum speed
+        # Calculate total distance and robust peak speed.
         total_valid_distance = 0.0
-        max_speed = 0.0
+        valid_speeds = []
         
         # Sampling interval, sample every 5 frames
         sample_interval = 5
@@ -174,19 +174,19 @@ class PlayerPositionVisualizer:
             max_possible_distance = self.MAX_FRAME_DISTANCE * (idx2 - idx1)
             
             # Filter small movements and anomalies
-            if dist > self.MIN_MOVEMENT and dist < max_possible_distance:
+            if dist > self.MIN_MOVEMENT and dist <= max_possible_distance:
                 # Accumulate valid distance
                 total_valid_distance += dist
                 
                 # Calculate speed and update maximum speed
                 if time_diff > 0:
                     speed = dist / time_diff
-                    speed = min(speed, self.MAX_SPEED)  # Limit maximum speed
-                    max_speed = max(max_speed, speed)
+                    if speed <= self.MAX_SPEED:
+                        valid_speeds.append(speed)
         
         # Update statistics
         stats['total_distance'] = round(total_valid_distance, 2)
-        stats['max_speed'] = round(max_speed, 2)
+        stats['max_speed'] = round(float(np.percentile(valid_speeds, 95)), 2) if valid_speeds else 0.0
         
         # Calculate average speed - use total distance divided by total time, considering stationary time
         total_time = times[-1] - times[0] if len(times) > 1 else stats['total_frames'] / self.fps
@@ -583,7 +583,7 @@ class PlayerPositionVisualizer:
                 upper_stats = stats['upper']
                 info_text += f"Upper Court Player:\n"
                 info_text += f"  Average Speed: {upper_stats['avg_speed']:.2f} m/s\n"
-                info_text += f"  Maximum Speed: {upper_stats['max_speed']:.2f} m/s\n"
+                info_text += f"  Peak Movement Speed: {upper_stats['max_speed']:.2f} m/s\n"
                 info_text += f"  Distance Moved: {upper_stats['total_distance']:.2f} m\n"
             
             # 下场球员统计
@@ -591,7 +591,7 @@ class PlayerPositionVisualizer:
                 lower_stats = stats['lower']
                 info_text += f"\nLower Court Player:\n"
                 info_text += f"  Average Speed: {lower_stats['avg_speed']:.2f} m/s\n"
-                info_text += f"  Maximum Speed: {lower_stats['max_speed']:.2f} m/s\n"
+                info_text += f"  Peak Movement Speed: {lower_stats['max_speed']:.2f} m/s\n"
                 info_text += f"  Distance Moved: {lower_stats['total_distance']:.2f} m\n"
         else:
             # 整场比赛的统计信息
@@ -631,7 +631,7 @@ class PlayerPositionVisualizer:
                 avg_speed = sum(upper_avg_speeds) / len(upper_avg_speeds)
                 info_text += f"  Average Speed: {avg_speed:.2f} m/s\n"
             if upper_speeds:
-                info_text += f"  Maximum Speed: {max(upper_speeds):.2f} m/s\n"
+                info_text += f"  Peak Movement Speed: {max(upper_speeds):.2f} m/s\n"
             
             # 添加下场球员信息
             info_text += f"\nLower Court Player:\n"
@@ -643,7 +643,7 @@ class PlayerPositionVisualizer:
                 avg_speed = sum(lower_avg_speeds) / len(lower_avg_speeds)
                 info_text += f"  Average Speed: {avg_speed:.2f} m/s\n"
             if lower_speeds:
-                info_text += f"  Maximum Speed: {max(lower_speeds):.2f} m/s\n"
+                info_text += f"  Peak Movement Speed: {max(lower_speeds):.2f} m/s\n"
         
         # 在图表中心右侧添加文本框，适合深色背景
         plt.text(0.98, 0.5, info_text,
