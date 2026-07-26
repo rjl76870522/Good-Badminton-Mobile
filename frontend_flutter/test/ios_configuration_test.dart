@@ -19,10 +19,30 @@ void main() {
     }
     expect(plist, isNot(contains('<key>NSLocalNetworkUsageDescription</key>')));
     expect(plist, isNot(contains('<key>NSAllowsArbitraryLoads</key>')));
+    expect(
+      plist,
+      contains('<key>ITSAppUsesNonExemptEncryption</key>\n\t<false/>'),
+    );
+    expect(
+      plist,
+      isNot(contains('<key>UISupportedInterfaceOrientations~ipad</key>')),
+    );
+    for (final orientation in const [
+      'UIInterfaceOrientationPortrait',
+      'UIInterfaceOrientationLandscapeLeft',
+      'UIInterfaceOrientationLandscapeRight',
+    ]) {
+      expect(plist, contains('<string>$orientation</string>'));
+    }
     for (final scheme in const ['iosamap', 'baidumap', 'imeituan']) {
       expect(plist, contains('<string>$scheme</string>'));
     }
     expect(project, contains('IPHONEOS_DEPLOYMENT_TARGET = 13.0;'));
+    expect(project, isNot(contains('TARGETED_DEVICE_FAMILY = "1,2";')));
+    expect(
+      RegExp(r'TARGETED_DEVICE_FAMILY = 1;').allMatches(project).length,
+      3,
+    );
     expect(
       project,
       contains('PRODUCT_BUNDLE_IDENTIFIER = com.rundon2026.goodbadminton;'),
