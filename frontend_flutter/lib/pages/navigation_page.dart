@@ -182,9 +182,6 @@ class _NavigationPageState extends State<NavigationPage> {
 class KnowledgeModules extends StatelessWidget {
   const KnowledgeModules({super.key});
 
-  static final _newsSearchUri = Uri.https('www.baidu.com', '/s', {
-    'wd': '羽毛球 近期赛事 球星 新闻',
-  });
   static final _officialNewsUri = Uri.parse('https://bwfbadminton.com/news/');
 
   Future<void> _openNews(BuildContext context) async {
@@ -195,21 +192,11 @@ class KnowledgeModules extends StatelessWidget {
       LaunchMode.platformDefault,
     ]) {
       try {
-        opened = await launchUrl(_newsSearchUri, mode: mode);
+        opened = await launchUrl(_officialNewsUri, mode: mode);
       } catch (_) {
         opened = false;
       }
       if (opened) break;
-    }
-    if (!opened) {
-      try {
-        opened = await launchUrl(
-          _officialNewsUri,
-          mode: LaunchMode.platformDefault,
-        );
-      } catch (_) {
-        opened = false;
-      }
     }
     if (!opened && context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -363,7 +350,7 @@ class KnowledgeModules extends StatelessWidget {
                 style: TextStyle(fontWeight: FontWeight.w800),
               ),
               subtitle: const Text(
-                '在浏览器查看近期赛事与球星资讯',
+                '前往 BWF 官方新闻查看近期羽球资讯',
                 style: TextStyle(
                   color: Color(0xFF6B7280),
                   fontSize: 12,
