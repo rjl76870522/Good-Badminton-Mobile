@@ -182,24 +182,19 @@ class _ReportPageState extends State<ReportPage> {
   }
 
   Future<void> _checkReportFilesInBackground(AnalysisReport report) async {
-    final availability = await _checkReportFiles(report);
     if (!mounted || _report != report) return;
-    setState(() => _fileAvailability = availability);
-  }
-
-  Future<Map<String, bool>> _checkReportFiles(AnalysisReport report) async {
-    final checks = await Future.wait([
-      _api.fileExists(report.files.heatmap),
-      _api.fileExists(report.files.trajectory),
-      _api.fileExists(report.files.analysisVideo),
-      _api.fileExists(report.files.highlight),
-    ]);
-    return {
-      'heatmap': checks[0],
-      'trajectory': checks[1],
-      'analysis_video': checks[2],
-      'highlight': checks[3],
-    };
+    // A task is marked completed only after its report artifacts are written.
+    // Avoid probing every image/video here: on some proxies a range GET still
+    // transfers the whole file, delaying the first chart paint considerably.
+    // Image/video widgets retain their own error UI for old or deleted files.
+    setState(() {
+      _fileAvailability = const {
+        'heatmap': true,
+        'trajectory': true,
+        'analysis_video': true,
+        'highlight': true,
+      };
+    });
   }
 
   @override
@@ -1327,18 +1322,33 @@ class _FadeNetworkImage extends StatelessWidget {
         errorBuilder: (_, error, __) => _imageError(error),
       );
     }
-    return Image.network(
-      url,
-      fit: BoxFit.contain,
-      // Keep the decoded frame visible immediately. The old fade wrapper could
-      // leave a completed Android image transparent on some decoder paths.
-      gaplessPlayback: true,
-      filterQuality: FilterQuality.high,
-      loadingBuilder: (context, child, progress) {
-        if (progress == null) return child;
-        return const Center(child: CircularProgressIndicator());
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Server charts are deliberately high resolution for downloads. Decode
+        // only enough pixels for the in-app card, keeping scrolling smooth and
+        // preventing large 3000px PNGs from occupying the image cache.
+        final displayWidth = constraints.maxWidth.isFinite
+            ? constraints.maxWidth
+            : MediaQuery.sizeOf(context).width;
+        final cacheWidth =
+            (displayWidth * MediaQuery.devicePixelRatioOf(context))
+                .round()
+                .clamp(480, 1440);
+        return Image.network(
+          url,
+          fit: BoxFit.contain,
+          cacheWidth: cacheWidth,
+          // Keep the decoded frame visible immediately. The old fade wrapper could
+          // leave a completed Android image transparent on some decoder paths.
+          gaplessPlayback: true,
+          filterQuality: FilterQuality.medium,
+          loadingBuilder: (context, child, progress) {
+            if (progress == null) return child;
+            return const Center(child: CircularProgressIndicator());
+          },
+          errorBuilder: (_, error, __) => _imageError(error),
+        );
       },
-      errorBuilder: (_, error, __) => _imageError(error),
     );
   }
 

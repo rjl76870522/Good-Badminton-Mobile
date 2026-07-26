@@ -46,7 +46,10 @@ class PlayerPositionVisualizer:
         court_length=13.4,
         fps=30,
         generate_rallies=True,
-        render_dpi=300,
+        # Charts are primarily viewed on phones. 180dpi remains crisp on a
+        # full-screen mobile display while reducing PNG bytes and decode memory
+        # by roughly two thirds compared with the former 300dpi output.
+        render_dpi=180,
     ):
         """
         Initialize the player position visualizer
@@ -831,7 +834,7 @@ def analyze_player_positions(
     output_dir=None,
     fps=30,
     generate_rallies=True,
-    render_dpi=300,
+    render_dpi=180,
 ):
     """
     Analyze player position data and generate visualizations
