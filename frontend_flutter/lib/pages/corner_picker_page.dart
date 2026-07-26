@@ -334,7 +334,7 @@ class _CornerPickerPageState extends State<CornerPickerPage>
                                       ),
                                     ),
                                     const Text(
-                                      '可双指缩放整个页面；单击图片添加角点。',
+                                      '单指可上下滑动页面和点选角点；双指可缩放页面，并上下左右移动查看画面。',
                                       style: TextStyle(color: Colors.white60),
                                     ),
                                     const SizedBox(height: 6),

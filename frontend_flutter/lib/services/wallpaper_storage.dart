@@ -5,6 +5,7 @@ enum WallpaperTarget {
   global,
   home,
   discover,
+  community,
   profile,
   upload,
   taskStatus,
@@ -19,6 +20,7 @@ extension WallpaperTargetInfo on WallpaperTarget {
         WallpaperTarget.global => 'global',
         WallpaperTarget.home => 'home',
         WallpaperTarget.discover => 'discover',
+        WallpaperTarget.community => 'community',
         WallpaperTarget.profile => 'profile',
         WallpaperTarget.upload => 'upload',
         WallpaperTarget.taskStatus => 'task_status',
@@ -32,6 +34,7 @@ extension WallpaperTargetInfo on WallpaperTarget {
         WallpaperTarget.global => '全局默认背景',
         WallpaperTarget.home => '首页',
         WallpaperTarget.discover => '发现',
+        WallpaperTarget.community => '社区',
         WallpaperTarget.profile => '我的',
         WallpaperTarget.upload => '上传视频',
         WallpaperTarget.taskStatus => '任务状态',
@@ -44,6 +47,7 @@ extension WallpaperTargetInfo on WallpaperTarget {
   double get defaultOpacity => switch (this) {
         WallpaperTarget.home => 0.52,
         WallpaperTarget.discover => 0.06,
+        WallpaperTarget.community => 0.06,
         WallpaperTarget.profile => 0.12,
         WallpaperTarget.report => 0.11,
         WallpaperTarget.history => 0.55,
@@ -56,6 +60,7 @@ extension WallpaperTargetInfo on WallpaperTarget {
 
   String get defaultImageAsset => switch (this) {
         WallpaperTarget.discover ||
+        WallpaperTarget.community ||
         WallpaperTarget.profile =>
           'assets/images/history_court_bg.png',
         WallpaperTarget.global ||

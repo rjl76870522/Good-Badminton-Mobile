@@ -160,6 +160,7 @@ class _WallpaperSettingsPageState extends State<WallpaperSettingsPage> {
 
   Alignment get _previewAlignment => switch (_target) {
         WallpaperTarget.discover => const Alignment(0.15, -0.2),
+        WallpaperTarget.community => const Alignment(0.15, -0.2),
         WallpaperTarget.profile => const Alignment(0.1, -0.35),
         _ => Alignment.topCenter,
       };
@@ -397,6 +398,7 @@ class _TargetSelector extends StatelessWidget {
           WallpaperTarget.global,
           WallpaperTarget.home,
           WallpaperTarget.discover,
+          WallpaperTarget.community,
           WallpaperTarget.profile,
         ]),
         const SizedBox(height: 14),

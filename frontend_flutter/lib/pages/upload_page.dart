@@ -368,7 +368,6 @@ class _UploadPageState extends State<UploadPage> {
                       SizedBox(height: 6),
                       Text('建议横屏固定机位拍摄，画面尽量覆盖完整球场。'),
                       Text('不要上传休息、捡球和发球准备片段。'),
-                      Text('片段越精简，数据越准确，分析等待时间越短。'),
                     ],
                   ),
                 ),

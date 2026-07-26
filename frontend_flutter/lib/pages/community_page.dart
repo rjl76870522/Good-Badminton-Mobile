@@ -20,7 +20,7 @@ class CommunityPage extends StatelessWidget {
         flexibleSpace: const GlassAppBarBackdrop(),
       ),
       body: AppBackground(
-        wallpaperTarget: WallpaperTarget.discover,
+        wallpaperTarget: WallpaperTarget.community,
         imageAsset: 'assets/images/history_court_bg.png',
         imageOpacity: 0.06,
         alignment: const Alignment(0.15, -0.2),
