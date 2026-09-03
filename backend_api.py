@@ -29,7 +29,7 @@ import cv2
 import numpy as np
 from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sqlalchemy import or_
@@ -221,6 +221,12 @@ def health() -> dict[str, Any]:
         "default_template": str(_default_template_path()),
         "queue": queue,
     }
+
+
+@app.head("/api/health", include_in_schema=False)
+def health_head() -> Response:
+    """Allow lightweight uptime monitors that use HEAD requests."""
+    return Response(status_code=200)
 
 
 def recover_persisted_tasks() -> None:

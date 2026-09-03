@@ -25,6 +25,17 @@ def _configure_data_dirs(monkeypatch, tmp_path: Path) -> None:
     backend_api.VIDEO_DAILY_SEQUENCE.clear()
 
 
+def test_health_endpoint_accepts_get_and_head() -> None:
+    with TestClient(backend_api.app) as client:
+        get_response = client.get("/api/health")
+        head_response = client.head("/api/health")
+
+    assert get_response.status_code == 200
+    assert get_response.json()["ok"] is True
+    assert head_response.status_code == 200
+    assert head_response.content == b""
+
+
 def _fake_preview(video_path: Path, source_upload_id: str) -> dict:
     preview_path = backend_api.PREVIEW_FRAME_DIR / f"{source_upload_id}.jpg"
     preview_path.write_bytes(b"preview")
